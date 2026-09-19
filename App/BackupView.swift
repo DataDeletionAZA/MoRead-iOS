@@ -61,7 +61,7 @@ struct BackupView: View {
         message = nil
         task = Task {
             defer { library.maintenanceTitle = nil; library.maintenanceProgress = 0; library.cancelMaintenance = nil; task = nil }
-            do { await companion.stopAndWait(); try Task.checkCancellation(); try await action() }
+            do { await speech.stopAndWait(); await companion.stopAndWait(); try Task.checkCancellation(); try await action() }
             catch is CancellationError { message = "已取消。" }
             catch { library.error = error.localizedDescription }
         }
@@ -120,7 +120,7 @@ struct BackupView: View {
     private func discardPrepared() { if let prepared { try? FileManager.default.removeItem(at: prepared.directory) }; prepared = nil }
     private func savePreferences(to root: URL) throws {
         let defaults = UserDefaults.standard
-        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper", "shelf.sort", "speech.preferences"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
+        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper", "shelf.sort", "speech.preferences", "speech.cloud"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
         try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: root.appendingPathComponent("reader-settings.plist"), options: .atomic)
     }
     private func loadPreferences(from root: URL) {
@@ -138,6 +138,10 @@ struct BackupView: View {
            let settings = try? JSONDecoder().decode(SpeechPreferences.self, from: data),
            let validated = try? JSONEncoder().encode(settings.validated()) { defaults.set(validated, forKey: "speech.preferences") }
         else { defaults.removeObject(forKey: "speech.preferences") }
-        speech.loadPreferences()
+        if let data = values["speech.cloud"] as? Data,
+           let settings = try? JSONDecoder().decode(CloudSpeechSettings.self, from: data),
+           let validated = try? JSONEncoder().encode(settings.validated()) { defaults.set(validated, forKey: "speech.cloud") }
+        else { defaults.removeObject(forKey: "speech.cloud") }
+        speech.loadPreferences(); speech.loadCloudSettings()
     }
 }

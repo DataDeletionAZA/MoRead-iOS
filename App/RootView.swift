@@ -233,6 +233,7 @@ struct SettingsView: View {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                 }
+                Section("听书") { NavigationLink("云端声音与缓存") { CloudSpeechView() } }
                 Section("书籍与记录") {
                     NavigationLink("整理书架") { ShelfManager() }
                     NavigationLink("备份与恢复") { BackupView() }

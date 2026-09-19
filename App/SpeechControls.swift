@@ -43,6 +43,12 @@ struct SpeechControls: View {
                     HStack { Text("睡眠定时"); Spacer(); Text(active ? timerLabel : "未开启").foregroundStyle(.secondary).monospacedDigit() }
                 }.disabled(!active).accessibilityIdentifier("speech-timer")
             } footer: { Text("按播放时长或自然读完的章节数停止。暂停时，倒计时也暂停。手动跳章不会扣除章节数。") }
+            Section("朗读方式") {
+                NavigationLink { CloudSpeechView() } label: {
+                    LabeledContent("声音来源", value: speech.cloudSettings.enabled ? speech.cloudSettings.service.label : "iPhone 系统声音")
+                }
+            }
+            if !speech.cloudSettings.enabled {
             Section("声音") {
                 NavigationLink {
                     SpeechVoicePicker()
@@ -59,6 +65,7 @@ struct SpeechControls: View {
                     Text("这台设备暂时找不到已选声音，朗读会使用中文默认声音。可以在系统声音列表中重新选择。").font(.caption).foregroundStyle(.secondary)
                 }
                 Text("设置会保存在本机，并从下一句生效。试听时会暂停正在播放的书籍。").font(.caption).foregroundStyle(.secondary)
+            }
             }
         }.navigationTitle("听书")
             .sheet(isPresented: $timerSheet) { SpeechTimerSheet() }

@@ -94,7 +94,7 @@ struct StoredBookView: View {
                 Button("清理正文", role: .destructive) {
                     working = true
                     Task {
-                        speech.stop(); await companion.stopAndWait()
+                        await speech.stopAndWait(); await companion.stopAndWait()
                         model.clearBody(bookID); working = false
                     }
                 }

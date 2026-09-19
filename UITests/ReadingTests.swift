@@ -2,6 +2,59 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testCachedCloudAudioPauseSeekAndChapterTimer() {
+        var wave = Data()
+        func word<T: FixedWidthInteger>(_ value: T) { var little = value.littleEndian; withUnsafeBytes(of: &little) { wave.append(contentsOf: $0) } }
+        let samples = 24000
+        wave.append(Data("RIFF".utf8)); word(UInt32(36 + samples * 2)); wave.append(Data("WAVEfmt ".utf8)); word(UInt32(16))
+        word(UInt16(1)); word(UInt16(1)); word(UInt32(8000)); word(UInt32(16000)); word(UInt16(2)); word(UInt16(16))
+        wave.append(Data("data".utf8)); word(UInt32(samples * 2))
+        for index in 0..<samples { word(Int16(sin(Double(index) * 2 * .pi * 220 / 8000) * 100)) }
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]
+        app.launchEnvironment["MOREAD_TEST_SPEECH_AUDIO"] = wave.base64EncodedString()
+        app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["听书"].tap(); app.buttons["speech-start"].tap()
+        let playback = app.buttons["speech-play-pause"]
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暂停' AND enabled == true"), object: playback)
+        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 20), .completed)
+        playback.tap(); XCTAssertEqual(playback.label, "继续")
+        app.buttons["speech-timer"].tap(); app.buttons["按章节"].tap(); app.buttons["本章结束"].tap()
+        app.buttons["speech-next-chapter"].tap()
+        XCTAssertTrue(app.buttons["speech-timer"].label.contains("还剩 1 章"))
+        XCTAssertEqual(playback.label, "继续"); playback.tap()
+        XCTAssertTrue(app.staticTexts["speech-stop-reason"].waitForExistence(timeout: 40))
+        XCTAssertEqual(app.staticTexts["speech-stop-reason"].label, "定时结束")
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+    }
+    func testCloudSpeechSettingsPersist() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["云端声音与缓存"].tap()
+        let enabled = app.switches["cloud-speech-enabled"]
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10))
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(enabled.value as? String, "1")
+        app.buttons["cloud-speech-service"].tap(); app.buttons["MiniMax"].tap(); app.swipeUp()
+        let model = app.textFields["cloud-speech-model"]
+        model.tap(); model.typeText("-custom")
+        let key = app.secureTextFields["cloud-speech-key"]
+        key.tap(); key.typeText("test-voice-key-12345")
+        app.toolbars.buttons["完成"].tap()
+        app.swipeUp(); app.buttons["save-cloud-speech"].tap()
+        XCTAssertTrue(app.staticTexts["cloud-speech-saved"].waitForExistence(timeout: 10))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["云端声音与缓存"].tap()
+        XCTAssertEqual(enabled.value as? String, "1")
+        XCTAssertEqual(model.value as? String, "speech-2.8-hd-custom")
+        app.swipeUp()
+        XCTAssertNotEqual(key.value as? String, "API 密钥")
+        XCTAssertEqual((key.value as? String)?.count, "test-voice-key-12345".count)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+    }
     func testSpeechPreferencesAndChapterSleepTimer() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()

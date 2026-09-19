@@ -109,6 +109,23 @@ final class LibraryModel: ObservableObject {
         perform {
             guard let store else { return }
             let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: TextImporter.chapters(Self.sampleText))
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+               let encoded = ProcessInfo.processInfo.environment["MOREAD_TEST_SPEECH_AUDIO"], encoded.utf8.count < 200000,
+               let audio = Data(base64Encoded: encoded),
+               let data = UserDefaults.standard.data(forKey: "speech.cloud"),
+               let settings = try? JSONDecoder().decode(CloudSpeechSettings.self, from: data) {
+                for item in book.chapters {
+                    let chapter = try store.chapter(item.id, in: book)
+                    var offset = 0
+                    while let segment = SpeechText.next(in: chapter.text, from: offset, maximumLength: settings.maximumCharacters) {
+                        let key = try CloudSpeechClient.cacheKey(settings: settings, text: segment.text)
+                        try SpeechAudioCache.write(audio, in: store.directory(book.id), key: key, megabytes: settings.cacheMegabytes)
+                        offset = segment.end
+                    }
+                }
+            }
+            #endif
             books.insert(book, at: 0)
         }
     }
