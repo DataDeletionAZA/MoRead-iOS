@@ -2,6 +2,20 @@ import XCTest
 @testable import MoReadCore
 
 final class CoreTests: XCTestCase {
+    func testReaderTypographyRoundTripAndBounds() throws {
+        var value = ReaderTypography()
+        value.font = .serif; value.weight = 650; value.firstLineIndent = 2
+        value.marginLeft = 800; value.marginTop = -.infinity
+        value.letterSpacing = .nan; value.paragraphSpacing = -12
+        value.publisherStyles = false; value.justified = true
+        let restored = ReaderTypography(data: value.encoded())
+        XCTAssertEqual(restored.font, .serif); XCTAssertEqual(restored.weight, 600)
+        XCTAssertEqual(restored.firstLineIndent, 2); XCTAssertEqual(restored.marginLeft, 64)
+        XCTAssertEqual(restored.marginTop, 24); XCTAssertEqual(restored.letterSpacing, 0)
+        XCTAssertEqual(restored.paragraphSpacing, 0); XCTAssertTrue(restored.justified)
+        XCTAssertFalse(restored.publisherStyles)
+        XCTAssertEqual(ReaderTypography(data: Data("invalid".utf8)), ReaderTypography())
+    }
     func testManualEncodingAndChapterRulesProduceReviewableText() throws {
         let metadata = TextImporter.metadata(fileName: "《旧标题》作者：旧作者著.txt", text: "书名：灯塔\n作者：林遥\n第一章\n正文")
         XCTAssertEqual(metadata.title, "灯塔"); XCTAssertEqual(metadata.author, "林遥")

@@ -2,6 +2,39 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testTypographyPreservesAnchorAndSurvivesRelaunch() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["无动画翻页"].tap(); app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["reader-next-page"].waitForExistence(timeout: 10)); app.buttons["reader-next-page"].tap()
+        let original = app.textViews["reader-text"].firstMatch.value as? String
+        func openTypography() { app.buttons["排版"].tap(); app.buttons["字体与段落"].tap() }
+        func closeTypography() { app.navigationBars["字体与段落"].buttons.firstMatch.tap(); app.buttons["完成"].tap() }
+        openTypography()
+        app.buttons["reader-font-family"].tap(); app.buttons["衬线字体"].tap()
+        func increment(_ id: String, count: Int) {
+            for _ in 0..<count { app.steppers[id].buttons.matching(NSPredicate(format: "label ENDSWITH %@", "Increment")).firstMatch.tap() }
+        }
+        increment("reader-font-weight", count: 2); increment("reader-first-line-indent", count: 4)
+        app.switches["reader-justified"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(app.switches["reader-justified"].value as? String, "1")
+        closeTypography()
+        XCTAssertNotEqual(app.textViews["reader-text"].firstMatch.value as? String, original)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        openTypography()
+        XCTAssertTrue(app.buttons["reader-font-family"].label.contains("衬线字体"))
+        XCTAssertTrue(app.steppers["reader-font-weight"].label.contains("600"))
+        XCTAssertTrue(app.steppers["reader-first-line-indent"].label.contains("2"))
+        XCTAssertEqual(app.switches["reader-justified"].value as? String, "1")
+        for _ in 0..<4 { if app.buttons["reader-typography-reset"].isHittable { break }; app.swipeUp() }
+        app.buttons["reader-typography-reset"].tap(); closeTypography()
+        XCTAssertTrue(app.staticTexts["reader-page-number"].label.hasPrefix("本章 2 /"))
+        XCTAssertEqual(app.textViews["reader-text"].firstMatch.value as? String, original)
+    }
     func testPaginatedReadingModesPreservePositionAndBookmarks() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
@@ -293,6 +326,12 @@ final class ReadingTests: XCTestCase {
         app.buttons["目录"].tap()
         app.buttons["第二章 来信"].tap()
         let text = app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "一封没有署名的信")).firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 20))
+        app.buttons["排版"].tap(); app.buttons["字体与段落"].tap()
+        app.switches["reader-publisher-styles"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(app.switches["reader-publisher-styles"].value as? String, "0")
+        app.buttons["reader-font-family"].tap(); app.buttons["衬线字体"].tap()
+        app.navigationBars["字体与段落"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
         XCTAssertTrue(text.waitForExistence(timeout: 20))
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
         app.terminate()

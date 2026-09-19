@@ -72,6 +72,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     let book: Book
     let fontSize: Double
     let lineSpacing: Double
+    let typography: ReaderTypography
     let paper: String
     let annotations: [Annotation]
     let speechLocation: SpeechLocation?
@@ -80,10 +81,10 @@ struct EPUBReader: UIViewControllerRepresentable {
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(book: book, model: model, fontSize: fontSize, lineSpacing: lineSpacing, paper: paper, annotations: annotations, onLocation: onLocation, onSelection: onSelection)
+        EPUBHostController(book: book, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onLocation: onLocation, onSelection: onSelection)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
-        controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, paper: paper)
+        controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
         controller.setAnnotations(annotations)
         controller.setSpeechLocation(speechLocation)
     }
@@ -102,13 +103,14 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var locationTask: Task<Void, Never>?
     private var fontSize: Double
     private var lineSpacing: Double
+    private var typography: ReaderTypography
     private var paper: String
     private var annotations: [Annotation]
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
 
-    init(book: Book, model: LibraryModel, fontSize: Double, lineSpacing: Double, paper: String, annotations: [Annotation], onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
-        bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.paper = paper; self.annotations = annotations
+    init(book: Book, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
+        bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.onLocation = onLocation; self.onSelection = onSelection
         super.init(nibName: nil, bundle: nil)
     }
@@ -132,8 +134,11 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 templates["wave"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-wave'/>", stylesheet: """
                 .moread-wave { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%23d67b16' stroke-width='1.3'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom; }
                 """)
-                let config = EPUBNavigatorViewController.Configuration(preferences: preferences,
+                var config = EPUBNavigatorViewController.Configuration(preferences: preferences,
                     editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate))], decorationTemplates: templates)
+                if let url = Bundle.main.url(forResource: "NotoSerifSC", withExtension: "ttf"), let file = FileURL(url: url) {
+                    config.fontFamilyDeclarations.append(CSSFontFamilyDeclaration(fontFamily: "Noto Serif SC", alternates: [.serif], fontFaces: [CSSFontFace(file: file, weight: .variable(200...900))]).eraseToAnyHTMLFontFamilyDeclaration())
+                }
                 let reader = try EPUBNavigatorViewController(publication: publication, initialLocation: locator, config: config)
                 navigator = reader; reader.delegate = self
                 addChild(reader); reader.view.frame = view.bounds
@@ -144,10 +149,22 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             } catch is CancellationError {} catch { model.error = error.localizedDescription; spinner.stopAnimating() }
         }
     }
-    private var preferences: EPUBPreferences { EPUBPreferences(fontSize: fontSize / 16, lineHeight: 1 + lineSpacing / fontSize, scroll: false, theme: paper == "night" ? .dark : paper == "white" ? .light : .sepia) }
-    func setPreferences(fontSize: Double, lineSpacing: Double, paper: String) {
-        guard fontSize != self.fontSize || lineSpacing != self.lineSpacing || paper != self.paper else { return }
-        self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.paper = paper; navigator?.submitPreferences(preferences)
+    private var preferences: EPUBPreferences {
+        let custom = !typography.publisherStyles
+        let family: FontFamily? = typography.font == .system ? nil : typography.font == .serif ? FontFamily(rawValue: "Noto Serif SC") : typography.font == .monospace ? .monospace : .sansSerif
+        return EPUBPreferences(fontFamily: custom ? family : nil, fontSize: fontSize / 16,
+                               fontWeight: custom ? Double(typography.weight) / 400 : nil,
+                               letterSpacing: custom ? typography.letterSpacing * 2 : nil,
+                               lineHeight: 1 + lineSpacing / fontSize, pageMargins: typography.epubPageMargins,
+                               paragraphIndent: custom ? typography.firstLineIndent : nil,
+                               paragraphSpacing: custom ? typography.paragraphSpacing / fontSize : nil,
+                               publisherStyles: typography.publisherStyles, scroll: false,
+                               textAlign: custom ? (typography.justified ? .justify : .start) : nil,
+                               theme: paper == "night" ? .dark : paper == "white" ? .light : .sepia)
+    }
+    func setPreferences(fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String) {
+        guard fontSize != self.fontSize || lineSpacing != self.lineSpacing || paper != self.paper || typography != self.typography else { return }
+        self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; navigator?.submitPreferences(preferences)
     }
     func setAnnotations(_ value: [Annotation]) {
         guard value != annotations else { return }

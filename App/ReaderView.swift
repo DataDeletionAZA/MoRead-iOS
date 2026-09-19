@@ -12,6 +12,8 @@ struct ReaderView: View {
     @AppStorage("reader.lineSpacing") private var lineSpacing = 10.0
     @AppStorage("reader.paper") private var paper = "paper"
     @AppStorage("reader.pageMode") private var pageMode = "scroll"
+    @AppStorage("reader.typography") private var typographyData = Data()
+    private var typography: ReaderTypography { ReaderTypography(data: typographyData) }
     @State private var chapter: Chapter?
     @State private var requestedOffset = 0
     @State private var navigationID = UUID()
@@ -35,7 +37,7 @@ struct ReaderView: View {
             if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(book: book, fontSize: fontSize, lineSpacing: lineSpacing, paper: paper, annotations: records.annotations, speechLocation: speech.location, onLocation: { data in
+                        EPUBReader(book: book, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onLocation: { data in
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
                         }, onSelection: { passage in selection = passage; note = "" })
                     } else if let chapter {
@@ -150,6 +152,7 @@ struct ReaderView: View {
                                 ForEach(ReaderPageMode.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                             }.accessibilityIdentifier("reader-page-mode")
                         }
+                        NavigationLink("字体与段落") { ReaderTypographyView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }), isEPUB: book.format == "epub") }
                         Section("文字") {
                             Stepper(value: $fontSize, in: 14...36, step: 1) { LabeledContent("字号", value: "\(Int(fontSize))") }.accessibilityIdentifier("reader-font-size-stepper")
                             Slider(value: $fontSize, in: 14...36, step: 1).accessibilityLabel("字号")
@@ -183,7 +186,7 @@ struct ReaderView: View {
         }
     }
     private func textContent(book: Book, chapter: Chapter) -> TextReader {
-        TextReader(text: chapter.text, fontSize: fontSize, lineSpacing: lineSpacing, paper: UIColor(paperColor), night: paper == "night", offset: requestedOffset, navigationID: navigationID,
+        TextReader(text: chapter.text, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
@@ -268,6 +271,7 @@ struct TextReader: UIViewRepresentable {
     let text: String
     let fontSize: Double
     let lineSpacing: Double
+    let typography: ReaderTypography
     let paper: UIColor
     let night: Bool
     let offset: Int
@@ -287,7 +291,7 @@ struct TextReader: UIViewRepresentable {
         manager.addTextContainer(container); storage.addLayoutManager(manager)
         let view = UITextView(frame: .zero, textContainer: container)
         view.isEditable = false; view.isSelectable = true
-        view.textContainerInset = UIEdgeInsets(top: 24, left: 22, bottom: 30, right: 22)
+        view.textContainerInset = typography.insets
         view.delegate = context.coordinator
         view.accessibilityIdentifier = "reader-text"
         return view
@@ -297,10 +301,11 @@ struct TextReader: UIViewRepresentable {
         let previous = coordinator.parent
         let navigationChanged = coordinator.navigationID != navigationID
         let preservedOffset = coordinator.lastPosition
-        let needsLayout = view.text != text || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.night != night || previous.annotations != annotations
+        let needsLayout = view.text != text || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.night != night || previous.annotations != annotations
         coordinator.parent = self
         view.backgroundColor = paper
         if needsLayout {
+            view.textContainerInset = typography.insets
             let value = attributedText
             view.attributedText = value
             coordinator.baseText = NSAttributedString(attributedString: value)
@@ -328,8 +333,10 @@ struct TextReader: UIViewRepresentable {
         }
     }
     var attributedText: NSAttributedString {
-        let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.paragraphSpacing = 12
-        let value = NSMutableAttributedString(string: text, attributes: [.font: UIFont.systemFont(ofSize: fontSize), .foregroundColor: night ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1), .paragraphStyle: paragraph])
+        let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.paragraphSpacing = typography.paragraphSpacing
+        paragraph.firstLineHeadIndent = typography.firstLineIndent * fontSize
+        paragraph.alignment = typography.justified ? .justified : .natural
+        let value = NSMutableAttributedString(string: text, attributes: [.font: typography.uiFont(size: fontSize), .kern: typography.letterSpacing * fontSize, .foregroundColor: night ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1), .paragraphStyle: paragraph])
         for annotation in annotations {
             let range = NSRange(location: annotation.passage.offset, length: annotation.passage.text.utf16.count)
             guard range.location >= 0, range.location <= value.length, range.length <= value.length - range.location else { continue }

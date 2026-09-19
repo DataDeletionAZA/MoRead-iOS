@@ -94,7 +94,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         parentReader = parent
         let content = parent.content
         let navigation = old.navigationID != content.navigationID
-        let geometry = old.text != content.text || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing
+        let geometry = old.text != content.text || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
         if navigation { anchor = content.offset; if transitioning { needsPagination = true } }
         view.backgroundColor = content.paper
         if geometry { needsPagination = true; view.setNeedsLayout() }
@@ -125,7 +125,9 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         baseText = content.attributedText
         let storage = NSTextStorage(attributedString: baseText)
         let manager = AnnotationLayoutManager(); storage.addLayoutManager(manager)
-        let size = CGSize(width: laidOutSize.width - 44, height: laidOutSize.height - 48)
+        let insets = content.typography.insets
+        let size = CGSize(width: laidOutSize.width - insets.left - insets.right, height: laidOutSize.height - insets.top - insets.bottom)
+        guard size.width > 10, size.height > 0 else { counter.text = "当前窗口太小，请放大窗口"; return }
         spinner.startAnimating(); previous.isEnabled = false; nextButton.isEnabled = false; counter.text = "正在分页…"
         pager?.view.isHidden = true; visible?.view.isHidden = true
         pagination = Task { [weak self] in
@@ -286,7 +288,7 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
         text.isEditable = false; text.isSelectable = true; text.isScrollEnabled = false
         container.widthTracksTextView = false; container.heightTracksTextView = false
         text.contentInsetAdjustmentBehavior = .never
-        text.textContainerInset = UIEdgeInsets(top: 24, left: 22, bottom: 24, right: 22)
+        text.textContainerInset = content.typography.insets
         text.delegate = self; text.backgroundColor = content.paper
         text.accessibilityIdentifier = "reader-text"
         text.accessibilityLabel = "第 \(index + 1) 页正文"

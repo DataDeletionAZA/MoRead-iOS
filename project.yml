@@ -28,6 +28,8 @@ targets:
         buildPhase: resources
       - path: licenses/zipfoundation-MIT.txt
         buildPhase: resources
+      - path: licenses/notoserifsc-OFL.txt
+        buildPhase: resources
       - path: licenses/THIRD_PARTY_LICENSES.txt
         buildPhase: resources
     dependencies:
@@ -49,6 +51,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 墨知
+        UIAppFonts: [NotoSerifSC.ttf]
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

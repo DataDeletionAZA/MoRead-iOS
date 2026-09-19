@@ -42,7 +42,7 @@ final class LibraryModel: ObservableObject {
             }
             #if DEBUG
             if reset, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
-                for key in ["reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper"] { UserDefaults.standard.removeObject(forKey: key) }
+                for key in ["reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             #endif
             let storage = try LibraryStore(root: root)
