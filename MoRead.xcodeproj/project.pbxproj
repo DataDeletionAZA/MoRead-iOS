@@ -17,6 +17,7 @@
 		3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563B576C24E7177CF543069 /* CompanionViews.swift */; };
 		43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B830F2AED127F80997D8521 /* RootView.swift */; };
 		50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */; };
+		51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2065DE60076241DE16C071 /* SpeechControls.swift */; };
 		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
 		7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12B808B9926C791C07C1201 /* KeychainStore.swift */; };
 		812C283C0232E1F3BAE8B34D /* zipfoundation-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7C172A1663776C99A42F638F /* zipfoundation-MIT.txt */; };
@@ -46,6 +47,7 @@
 /* Begin PBXFileReference section */
 		08D914D6EE1624B82890502A /* SpeechPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayer.swift; sourceTree = "<group>"; };
 		0B11F73FB9652E1D10E8E07D /* MoReadUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MoReadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B2065DE60076241DE16C071 /* SpeechControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechControls.swift; sourceTree = "<group>"; };
 		153247B56B294E5613324D91 /* MoRead-iOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "MoRead-iOS"; path = .; sourceTree = SOURCE_ROOT; };
 		1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoReadApp.swift; sourceTree = "<group>"; };
 		26D7FFD20FA49397BE6BBFD0 /* THIRD_PARTY_LICENSES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = THIRD_PARTY_LICENSES.txt; sourceTree = "<group>"; };
@@ -98,6 +100,7 @@
 				FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */,
 				9B830F2AED127F80997D8521 /* RootView.swift */,
 				F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */,
+				0B2065DE60076241DE16C071 /* SpeechControls.swift */,
 				08D914D6EE1624B82890502A /* SpeechPlayer.swift */,
 				B9F48B66B02BAA67D887F3A7 /* StorageView.swift */,
 				87E493AC9E9897EB9D669FEF /* TextImportView.swift */,
@@ -281,6 +284,7 @@
 				C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */,
 				43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */,
 				0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */,
+				51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */,
 				F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */,
 				DA76CE3F28D08E3FE95FEB25 /* StorageView.swift in Sources */,
 				84BD5593D16EB897BC2E0A3A /* TextImportView.swift in Sources */,

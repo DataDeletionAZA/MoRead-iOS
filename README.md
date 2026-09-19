@@ -8,7 +8,8 @@
 - TXT 导入前预览正文和目录，可选文字编码、内置或自定义章节规则。
 - 多级分组、合集和彩色标签，组合筛选、拖动排序与批量归类。
 - 字号、行距、纸张配色，以及荧光、下划线和波浪线批注。
-- 系统连续听书、当前文字高亮、锁屏播放控制。
+- 系统连续听书、当前文字高亮、锁屏播放控制，声音搜索与试听，保存语速和音调。
+- 按播放分钟数或自然读完章节数的睡眠定时，暂停时暂停计时，支持章节切换和章内定位。
 - 自填服务商地址、模型与密钥，支持 OpenAI 兼容、Responses、Claude、Gemini 四种聊天接口。
 - SillyTavern JSON、PNG 角色卡与世界书，流式伴读、对话分支、原文引用和已读范围限制。
 - 按书开启向量原文记忆，已读章节断点续传，按意思检索并核对原文位置。
@@ -17,7 +18,7 @@
 
 书籍和对话保存在设备中，服务商密钥保存在系统钥匙串。发送伴读消息时，所选服务商会收到角色资料、近期对话和检索到的已读原文。角色设定不能保证模型绝不剧透；原文检索按本地阅读边界截断。向量记忆在「设置 → 向量记忆」中单独选择 OpenAI 兼容或 Gemini 服务商及向量模型，按书开启后，会将已读片段与检索问题发送给该服务商。索引保存在本机，可停止整理、单独清理，并随完整备份恢复。
 
-<p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"> <img src="docs/screenshots/import-preview.png" alt="TXT 导入预览" width="260"></p>
+<p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"> <img src="docs/screenshots/import-preview.png" alt="TXT 导入预览" width="260"> <img src="docs/screenshots/listening.png" alt="听书与睡眠定时" width="260"></p>
 
 ## 开发
 

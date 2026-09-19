@@ -2,6 +2,41 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testSpeechPreferencesAndChapterSleepTimer() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["听书"].waitForExistence(timeout: 10)); app.buttons["听书"].tap()
+        let rate = app.sliders["speech-rate"]
+        XCTAssertTrue(rate.waitForExistence(timeout: 10)); rate.adjust(toNormalizedSliderPosition: 0.65)
+        let savedRate = rate.value as? String; XCTAssertNotNil(savedRate)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["听书"].tap()
+        XCTAssertTrue(rate.waitForExistence(timeout: 10)); XCTAssertEqual(rate.value as? String, savedRate)
+        app.buttons["speech-start"].tap()
+        let playback = app.buttons["speech-play-pause"]
+        XCTAssertTrue(playback.waitForExistence(timeout: 15))
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暂停' AND enabled == true"), object: playback)
+        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 15), .completed); playback.tap()
+        XCTAssertEqual(playback.label, "继续")
+        app.buttons["speech-timer"].tap(); app.buttons["15 分钟"].tap()
+        XCTAssertTrue(app.buttons["speech-timer"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["speech-timer"].label.contains("15:00"))
+        app.buttons["speech-timer"].tap(); app.buttons["按章节"].tap(); app.buttons["本章结束"].tap()
+        XCTAssertTrue(app.buttons["speech-timer"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["speech-timer"].label.contains("还剩 1 章"))
+        app.buttons["speech-next-chapter"].tap()
+        XCTAssertTrue(app.buttons["speech-timer"].label.contains("还剩 1 章"))
+        XCTAssertEqual(playback.label, "继续")
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        playback.tap()
+        XCTAssertTrue(app.staticTexts["speech-stop-reason"].waitForExistence(timeout: 50))
+        XCTAssertEqual(app.staticTexts["speech-stop-reason"].label, "定时结束")
+        XCTAssertTrue(app.buttons["speech-start"].exists)
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
     func testVectorMemoryOptInAndModelSurviveRelaunch() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()

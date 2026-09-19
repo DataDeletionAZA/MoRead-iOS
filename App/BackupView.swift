@@ -120,7 +120,7 @@ struct BackupView: View {
     private func discardPrepared() { if let prepared { try? FileManager.default.removeItem(at: prepared.directory) }; prepared = nil }
     private func savePreferences(to root: URL) throws {
         let defaults = UserDefaults.standard
-        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper", "shelf.sort"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
+        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper", "shelf.sort", "speech.preferences"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
         try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: root.appendingPathComponent("reader-settings.plist"), options: .atomic)
     }
     private func loadPreferences(from root: URL) {
@@ -134,5 +134,10 @@ struct BackupView: View {
         defaults.set(["paper", "night", "white"].contains(paper) ? paper : "paper", forKey: "reader.paper")
         let sort = values["shelf.sort"] as? String ?? ""
         defaults.set((ShelfSort(rawValue: sort) ?? .recent).rawValue, forKey: "shelf.sort")
+        if let data = values["speech.preferences"] as? Data,
+           let settings = try? JSONDecoder().decode(SpeechPreferences.self, from: data),
+           let validated = try? JSONEncoder().encode(settings.validated()) { defaults.set(validated, forKey: "speech.preferences") }
+        else { defaults.removeObject(forKey: "speech.preferences") }
+        speech.loadPreferences()
     }
 }
