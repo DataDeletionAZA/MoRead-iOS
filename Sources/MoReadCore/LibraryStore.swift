@@ -45,7 +45,11 @@ public final class LibraryStore {
     public func books() throws -> [Book] {
         try manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
             .filter { UUID(uuidString: $0.lastPathComponent) != nil }
-            .map { try decoder.decode(Book.self, from: Data(contentsOf: $0.appendingPathComponent("book.json"))) }
+            .map { directory in
+                let book = try decoder.decode(Book.self, from: Data(contentsOf: directory.appendingPathComponent("book.json")))
+                guard book.id == UUID(uuidString: directory.lastPathComponent) else { throw MoReadError.invalid("书籍标识与存储目录不一致。") }
+                return book
+            }
             .sorted { ($0.lastOpened ?? $0.importedAt) > ($1.lastOpened ?? $1.importedAt) }
     }
     public func importBook(title: String, author: String = "", chapters: [Chapter], original: URL? = nil, format: String = "txt", readingMap: Data? = nil) throws -> Book {

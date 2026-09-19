@@ -1,6 +1,19 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testCreateLocalBackupFromSettings() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]
+        app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15))
+        app.buttons["add-sample"].tap()
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["备份与恢复"].tap()
+        app.buttons["create-backup"].tap()
+        XCTAssertTrue(app.buttons["share-backup"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+
     func testEPUBContentsAndLocationSurviveRelaunch() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]

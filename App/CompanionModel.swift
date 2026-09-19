@@ -13,7 +13,8 @@ final class CompanionModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var lastSave = Date.distantPast
 
-    init() {
+    init() { load() }
+    func load() {
         do {
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             let folder = ProcessInfo.processInfo.arguments.contains("--ui-testing") ? "MoRead-UITests" : "MoRead"
@@ -51,7 +52,9 @@ final class CompanionModel: ObservableObject {
         perform { try store?.save(conversation) }
     }
     func stop() { task?.cancel() }
+    func stopAndWait() async { if let task { task.cancel(); await task.value } }
     func send(_ text: String, in id: UUID, library: LibraryModel, selection: SourcePassage? = nil) {
+        guard !library.maintenance else { return }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, task == nil, let index = conversations.firstIndex(where: { $0.id == id }),
               let provider = settings.providers.first(where: { $0.id == settings.selectedProvider }),
@@ -60,14 +63,17 @@ final class CompanionModel: ObservableObject {
         do {
             let key = try KeychainStore.read(provider.id)
             _ = try ChatRequest.make(provider: provider, key: key, messages: [.init(role: "user", content: text)])
-            try conversations[index].validateSources(books: library.books)
-            conversations[index].messages.append(ChatMessage(role: "user", content: text))
+            var conversation = conversations[index]
+            try conversation.validateSources(books: library.books)
+            conversation.messages.append(ChatMessage(role: "user", content: text))
             var response = ChatMessage(role: "assistant", content: ""); response.status = "receiving"
-            conversations[index].messages.append(response)
-            conversations[index].updatedAt = Date()
+            let responseID = response.id
+            conversation.messages.append(response)
+            conversation.updatedAt = Date()
             guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
-            try store.save(conversations[index])
-            let snapshot = conversations[index]
+            try store.save(conversation)
+            conversations[index] = conversation
+            let snapshot = conversation
             let books = library.books
             let userName = settings.userName
             activeConversation = id
@@ -92,13 +98,13 @@ final class CompanionModel: ObservableObject {
                     let system = rules + "\n\n" + persona + "\n\n以下为本次可用原文：\n" + (context.text.isEmpty ? "暂无可用的已读原文。" : context.text)
                     let history = snapshot.messages.filter { $0.status == "complete" && ["user", "assistant"].contains($0.role) }.suffix(30)
                     try await ChatClient.stream(provider: provider, key: key, messages: [ChatMessage(role: "system", content: system)] + history) { delta in
-                        await self.append(delta, to: id, messageID: response.id)
+                        await self.append(delta, to: id, messageID: responseID)
                     }
                     try self.conversations.first(where: { $0.id == id })?.validateSources(books: library.books)
-                    self.finish(id, messageID: response.id, status: "complete")
-                } catch is CancellationError { self.finish(id, messageID: response.id, status: "interrupted") }
+                    self.finish(id, messageID: responseID, status: "complete")
+                } catch is CancellationError { self.finish(id, messageID: responseID, status: "interrupted") }
                 catch {
-                    self.finish(id, messageID: response.id, status: "interrupted")
+                    self.finish(id, messageID: responseID, status: "interrupted")
                     self.error = error is MoReadError ? error.localizedDescription : "连接中断或无法连接服务商。已保存收到的内容，请检查网络后重试。"
                 }
             }

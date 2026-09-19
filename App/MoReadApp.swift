@@ -21,16 +21,20 @@ final class LibraryModel: ObservableObject {
     @Published var books: [Book] = []
     @Published var error: String?
     @Published var importing = false
+    @Published var maintenanceTitle: String?
+    @Published var maintenanceProgress = 0.0
+    var cancelMaintenance: (() -> Void)?
+    var maintenance: Bool { maintenanceTitle != nil }
     private(set) var store: LibraryStore?
     private var pendingSaves: [UUID: Task<Void, Never>] = [:]
 
-    init() { load() }
-    func load() {
+    init() { load(reset: true) }
+    func load(reset: Bool = false) {
         do {
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             let folder = ProcessInfo.processInfo.arguments.contains("--ui-testing") ? "MoRead-UITests" : "MoRead"
             let root = support.appendingPathComponent(folder, isDirectory: true)
-            if ProcessInfo.processInfo.arguments.contains("--reset-test-library"), FileManager.default.fileExists(atPath: root.path) {
+            if reset, ProcessInfo.processInfo.arguments.contains("--reset-test-library"), FileManager.default.fileExists(atPath: root.path) {
                 try FileManager.default.removeItem(at: root)
             }
             let storage = try LibraryStore(root: root)
@@ -40,6 +44,7 @@ final class LibraryModel: ObservableObject {
     }
     func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
     func update(_ book: Book, immediate: Bool = false) {
+        guard !maintenance else { return }
         guard let index = books.firstIndex(where: { $0.id == book.id }) else { return }
         books[index] = book
         pendingSaves[book.id]?.cancel()
@@ -50,12 +55,13 @@ final class LibraryModel: ObservableObject {
         }
     }
     func flush() {
+        guard !maintenance else { return }
         for task in pendingSaves.values { task.cancel() }
         pendingSaves.removeAll()
         perform { for book in books { try store?.save(book) } }
     }
     func importFile(_ url: URL) async {
-        guard !importing, let store else { return }
+        guard !importing, !maintenance, let store else { return }
         importing = true
         defer { importing = false }
         let scoped = url.startAccessingSecurityScopedResource()
@@ -74,6 +80,7 @@ final class LibraryModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
     func addSample() {
+        guard !maintenance else { return }
         perform {
             guard let store else { return }
             let text = "第一章 雨后\n" + String(repeating: "雨停后，林遥推开旧书店的门。柜台上摆着一本空白的笔记，纸页带着淡淡的木香。她在第一页写下今天的日期，窗外的街道逐渐明亮。\n\n", count: 12)
@@ -83,6 +90,7 @@ final class LibraryModel: ObservableObject {
         }
     }
     func remove(_ book: Book, permanently: Bool) {
+        guard !maintenance else { return }
         perform {
             pendingSaves[book.id]?.cancel()
             try store?.remove(book, permanently: permanently)

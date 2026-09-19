@@ -26,6 +26,10 @@ targets:
         buildPhase: resources
       - path: licenses/readium-BSD-3-Clause.txt
         buildPhase: resources
+      - path: licenses/zipfoundation-MIT.txt
+        buildPhase: resources
+      - path: licenses/THIRD_PARTY_LICENSES.txt
+        buildPhase: resources
     dependencies:
       - package: MoReadCore
       - package: Readium

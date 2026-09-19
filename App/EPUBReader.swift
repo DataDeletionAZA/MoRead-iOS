@@ -121,7 +121,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         spinner.startAnimating()
         NotificationCenter.default.addObserver(self, selector: #selector(jump(_:)), name: .epubJump, object: nil)
         openTask = Task { [weak self] in
-            guard let self, let book = model.books.first(where: { $0.id == bookID }), let store = model.store else { return }
+            guard let self, let book = model.books.first(where: { $0.id == self.bookID }), let store = model.store else { return }
             do {
                 let directory = store.directory(bookID)
                 let publication = try await EPUBService.shared.open(directory.appendingPathComponent("original.epub"))
@@ -197,7 +197,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         locationTask?.cancel()
         locationTask = Task { [weak self] in
             guard let self, let reader = self.navigator, let exact = await reader.firstVisibleElementLocator(), !Task.isCancelled else { return }
-            guard var book = model.books.first(where: { $0.id == bookID }), let position = position(for: exact, book: book) else { return }
+            guard var book = model.books.first(where: { $0.id == self.bookID }), let position = position(for: exact, book: book) else { return }
             // A paragraph's start is a conservative watermark: text below it stays unread.
             book.record(position: position, visibleEnd: position); model.update(book)
         }

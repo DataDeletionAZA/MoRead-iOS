@@ -36,6 +36,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
     var voices: [AVSpeechSynthesisVoice] { AVSpeechSynthesisVoice.speechVoices().sorted { $0.language == $1.language ? $0.name < $1.name : $0.language < $1.language } }
     func play(_ book: Book, library: LibraryModel) {
+        guard !library.maintenance else { return }
         stop()
         self.library = library; bookID = book.id; title = book.title; position = book.position
         do {
@@ -45,11 +46,11 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         } catch { library.error = "无法启动听书，请检查设备的音频设置。"; stop() }
     }
     func pause() {
-        guard bookID != nil else { return }
+        guard bookID != nil, library?.maintenance != true else { return }
         synthesizer.pauseSpeaking(at: .word); isPlaying = false; updateNowPlaying()
     }
     func resume() {
-        guard bookID != nil else { return }
+        guard bookID != nil, library?.maintenance != true else { return }
         do { try AVAudioSession.sharedInstance().setActive(true) }
         catch { library?.error = "无法恢复播放。"; return }
         isPlaying = true
@@ -63,6 +64,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
     func nextChapter() {
+        guard library?.maintenance != true else { return }
         guard let library, let book = library.books.first(where: { $0.id == bookID }), book.chapters.indices.contains(position.chapter + 1) else { stop(); return }
         current = nil; synthesizer.stopSpeaking(at: .immediate)
         position = ReadingPosition(chapter: position.chapter + 1, offset: 0); chapter = nil; isPlaying = true; speakNext()
@@ -86,18 +88,26 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             stop()
         } catch { library.error = error.localizedDescription; stop() }
     }
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        guard current === utterance, let segment else { return }
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in self?.finished(id) }
+    }
+    private func finished(_ id: ObjectIdentifier) {
+        guard let current, ObjectIdentifier(current) == id, let segment else { return }
         if let library, let index = library.books.firstIndex(where: { $0.id == bookID }) {
             var book = library.books[index]
             let end = ReadingPosition(chapter: position.chapter, offset: segment.end)
             book.record(position: end, visibleEnd: end); library.update(book)
         }
-        position.offset = segment.end; current = nil
+        position.offset = segment.end; self.current = nil
         speakNext()
     }
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
-        guard current === utterance, let segment, let library, let index = library.books.firstIndex(where: { $0.id == bookID }) else { return }
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in self?.speaking(characterRange, id: id) }
+    }
+    private func speaking(_ characterRange: NSRange, id: ObjectIdentifier) {
+        guard let current, ObjectIdentifier(current) == id, let segment, let library, let index = library.books.firstIndex(where: { $0.id == bookID }) else { return }
         let range = NSRange(location: segment.offset + characterRange.location, length: characterRange.length)
         var book = library.books[index]
         book.record(position: ReadingPosition(chapter: position.chapter, offset: range.location), visibleEnd: ReadingPosition(chapter: position.chapter, offset: range.location + range.length))

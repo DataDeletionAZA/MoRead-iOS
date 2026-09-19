@@ -13,6 +13,16 @@ struct RootView: View {
             StatisticsView().tabItem { Label("足迹", systemImage: "chart.bar.xaxis") }
             SettingsView().tabItem { Label("设置", systemImage: "slider.horizontal.3") }
         }
+        .disabled(model.maintenance)
+        .overlay {
+            if let title = model.maintenanceTitle {
+                VStack(spacing: 18) {
+                    Text(title).font(.headline)
+                    ProgressView(value: model.maintenanceProgress)
+                    Button("取消") { model.cancelMaintenance?() }
+                }.padding(28).frame(maxWidth: 320).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            }
+        }
         .alert("需要处理", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("好", role: .cancel) { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -141,6 +151,7 @@ struct SettingsView: View {
             List {
                 Section("伴读") { NavigationLink("AI 服务商") { AISettingsView() } }
                 Section("书籍与记录") {
+                    NavigationLink("备份与恢复") { BackupView() }
                     NavigationLink("已移除的书籍") {
                         List(model.books.filter(\.removed)) { book in
                             HStack { Text(book.title); Spacer(); Button("恢复") { var copy = book; copy.removed = false; model.update(copy, immediate: true) } }
@@ -154,7 +165,7 @@ struct SettingsView: View {
                     NavigationLink("开源许可") {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 24) {
-                                ForEach(["THIRD_PARTY_NOTICES.md", "LICENSE", "readium-BSD-3-Clause.txt"], id: \.self) { name in
+                                ForEach(["THIRD_PARTY_NOTICES.md", "LICENSE", "THIRD_PARTY_LICENSES.txt"], id: \.self) { name in
                                     if let url = Bundle.main.url(forResource: name, withExtension: nil), let text = try? String(contentsOf: url, encoding: .utf8) { Text(text).textSelection(.enabled) }
                                 }
                             }.font(.footnote).padding()

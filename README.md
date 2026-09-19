@@ -9,8 +9,11 @@
 - 系统连续听书、当前文字高亮、锁屏播放控制。
 - 自填服务商地址、模型与密钥，支持 OpenAI 兼容、Responses、Claude、Gemini 四种聊天接口。
 - SillyTavern JSON、PNG 角色卡与世界书，流式伴读、对话分支、原文引用和已读范围限制。
+- 完整本地备份、恢复前校验、恢复内容预览和撤销上次恢复。
 
 书籍和对话保存在设备中，服务商密钥保存在系统钥匙串。发送伴读消息时，所选服务商会收到角色资料、近期对话和检索到的已读原文。角色设定不能保证模型绝不剧透；原文检索按本地阅读边界截断。
+
+<p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"></p>
 
 ## 开发
 
