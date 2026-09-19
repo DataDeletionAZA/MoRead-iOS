@@ -20,6 +20,13 @@ final class CoreTests: XCTestCase {
         XCTAssertThrowsError(try TextImporter.decode(Data([0, 0, 0]), encoding: .utf8))
     }
 
+    func testChapterWordsInsideProseDoNotBecomeHeadings() throws {
+        let body = String(repeating: "雨停后，她在第一页写下了自己的名字。\n", count: 12)
+        let chapters = try TextImporter.chapters("　第一章 书店\n" + body + "  第二章 来信\n一封信。\n")
+        XCTAssertEqual(chapters.map(\.title), ["第一章 书店", "第二章 来信"])
+        XCTAssertEqual(chapters.map(\.text), [body, "一封信。\n"])
+    }
+
     func testSpoilerBoundaryCannotSplitUnicodeOrLeakFutureText() {
         let chapter = Chapter(id: 0, title: "一", text: "甲😀乙秘密")
         let scope = ReadingScope(through: .init(chapter: 0, offset: 2))

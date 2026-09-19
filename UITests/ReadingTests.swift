@@ -10,6 +10,7 @@ final class ReadingTests: XCTestCase {
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
         XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
         XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        XCTAssertTrue((app.textViews["reader-text"].value as? String)?.contains("她在第一页写下今天的日期") == true)
         app.textViews["reader-text"].swipeUp()
         app.buttons["下一章"].tap()
         XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 5))

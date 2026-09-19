@@ -54,7 +54,9 @@ public enum TextImporter {
         for expression in expressions {
             let matches = lines.filter { line in
                 let candidate = "\n" + source.substring(with: NSRange(location: line.start, length: line.end - line.start))
-                return expression.firstMatch(in: candidate, range: NSRange(location: 0, length: candidate.utf16.count)) != nil
+                guard let match = expression.firstMatch(in: candidate, range: NSRange(location: 0, length: candidate.utf16.count)) else { return false }
+                // A heading starts a line; a chapter-like phrase inside prose is not a heading.
+                return (candidate as NSString).substring(to: match.range.location).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
             if matches.count > best.count { best = matches }
         }

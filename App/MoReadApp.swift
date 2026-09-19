@@ -5,11 +5,13 @@ import MoReadCore
 struct MoReadApp: App {
     @StateObject private var model = LibraryModel()
     @StateObject private var companion = CompanionModel()
+    @StateObject private var speech = SpeechPlayer()
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(model).environmentObject(companion)
+            RootView().environmentObject(model).environmentObject(companion).environmentObject(speech)
                 .tint(Color(red: 0.28, green: 0.38, blue: 0.32))
                 .onOpenURL { url in Task { await model.importFile(url) } }
+                .onChange(of: model.books.filter { !$0.removed }.map(\.id)) { _, _ in speech.validateBooks(model.books) }
         }
     }
 }

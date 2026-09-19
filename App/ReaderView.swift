@@ -6,6 +6,7 @@ struct ReaderView: View {
     let bookID: UUID
     @EnvironmentObject private var model: LibraryModel
     @EnvironmentObject private var companion: CompanionModel
+    @EnvironmentObject private var speech: SpeechPlayer
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("reader.fontSize") private var fontSize = 21.0
     @AppStorage("reader.lineSpacing") private var lineSpacing = 10.0
@@ -26,7 +27,7 @@ struct ReaderView: View {
     @State private var chatSelection: SourcePassage?
     private var book: Book? { model.books.first { $0.id == bookID } }
     private var paperColor: Color { paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
-    enum ReaderSheet: String, Identifiable { case contents, typography, search, notes; var id: String { rawValue } }
+    enum ReaderSheet: String, Identifiable { case contents, typography, search, notes, speech; var id: String { rawValue } }
 
     var body: some View {
         Group {
@@ -39,6 +40,7 @@ struct ReaderView: View {
                     } else if let chapter {
                         TextReader(text: chapter.text, fontSize: fontSize, lineSpacing: lineSpacing, paper: UIColor(paperColor), night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
+                                   speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                                    onPosition: { start, end in
                             guard var updated = self.book, self.chapter?.id == chapter.id else { return }
                             updated.record(position: .init(chapter: chapter.id, offset: start), visibleEnd: .init(chapter: chapter.id, offset: end))
@@ -57,8 +59,10 @@ struct ReaderView: View {
                 }.background(paperColor)
                     .navigationTitle(chapter?.title ?? book.title)
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbar(.hidden, for: .tabBar)
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) { Button("伴读", systemImage: "bubble.left.and.bubble.right") { openChat() } }
+                        ToolbarItem(placement: .primaryAction) { Button("听书", systemImage: "headphones") { sheet = .speech } }
                         ToolbarItemGroup(placement: .bottomBar) {
                             Button("目录", systemImage: "list.bullet") { sheet = .contents }
                             Spacer()
@@ -87,7 +91,7 @@ struct ReaderView: View {
                                     selection = nil
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openChat(passage) }
                                 }
-                                Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline") }
+                                Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline"); Text("波浪线").tag("wave") }
                             }.navigationTitle("记录这一段")
                                 .toolbar {
                                     ToolbarItem(placement: .cancellationAction) { Button("取消") { selection = nil } }
@@ -99,7 +103,14 @@ struct ReaderView: View {
         }
         .onDisappear { recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { readingStarted = Date() } else { recordTime(); model.flush() }
+            if phase == .active { refreshReadingTime() } else { recordTime(); model.flush() }
+        }
+        .onChange(of: sheet) { _, _ in refreshReadingTime() }
+        .onChange(of: selection) { _, _ in refreshReadingTime() }
+        .onChange(of: chat?.id) { _, _ in refreshReadingTime() }
+        .onChange(of: speech.location) { _, location in
+            guard let location, location.bookID == bookID, book?.format == "txt", chapter?.id != location.chapter else { return }
+            loadChapter(location.chapter, offset: location.range.location)
         }
     }
 
@@ -107,6 +118,8 @@ struct ReaderView: View {
         NavigationStack {
             Group {
                 switch kind {
+                case .speech:
+                    SpeechControls(book: book)
                 case .contents:
                     List {
                         Section("章节") {
@@ -158,7 +171,7 @@ struct ReaderView: View {
                         if let markdown = try? model.store?.notesMarkdown(for: book) { ShareLink("导出笔记", item: markdown) }
                     }
                 }
-            }.navigationTitle(kind == .contents ? "目录与书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : "批注")
+            }.navigationTitle(kind == .contents ? "目录与书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
@@ -202,6 +215,11 @@ struct ReaderView: View {
         }
         saveRecords()
     }
+    private func refreshReadingTime() {
+        if sheet == nil, selection == nil, chat == nil, scenePhase == .active {
+            if readingStarted == nil { readingStarted = Date() }
+        } else { recordTime() }
+    }
     private func search(_ value: String, book: Book) {
         searchTask?.cancel(); results = []
         guard !value.isEmpty, let root = model.store?.root else { return }
@@ -234,11 +252,17 @@ struct TextReader: UIViewRepresentable {
     let offset: Int
     let navigationID: UUID
     let annotations: [Annotation]
+    let speechRange: NSRange?
     let onPosition: (Int, Int) -> Void
     let onSelection: (NSRange) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> UITextView {
-        let view = UITextView(usingTextLayoutManager: false)
+        let storage = NSTextStorage()
+        let manager = AnnotationLayoutManager()
+        let container = NSTextContainer(size: .zero)
+        container.widthTracksTextView = true
+        manager.addTextContainer(container); storage.addLayoutManager(manager)
+        let view = UITextView(frame: .zero, textContainer: container)
         view.isEditable = false; view.isSelectable = true
         view.textContainerInset = UIEdgeInsets(top: 24, left: 22, bottom: 30, right: 22)
         view.delegate = context.coordinator
@@ -249,6 +273,7 @@ struct TextReader: UIViewRepresentable {
         let coordinator = context.coordinator
         let previous = coordinator.parent
         let navigationChanged = coordinator.navigationID != navigationID
+        let preservedOffset = coordinator.lastPosition
         let needsLayout = view.text != text || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.night != night || previous.annotations != annotations
         coordinator.parent = self
         view.backgroundColor = paper
@@ -260,15 +285,23 @@ struct TextReader: UIViewRepresentable {
                 guard range.location >= 0, range.location <= value.length, range.length <= value.length - range.location else { continue }
                 if annotation.style == "highlight" { value.addAttribute(.backgroundColor, value: UIColor.systemYellow.withAlphaComponent(0.28), range: range) }
                 else { value.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: UIColor.systemOrange], range: range) }
+                if annotation.style == "wave" { value.addAttribute(AnnotationLayoutManager.waveKey, value: true, range: range) }
             }
             view.attributedText = value
         }
-        if navigationChanged {
+        if previous.speechRange != speechRange || needsLayout {
+            view.layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: view.textStorage.length))
+            if let speechRange, speechRange.location >= 0, NSMaxRange(speechRange) <= view.textStorage.length {
+                view.layoutManager.addTemporaryAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), forCharacterRange: speechRange)
+                view.scrollRangeToVisible(speechRange)
+            }
+        }
+        if navigationChanged || needsLayout {
             coordinator.navigationID = navigationID
             DispatchQueue.main.async {
                 guard coordinator.navigationID == self.navigationID else { return }
                 view.layoutIfNeeded()
-                let safe = TextBoundary.floor(offset, in: text)
+                let safe = TextBoundary.floor(navigationChanged ? offset : preservedOffset, in: text)
                 view.scrollRangeToVisible(NSRange(location: safe, length: safe < text.utf16.count ? 1 : 0))
                 coordinator.report(view)
             }
@@ -277,6 +310,7 @@ struct TextReader: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: TextReader
         var navigationID: UUID?
+        var lastPosition = 0
         init(_ parent: TextReader) { self.parent = parent }
         func scrollViewDidScroll(_ scrollView: UIScrollView) { if let view = scrollView as? UITextView { report(view) } }
         func report(_ view: UITextView) {
@@ -286,6 +320,7 @@ struct TextReader: UIViewRepresentable {
             let range = view.layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
             let start = TextBoundary.floor(range.location, in: parent.text)
             let end = TextBoundary.floor(range.location + range.length, in: parent.text)
+            lastPosition = start
             let currentID = navigationID
             let callback = parent.onPosition
             DispatchQueue.main.async { if self.navigationID == currentID { callback(start, end) } }
@@ -295,5 +330,27 @@ struct TextReader: UIViewRepresentable {
             let annotation = UIAction(title: "批注", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.parent.onSelection(range) }
             return UIMenu(children: suggestedActions + [annotation])
         }
+    }
+}
+
+final class AnnotationLayoutManager: NSLayoutManager {
+    static let waveKey = NSAttributedString.Key("MoReadWaveUnderline")
+    override func drawUnderline(forGlyphRange glyphRange: NSRange, underlineType underlineVal: NSUnderlineStyle, baselineOffset: CGFloat, lineFragmentRect lineRect: CGRect, lineFragmentGlyphRange lineGlyphRange: NSRange, containerOrigin: CGPoint) {
+        let index = characterIndexForGlyph(at: glyphRange.location)
+        guard let storage = textStorage, index < storage.length, storage.attribute(Self.waveKey, at: index, effectiveRange: nil) as? Bool == true,
+              let container = textContainer(forGlyphAt: glyphRange.location, effectiveRange: nil) else {
+            super.drawUnderline(forGlyphRange: glyphRange, underlineType: underlineVal, baselineOffset: baselineOffset, lineFragmentRect: lineRect, lineFragmentGlyphRange: lineGlyphRange, containerOrigin: containerOrigin)
+            return
+        }
+        let bounds = boundingRect(forGlyphRange: glyphRange, in: container)
+        let start = bounds.minX + containerOrigin.x
+        let end = bounds.maxX + containerOrigin.x
+        let y = lineRect.minY + location(forGlyphAt: glyphRange.location).y + containerOrigin.y + 3
+        let path = UIBezierPath(); path.lineWidth = 1.25
+        path.move(to: CGPoint(x: start, y: y))
+        var x = start
+        while x <= end { path.addLine(to: CGPoint(x: x, y: y + sin((x - start) * .pi / 3) * 1.25)); x += 0.75 }
+        (storage.attribute(.underlineColor, at: index, effectiveRange: nil) as? UIColor ?? .systemOrange).setStroke()
+        path.stroke()
     }
 }
