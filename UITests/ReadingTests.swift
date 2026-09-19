@@ -2,6 +2,64 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testPaginatedReadingModesPreservePositionAndBookmarks() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        func mode(_ name: String) {
+            app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons[name].tap(); app.buttons["完成"].tap()
+            XCTAssertTrue(app.staticTexts["reader-page-number"].waitForExistence(timeout: 10))
+        }
+        mode("滑动翻页")
+        let number = app.staticTexts["reader-page-number"]
+        XCTAssertTrue(number.label.hasPrefix("本章 1 /"))
+        XCTAssertFalse(app.buttons["reader-previous-page"].isEnabled)
+        app.buttons["reader-next-page"].tap()
+        let second = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", "本章 2 /"), object: number)
+        XCTAssertEqual(XCTWaiter.wait(for: [second], timeout: 10), .completed)
+        let text = app.textViews["reader-text"].firstMatch.value as? String
+        XCTAssertFalse(text?.isEmpty ?? true)
+        app.buttons["书签"].tap()
+        mode("覆盖翻页"); XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
+        app.textViews["reader-text"].firstMatch.swipeLeft()
+        let third = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", "本章 3 /"), object: number)
+        XCTAssertEqual(XCTWaiter.wait(for: [third], timeout: 10), .completed)
+        mode("仿真翻页"); XCTAssertTrue(number.label.hasPrefix("本章 3 /"))
+        app.buttons["reader-previous-page"].tap()
+        let back = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", "本章 2 /"), object: number)
+        XCTAssertEqual(XCTWaiter.wait(for: [back], timeout: 10), .completed)
+        mode("无动画翻页"); XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 10), .completed)
+        XCUIDevice.shared.orientation = .portrait
+        let portrait = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width < app.frame.height }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [portrait], timeout: 10), .completed)
+        XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
+        for direction in ["Increment", "Decrement"] {
+            app.buttons["排版"].tap()
+            for _ in 0..<3 { app.buttons["reader-font-size-stepper-" + direction].tap() }
+            app.buttons["完成"].tap()
+        }
+        XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
+        XCTAssertEqual(app.textViews["reader-text"].firstMatch.value as? String, text)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertTrue(number.waitForExistence(timeout: 10)); XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
+        app.buttons["下一章"].tap()
+        XCTAssertTrue(number.label.hasPrefix("本章 1 /"))
+        app.buttons["reader-previous-page"].tap()
+        XCTAssertTrue(app.navigationBars["第一章 雨后"].waitForExistence(timeout: 10))
+        XCTAssertTrue(number.label.contains("/")); XCTAssertFalse(app.alerts["需要处理"].exists)
+        app.buttons["目录"].tap()
+        let marks = app.buttons.matching(identifier: "第一章 雨后")
+        XCTAssertEqual(marks.count, 2); marks.element(boundBy: 1).tap()
+        XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
+        XCTAssertEqual(app.textViews["reader-text"].firstMatch.value as? String, text)
+    }
     func testCachedCloudAudioPauseSeekAndChapterTimer() {
         var wave = Data()
         func word<T: FixedWidthInteger>(_ value: T) { var little = value.littleEndian; withUnsafeBytes(of: &little) { wave.append(contentsOf: $0) } }
@@ -38,19 +96,26 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(enabled.waitForExistence(timeout: 10))
         enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(enabled.value as? String, "1")
-        app.buttons["cloud-speech-service"].tap(); app.buttons["MiniMax"].tap(); app.swipeUp()
+        func scroll() {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<8 { if element.exists && element.isHittable { return }; scroll() }
+            XCTAssertTrue(element.isHittable)
+        }
+        app.buttons["cloud-speech-service"].tap(); app.buttons["MiniMax"].tap(); scroll()
         let model = app.textFields["cloud-speech-model"]
-        model.tap(); model.typeText("-custom")
+        reveal(model); model.tap(); model.typeText("-custom"); app.toolbars.buttons["完成"].tap()
         let key = app.secureTextFields["cloud-speech-key"]
-        key.tap(); key.typeText("test-voice-key-12345")
+        reveal(key); key.tap(); key.typeText("test-voice-key-12345")
         app.toolbars.buttons["完成"].tap()
-        app.swipeUp(); app.buttons["save-cloud-speech"].tap()
+        reveal(app.buttons["save-cloud-speech"]); app.buttons["save-cloud-speech"].tap()
         XCTAssertTrue(app.staticTexts["cloud-speech-saved"].waitForExistence(timeout: 10))
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.tabBars.buttons["设置"].tap(); app.buttons["云端声音与缓存"].tap()
         XCTAssertEqual(enabled.value as? String, "1")
-        XCTAssertEqual(model.value as? String, "speech-2.8-hd-custom")
-        app.swipeUp()
+        reveal(model); XCTAssertEqual(model.value as? String, "speech-2.8-hd-custom")
+        reveal(key)
         XCTAssertNotEqual(key.value as? String, "API 密钥")
         XCTAssertEqual((key.value as? String)?.count, "test-voice-key-12345".count)
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)

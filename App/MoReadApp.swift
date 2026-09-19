@@ -40,6 +40,11 @@ final class LibraryModel: ObservableObject {
             if reset, ProcessInfo.processInfo.arguments.contains("--reset-test-library"), FileManager.default.fileExists(atPath: root.path) {
                 try FileManager.default.removeItem(at: root)
             }
+            #if DEBUG
+            if reset, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
+                for key in ["reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper"] { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            #endif
             let storage = try LibraryStore(root: root)
             books = try storage.books()
             organization = try storage.organization()

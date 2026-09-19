@@ -7,7 +7,8 @@
 - TXT、EPUB 导入，章节目录、书内搜索、书签与阅读进度保存。
 - TXT 导入前预览正文和目录，可选文字编码、内置或自定义章节规则。
 - 多级分组、合集和彩色标签，组合筛选、拖动排序与批量归类。
-- 字号、行距、纸张配色，以及荧光、下划线和波浪线批注。
+- TXT 上下滚动，以及仿真、覆盖、滑动、无动画四种分页方式；支持跨章翻页和书签返回。
+- 字号、行距、纸张配色，以及荧光、下划线和波浪线批注。字号支持滑动和逐格调整，横竖屏切换后保留原文位置。
 - 系统连续听书、当前文字高亮、锁屏播放控制，声音搜索与试听，保存语速和音调。
 - OpenAI 兼容、MiniMax 和 GMI 云端听书，连续播放、按声音参数复用本机音频及缓存空间管理。
 - 按播放分钟数或自然读完章节数的睡眠定时，暂停时暂停计时，支持章节切换和章内定位。
@@ -21,7 +22,7 @@
 
 云端声音在「设置 → 云端声音与缓存」中配置。开启后，朗读片段会发送给所选语音服务商，并按其规则计费；已生成音频保存在本机，纳入完整备份。缓存达到设置上限时，先清理最久没有播放的音频。
 
-<p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"> <img src="docs/screenshots/import-preview.png" alt="TXT 导入预览" width="260"> <img src="docs/screenshots/listening.png" alt="听书与睡眠定时" width="260"></p>
+<p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/paged-reading.png" alt="TXT 分页阅读" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"> <img src="docs/screenshots/import-preview.png" alt="TXT 导入预览" width="260"> <img src="docs/screenshots/listening.png" alt="听书与睡眠定时" width="260"></p>
 
 ## 开发
 
