@@ -4,9 +4,10 @@ import MoReadCore
 @main
 struct MoReadApp: App {
     @StateObject private var model = LibraryModel()
+    @StateObject private var companion = CompanionModel()
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(model)
+            RootView().environmentObject(model).environmentObject(companion)
                 .tint(Color(red: 0.28, green: 0.38, blue: 0.32))
                 .onOpenURL { url in Task { await model.importFile(url) } }
         }

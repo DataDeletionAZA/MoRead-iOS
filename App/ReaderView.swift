@@ -5,6 +5,7 @@ import MoReadCore
 struct ReaderView: View {
     let bookID: UUID
     @EnvironmentObject private var model: LibraryModel
+    @EnvironmentObject private var companion: CompanionModel
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("reader.fontSize") private var fontSize = 21.0
     @AppStorage("reader.lineSpacing") private var lineSpacing = 10.0
@@ -21,6 +22,8 @@ struct ReaderView: View {
     @State private var results: [SourcePassage] = []
     @State private var searchTask: Task<Void, Never>?
     @State private var readingStarted: Date?
+    @State private var chat: ChatDestination?
+    @State private var chatSelection: SourcePassage?
     private var book: Book? { model.books.first { $0.id == bookID } }
     private var paperColor: Color { paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     enum ReaderSheet: String, Identifiable { case contents, typography, search, notes; var id: String { rawValue } }
@@ -55,6 +58,7 @@ struct ReaderView: View {
                     .navigationTitle(chapter?.title ?? book.title)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
+                        ToolbarItem(placement: .primaryAction) { Button("伴读", systemImage: "bubble.left.and.bubble.right") { openChat() } }
                         ToolbarItemGroup(placement: .bottomBar) {
                             Button("目录", systemImage: "list.bullet") { sheet = .contents }
                             Spacer()
@@ -73,11 +77,16 @@ struct ReaderView: View {
                         readingStarted = Date()
                     }
                     .sheet(item: $sheet) { kind in readerSheet(kind, book: book) }
+                    .sheet(item: $chat) { target in NavigationStack { CompanionChat(conversationID: target.id, selection: chatSelection) } }
                     .sheet(item: $selection) { passage in
                         NavigationStack {
                             Form {
                                 Section("原文") { Text(passage.text).textSelection(.enabled) }
                                 Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
+                                Button("和角色聊这一段", systemImage: "bubble.left.and.bubble.right") {
+                                    selection = nil
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openChat(passage) }
+                                }
                                 Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline") }
                             }.navigationTitle("记录这一段")
                                 .toolbar {
@@ -159,6 +168,15 @@ struct ReaderView: View {
             chapter = try model.store?.chapter(index, in: book)
             requestedOffset = offset; navigationID = UUID()
         }
+    }
+    private func openChat(_ passage: SourcePassage? = nil) {
+        guard var book else { return }
+        if let passage {
+            book.readThrough = max(book.readThrough, ReadingPosition(chapter: passage.chapter, offset: passage.offset + passage.text.utf16.count))
+            model.update(book, immediate: true)
+        }
+        chatSelection = passage
+        if let id = companion.newConversation(book: book) { chat = ChatDestination(id: id) }
     }
     private func saveRecords() { guard let book else { return }; model.perform { try model.store?.saveRecords(records, for: book) } }
     private func addBookmark() {

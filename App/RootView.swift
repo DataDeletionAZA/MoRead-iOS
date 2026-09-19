@@ -4,10 +4,12 @@ import MoReadCore
 
 struct RootView: View {
     @EnvironmentObject private var model: LibraryModel
+    @EnvironmentObject private var companion: CompanionModel
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         TabView {
             BookshelfView().tabItem { Label("书架", systemImage: "books.vertical") }
+            CompanionHome().tabItem { Label("伴读", systemImage: "bubble.left.and.bubble.right") }
             StatisticsView().tabItem { Label("足迹", systemImage: "chart.bar.xaxis") }
             SettingsView().tabItem { Label("设置", systemImage: "slider.horizontal.3") }
         }
@@ -15,6 +17,7 @@ struct RootView: View {
             Button("好", role: .cancel) { model.error = nil }
         } message: { Text(model.error ?? "") }
         .onChange(of: scenePhase) { _, phase in if phase != .active { model.flush() } }
+        .onChange(of: companion.error) { _, error in if let error { model.error = error; companion.error = nil } }
     }
 }
 
@@ -131,6 +134,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("伴读") { NavigationLink("AI 服务商") { AISettingsView() } }
                 Section("书籍与记录") {
                     NavigationLink("已移除的书籍") {
                         List(model.books.filter(\.removed)) { book in
