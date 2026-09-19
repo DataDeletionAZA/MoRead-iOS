@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		019EED415FC533C1F03B245F /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = 1E5D54D0D74742D43FD22580 /* ReadiumNavigator */; };
+		0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */; };
 		17C7F979065AF746BDCFAD4C /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D873B44D290EDDDCE5025C21 /* BackupView.swift */; };
 		23D5B1908720955DDBC039FC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = E13CDB21AB706B03ADB8D9DE /* LICENSE */; };
 		2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */; };
@@ -59,6 +60,7 @@
 		D873B44D290EDDDCE5025C21 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
 		E13CDB21AB706B03ADB8D9DE /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViews.swift; sourceTree = "<group>"; };
 		FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -89,6 +91,7 @@
 				1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */,
 				FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */,
 				9B830F2AED127F80997D8521 /* RootView.swift */,
+				F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */,
 				08D914D6EE1624B82890502A /* SpeechPlayer.swift */,
 				EBF244FCCA8336B34A96B8A1 /* Resources */,
 			);
@@ -268,6 +271,7 @@
 				EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */,
 				C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */,
 				43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */,
+				0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */,
 				F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

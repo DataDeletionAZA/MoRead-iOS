@@ -17,6 +17,10 @@ final class BackupTests: XCTestCase {
         let companion = try CompanionStore(root: root)
         let conversation = Conversation(title: "伴读", bookID: book.id, characterID: UUID())
         try companion.save(conversation)
+        var shelf = ShelfOrganization()
+        let group = ShelfGroup(name: "小说")
+        try shelf.saveGroup(group); shelf.bookGroups[book.id] = group.id
+        try library.saveOrganization(shelf)
         let zip = directory.appendingPathComponent("backup.moread-ios.zip")
         _ = try await BackupArchive.create(root: root, output: zip)
         _ = try library.importBook(title: "后来导入的书", chapters: [chapter])
@@ -27,6 +31,7 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(try library.books().map(\.id), [book.id])
         XCTAssertEqual(try library.records(for: book).annotations, records.annotations)
         XCTAssertEqual(try CompanionStore(root: root).conversations(), [conversation])
+        XCTAssertEqual(try library.organization(), shelf)
         XCTAssertEqual(try LibraryStore(root: previous).books().count, 2)
         try BackupArchive.undo(previous: previous, replacing: root)
         XCTAssertEqual(try library.books().count, 2)

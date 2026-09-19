@@ -19,6 +19,7 @@ struct MoReadApp: App {
 @MainActor
 final class LibraryModel: ObservableObject {
     @Published var books: [Book] = []
+    @Published var organization = ShelfOrganization()
     @Published var error: String?
     @Published var importing = false
     @Published var maintenanceTitle: String?
@@ -39,20 +40,36 @@ final class LibraryModel: ObservableObject {
             }
             let storage = try LibraryStore(root: root)
             books = try storage.books()
+            organization = try storage.organization()
+            organization.prune(keeping: Set(books.map(\.id)))
             store = storage
         } catch { self.error = error.localizedDescription }
     }
     func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
-    func update(_ book: Book, immediate: Bool = false) {
-        guard !maintenance else { return }
-        guard let index = books.firstIndex(where: { $0.id == book.id }) else { return }
-        books[index] = book
+    @discardableResult func update(_ book: Book, immediate: Bool = false) -> Bool {
+        guard !maintenance, let index = books.firstIndex(where: { $0.id == book.id }), let store else { return false }
         pendingSaves[book.id]?.cancel()
-        if immediate { perform { try store?.save(book) }; return }
+        if immediate {
+            do { try store.save(book); books[index] = book; return true }
+            catch { self.error = error.localizedDescription; return false }
+        }
+        books[index] = book
         pendingSaves[book.id] = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
             self?.perform { try self?.store?.save(book) }
         }
+        return true
+    }
+    @discardableResult func organize(_ change: (inout ShelfOrganization) throws -> Void) -> Bool {
+        guard !maintenance, let store else { return false }
+        do {
+            var value = organization
+            try change(&value)
+            value.prune(keeping: Set(books.map(\.id)))
+            try store.saveOrganization(value)
+            organization = value
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     func flush() {
         guard !maintenance else { return }
@@ -60,13 +77,14 @@ final class LibraryModel: ObservableObject {
         pendingSaves.removeAll()
         perform { for book in books { try store?.save(book) } }
     }
-    func importFile(_ url: URL) async {
-        guard !importing, !maintenance, let store else { return }
+    @discardableResult func importFile(_ url: URL) async -> Book? {
+        guard !importing, !maintenance, let store else { return nil }
         importing = true
         defer { importing = false }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
+            guard ["txt", "epub"].contains(url.pathExtension.lowercased()) else { throw MoReadError.invalid("请选择 TXT 或 EPUB 文件。") }
             let book: Book
             if url.pathExtension.lowercased() == "epub" {
                 book = try await EPUBService.shared.importBook(url: url, store: store)
@@ -77,7 +95,8 @@ final class LibraryModel: ObservableObject {
                 book = try store.importBook(title: url.deletingPathExtension().lastPathComponent, chapters: chapters, original: url)
             }
             books.insert(book, at: 0)
-        } catch { self.error = error.localizedDescription }
+            return book
+        } catch { self.error = error.localizedDescription; return nil }
     }
     func addSample() {
         guard !maintenance else { return }
@@ -94,7 +113,7 @@ final class LibraryModel: ObservableObject {
         perform {
             pendingSaves[book.id]?.cancel()
             try store?.remove(book, permanently: permanently)
-            if permanently { books.removeAll { $0.id == book.id } }
+            if permanently { books.removeAll { $0.id == book.id }; organize { $0.prune(keeping: Set(books.map(\.id))) } }
             else if let index = books.firstIndex(where: { $0.id == book.id }) { books[index].removed = true }
         }
     }

@@ -36,19 +36,24 @@ struct BookshelfView: View {
     @State private var picker = false
     @State private var query = ""
     @State private var remove: Book?
+    @State private var editing: Book?
+    @State private var showFilters = false
+    @State private var filter = ShelfFilter()
+    @AppStorage("shelf.sort") private var sort = ShelfSort.recent.rawValue
     var filtered: [Book] {
-        model.books.filter { !$0.removed && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.author.localizedCaseInsensitiveContains(query)) }
-            .sorted { a, b in a.pinned != b.pinned ? a.pinned : (a.lastOpened ?? a.importedAt) > (b.lastOpened ?? b.importedAt) }
+        model.organization.sorted(model.organization.filtered(model.books, query: query, filter: filter), by: ShelfSort(rawValue: sort) ?? .recent, collection: filter.collectionID)
     }
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                categories
                 if filtered.isEmpty {
                     ContentUnavailableView {
-                        Label(query.isEmpty ? "把故事带进来" : "没有找到这本书", systemImage: "book.closed")
+                        Label(filter.isActive ? "这个范围还没有书" : query.isEmpty ? "把故事带进来" : "没有找到这本书", systemImage: "book.closed")
                     } description: { Text("从“文件”导入 TXT 或 EPUB，阅读位置会自动保存。") }
                     actions: {
                         Button("导入书籍") { picker = true }.buttonStyle(.borderedProminent)
+                        if filter.isActive { Button("清除筛选") { filter = ShelfFilter() } }
                         if model.books.isEmpty {
                             Button("打开示例书") { model.addSample() }.accessibilityIdentifier("add-sample")
                             Button("打开 EPUB 示例") {
@@ -61,7 +66,15 @@ struct BookshelfView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 20)], spacing: 28) {
                             ForEach(filtered) { book in
                                 NavigationLink(value: book.id) { BookCover(book: book) }.buttonStyle(.plain)
+                                    .draggable("moread-book:" + book.id.uuidString)
+                                    .dropDestination(for: String.self) { values, _ in
+                                        guard let id = draggedBook(values), id != book.id else { return false }
+                                        if model.organize({ $0.move(id, before: book.id, among: model.books, collection: filter.collectionID) }) { sort = ShelfSort.manual.rawValue; return true }
+                                        return false
+                                    }
+                                    .accessibilityAction(named: "编辑资料") { editing = book }
                                     .contextMenu {
+                                        Button("编辑资料", systemImage: "pencil") { editing = book }
                                         Button(book.pinned ? "取消置顶" : "置顶", systemImage: "pin") {
                                             var copy = book; copy.pinned.toggle(); model.update(copy, immediate: true)
                                         }
@@ -69,6 +82,14 @@ struct BookshelfView: View {
                                             ForEach(["未读", "在读", "已读", "搁置"], id: \.self) { state in
                                                 Button(state) { var copy = book; copy.state = state; model.update(copy, immediate: true) }
                                             }
+                                        }
+                                        Menu("移动到分组") {
+                                            Button("未分组") { model.organize { $0.bookGroups[book.id] = nil } }
+                                            ForEach(model.organization.groups) { group in Button(model.organization.groupPath(group.id)) { model.organize { $0.bookGroups[book.id] = group.id } } }
+                                        }
+                                        Menu("放入合集") {
+                                            Button("移出合集") { model.organize { $0.setCollection(nil, for: [book.id]) } }
+                                            ForEach(model.organization.collections) { collection in Button(collection.name) { model.organize { $0.setCollection(collection.id, for: [book.id]) } } }
                                         }
                                         Button("移除", systemImage: "trash", role: .destructive) { remove = book }
                                     }
@@ -78,13 +99,31 @@ struct BookshelfView: View {
                 }
             }
             .navigationTitle("墨知")
-            .searchable(text: $query, prompt: "书名或作者")
-            .toolbar { Button("导入", systemImage: "plus") { picker = true }.disabled(model.importing) }
+            .searchable(text: $query, prompt: "书名、作者或标签")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu("书架选项", systemImage: "ellipsis.circle") {
+                        Button("筛选与排序", systemImage: "line.3.horizontal.decrease.circle") { showFilters = true }
+                        NavigationLink("整理书架", destination: ShelfManager())
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) { Button("导入", systemImage: "plus") { picker = true }.disabled(model.importing) }
+            }
             .navigationDestination(for: UUID.self) { id in ReaderView(bookID: id) }
             .overlay { if model.importing { ProgressView("正在整理书籍…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) } }
-            .fileImporter(isPresented: $picker, allowedContentTypes: [.plainText, UTType(filenameExtension: "epub") ?? .data]) { result in
+            .sheet(item: $editing) { BookMetadataEditor(bookID: $0.id) }
+            .sheet(isPresented: $showFilters) { ShelfFiltersView(filter: $filter, sort: $sort) }
+            .fileImporter(isPresented: $picker, allowedContentTypes: [.plainText, UTType(filenameExtension: "epub") ?? .data], allowsMultipleSelection: true) { result in
                 switch result {
-                case .success(let url): Task { await model.importFile(url) }
+                case .success(let urls):
+                    let group = filter.groupID, collection = filter.collectionID
+                    Task {
+                        for url in urls {
+                            if let book = await model.importFile(url) {
+                                model.organize { $0.bookGroups[book.id] = group; $0.setCollection(collection, for: [book.id]) }
+                            }
+                        }
+                    }
                 case .failure(let error): model.error = error.localizedDescription
                 }
             }
@@ -92,7 +131,42 @@ struct BookshelfView: View {
                 Button("从书架移除，保留记录") { if let book = remove { model.remove(book, permanently: false) }; remove = nil }
                 Button("彻底删除书籍与记录", role: .destructive) { if let book = remove { model.remove(book, permanently: true) }; remove = nil }
             }
+            .onChange(of: model.organization) { _, value in
+                if let id = filter.groupID, !value.groups.contains(where: { $0.id == id }) { filter.groupID = nil }
+                if let id = filter.collectionID, !value.collections.contains(where: { $0.id == id }) { filter.collectionID = nil }
+                filter.tags.formIntersection(value.tags.map(\.id))
+            }
         }
+    }
+    @ViewBuilder private var categories: some View {
+        if filter.isActive || !model.organization.groups.isEmpty || !model.organization.collections.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    Button("全部") { filter = ShelfFilter() }.buttonStyle(.bordered)
+                    ForEach(model.organization.groups) { group in
+                        Button { filter.groupID = group.id; filter.ungrouped = false; filter.collectionID = nil } label: { Label(model.organization.groupPath(group.id), systemImage: "folder") }
+                            .buttonStyle(.bordered).tint(filter.groupID == group.id ? .accentColor : .secondary)
+                            .dropDestination(for: String.self) { values, _ in
+                                guard let id = draggedBook(values) else { return false }
+                                return model.organize { $0.bookGroups[id] = group.id }
+                            }
+                    }
+                    ForEach(model.organization.collections) { collection in
+                        Button { filter.collectionID = collection.id; filter.groupID = nil; filter.ungrouped = false } label: { Label(collection.name, systemImage: "square.stack") }
+                            .buttonStyle(.bordered).tint(filter.collectionID == collection.id ? .accentColor : .secondary)
+                            .dropDestination(for: String.self) { values, _ in
+                                guard let id = draggedBook(values) else { return false }
+                                return model.organize { $0.setCollection(collection.id, for: [id]) }
+                            }
+                    }
+                    if filter.isActive { Button("筛选中", systemImage: "line.3.horizontal.decrease.circle.fill") { showFilters = true }.buttonStyle(.bordered) }
+                }.padding(.horizontal, 20).padding(.vertical, 8)
+            }
+        }
+    }
+    private func draggedBook(_ values: [String]) -> UUID? {
+        guard let first = values.first, first.hasPrefix("moread-book:"), let id = UUID(uuidString: String(first.dropFirst("moread-book:".count))), model.books.contains(where: { $0.id == id && !$0.removed }) else { return nil }
+        return id
     }
 }
 
@@ -151,6 +225,7 @@ struct SettingsView: View {
             List {
                 Section("伴读") { NavigationLink("AI 服务商") { AISettingsView() } }
                 Section("书籍与记录") {
+                    NavigationLink("整理书架") { ShelfManager() }
                     NavigationLink("备份与恢复") { BackupView() }
                     NavigationLink("已移除的书籍") {
                         List(model.books.filter(\.removed)) { book in

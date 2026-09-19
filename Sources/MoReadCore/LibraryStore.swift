@@ -42,6 +42,15 @@ public final class LibraryStore {
         encoder.outputFormatting = [.sortedKeys]
     }
     public func directory(_ id: UUID) -> URL { root.appendingPathComponent(id.uuidString, isDirectory: true) }
+    public func organization() throws -> ShelfOrganization {
+        let url = root.appendingPathComponent("organization.json")
+        let value = manager.fileExists(atPath: url.path) ? try decoder.decode(ShelfOrganization.self, from: Data(contentsOf: url)) : ShelfOrganization()
+        try value.validate(); return value
+    }
+    public func saveOrganization(_ value: ShelfOrganization) throws {
+        try value.validate()
+        try encoder.encode(value).write(to: root.appendingPathComponent("organization.json"), options: .atomic)
+    }
     public func books() throws -> [Book] {
         try manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
             .filter { UUID(uuidString: $0.lastPathComponent) != nil }

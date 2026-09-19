@@ -96,6 +96,7 @@ public enum BackupArchive {
             guard safePath(file.path), names.insert(name.lowercased().precomposedStringWithCanonicalMapping).inserted,
                   file.bytes >= 0, file.bytes <= maximumBytes - total,
                   file.sha256.count == 64 else { throw MoReadError.invalid("备份包含重复文件、非法路径或过大的内容。") }
+            if ["json", "plist"].contains((file.path as NSString).pathExtension.lowercased()), file.bytes > 128 * 1024 * 1024 { throw MoReadError.invalid("备份中的记录文件过大。") }
             total += file.bytes
         }
         guard Set(entries.map(\.path)) == Set(manifest.files.map { "data/" + $0.path }).union(["manifest.json"]) else { throw MoReadError.invalid("备份内容与清单不一致。") }
@@ -126,6 +127,7 @@ public enum BackupArchive {
         }
         let library = try LibraryStore(root: staging)
         let books = try library.books()
+        _ = try library.organization()
         for book in books {
             guard !book.chapters.isEmpty, book.chapters.enumerated().allSatisfy({ $0.offset == $0.element.id && $0.element.length >= 0 }), ["txt", "epub"].contains(book.format),
                   book.chapters.indices.contains(book.position.chapter), book.chapters.indices.contains(book.readThrough.chapter),

@@ -1,6 +1,31 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testShelfGroupAndAssignmentSurviveRelaunch() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]
+        app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15))
+        app.buttons["add-sample"].tap()
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["整理书架"].tap()
+        app.buttons["new-shelf-group"].tap()
+        app.textFields["group-name"].tap(); app.textFields["group-name"].typeText("旅行")
+        app.buttons["保存"].tap()
+        app.buttons["批量整理书籍"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["已选 1 本"].exists)
+        XCTAssertTrue(app.buttons["分组"].isHittable)
+        app.buttons["分组"].tap()
+        app.buttons["旅行"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["旅行"].waitForExistence(timeout: 10)); app.buttons["旅行"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.waitForExistence(timeout: 10))
+    }
+
     func testCreateLocalBackupFromSettings() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]
