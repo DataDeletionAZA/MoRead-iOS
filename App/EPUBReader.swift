@@ -48,7 +48,7 @@ final class EPUBService {
                 applyTitles(link.children)
             }
         }
-        applyTitles(publication.tableOfContents)
+        if case .success(let contents) = await publication.tableOfContents() { applyTitles(contents) }
         var anchors: [EPUBAnchor] = []
         var totalLength = 0
         if let iterator = publication.content()?.iterator() {
