@@ -47,9 +47,8 @@ final class EPUBService {
         if let iterator = publication.content()?.iterator() {
             while let element = try await iterator.next() {
                 try Task.checkCancellation()
-                guard let textual = element as? TextualContentElement, !textual.text.isEmpty,
+                guard let textual = element as? TextualContentElement, let text = textual.text, !text.isEmpty,
                       let index = paths.firstIndex(of: element.locator.href.string.components(separatedBy: "#")[0]) else { continue }
-                let text = textual.text
                 totalLength += text.utf8.count
                 guard totalLength <= 100 * 1024 * 1024, anchors.count < 1_000_000 else { throw MoReadError.invalid("EPUB 解压后的正文过大。") }
                 if let locator = element.locator.jsonString { anchors.append(EPUBAnchor(chapter: index, offset: chapters[index].text.utf16.count, locator: locator)) }

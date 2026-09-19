@@ -78,7 +78,7 @@ struct ReaderView: View {
                             Form {
                                 Section("原文") { Text(passage.text).textSelection(.enabled) }
                                 Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
-                                Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline"); Text("波浪线").tag("wave") }
+                                Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline") }
                             }.navigationTitle("记录这一段")
                                 .toolbar {
                                     ToolbarItem(placement: .cancellationAction) { Button("取消") { selection = nil } }
@@ -268,7 +268,9 @@ struct TextReader: UIViewRepresentable {
             let range = view.layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
             let start = TextBoundary.floor(range.location, in: parent.text)
             let end = TextBoundary.floor(range.location + range.length, in: parent.text)
-            DispatchQueue.main.async { self.parent.onPosition(start, end) }
+            let currentID = navigationID
+            let callback = parent.onPosition
+            DispatchQueue.main.async { if self.navigationID == currentID { callback(start, end) } }
         }
         func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
             guard range.length > 0 else { return nil }
