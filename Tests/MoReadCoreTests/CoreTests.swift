@@ -2,6 +2,25 @@ import XCTest
 @testable import MoReadCore
 
 final class CoreTests: XCTestCase {
+    func testManualEncodingAndChapterRulesProduceReviewableText() throws {
+        let metadata = TextImporter.metadata(fileName: "《旧标题》作者：旧作者著.txt", text: "书名：灯塔\n作者：林遥\n第一章\n正文")
+        XCTAssertEqual(metadata.title, "灯塔"); XCTAssertEqual(metadata.author, "林遥")
+        XCTAssertEqual(TextImporter.metadata(fileName: "【林遥】灯塔.txt", text: "正文").author, "林遥")
+        XCTAssertEqual(TextImporter.metadata(fileName: "灯塔 by 林遥.txt", text: "正文").title, "灯塔")
+        XCTAssertEqual(TextImporter.metadata(fileName: "《灯塔》完结.txt", text: "正文").author, "")
+        let decoded = try TextImporter.decoded(Data([0xA4, 0xA4, 0xA4, 0xE5]), encoding: TextEncoding.big5.encoding)
+        XCTAssertEqual(decoded.text, "中文"); XCTAssertEqual(decoded.encoding, TextEncoding.big5.encoding)
+        XCTAssertEqual(try TextImporter.decode(Data([0xD6, 0xD0, 0xCE, 0xC4]), encoding: TextEncoding.gb18030.encoding), "中文")
+        let chapters = try TextImporter.chapters("开场\n第一幕 灯塔\n正文😀\n第二幕 海边\n结尾", customRule: "^第[一二]幕.*$")
+        XCTAssertEqual(chapters.map(\.title), ["序章", "第一幕 灯塔", "第二幕 海边"])
+        XCTAssertEqual(chapters.map(\.text), ["开场\n", "正文😀\n", "结尾"])
+        XCTAssertEqual(try TextImporter.chapters("唯一标题\n正文", customRule: "^唯一标题$").first?.text, "正文")
+        XCTAssertThrowsError(try TextImporter.chapters("正文", customRule: "^章节$"))
+        XCTAssertThrowsError(try TextImporter.chapters("正文", customRule: "^"))
+        let started = Date()
+        XCTAssertThrowsError(try TextImporter.chapters(String(repeating: "a", count: 70) + "!", customRule: "^(a+)+$"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
     func testImportDetectsHeadingsAndPreservesText() throws {
         let text = "前言\n第一章 雨\n甲😀乙\n第二章 风\n后文\n"
         let chapters = try TextImporter.chapters(text)

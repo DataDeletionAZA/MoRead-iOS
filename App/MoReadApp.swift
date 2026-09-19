@@ -10,7 +10,7 @@ struct MoReadApp: App {
         WindowGroup {
             RootView().environmentObject(model).environmentObject(companion).environmentObject(speech)
                 .tint(Color(red: 0.28, green: 0.38, blue: 0.32))
-                .onOpenURL { url in Task { await model.importFile(url) } }
+                .onOpenURL { url in Task { await model.queueImports([url]) } }
                 .onChange(of: model.books.filter { !$0.removed }.map(\.id)) { _, _ in speech.validateBooks(model.books) }
         }
     }
@@ -22,6 +22,8 @@ final class LibraryModel: ObservableObject {
     @Published var organization = ShelfOrganization()
     @Published var error: String?
     @Published var importing = false
+    @Published var textImport: TextImportDraft?
+    var importQueue: [TextImportDraft] = []
     @Published var maintenanceTitle: String?
     @Published var maintenanceProgress = 0.0
     var cancelMaintenance: (() -> Void)?
@@ -90,7 +92,7 @@ final class LibraryModel: ObservableObject {
                 book = try await EPUBService.shared.importBook(url: url, store: store)
             } else {
                 let chapters = try await Task.detached(priority: .userInitiated) {
-                    try TextImporter.chapters(TextImporter.decode(Data(contentsOf: url)))
+                    try TextImporter.chapters(TextImporter.decode(TextImporter.read(url)))
                 }.value
                 book = try store.importBook(title: url.deletingPathExtension().lastPathComponent, chapters: chapters, original: url)
             }
@@ -98,13 +100,15 @@ final class LibraryModel: ObservableObject {
             return book
         } catch { self.error = error.localizedDescription; return nil }
     }
+    static var sampleText: String {
+        "第一章 雨后\n" + String(repeating: "雨停后，林遥推开旧书店的门。柜台上摆着一本空白的笔记，纸页带着淡淡的木香。她在第一页写下今天的日期，窗外的街道逐渐明亮。\n\n", count: 12)
+            + "第二章 来信\n第二天，一封没有署名的信放在门口。林遥拆开信封，看见一张手绘地图。地图的尽头，是她小时候去过的灯塔。\n"
+    }
     func addSample() {
         guard !maintenance else { return }
         perform {
             guard let store else { return }
-            let text = "第一章 雨后\n" + String(repeating: "雨停后，林遥推开旧书店的门。柜台上摆着一本空白的笔记，纸页带着淡淡的木香。她在第一页写下今天的日期，窗外的街道逐渐明亮。\n\n", count: 12)
-                + "第二章 来信\n第二天，一封没有署名的信放在门口。林遥拆开信封，看见一张手绘地图。地图的尽头，是她小时候去过的灯塔。\n"
-            let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: TextImporter.chapters(text))
+            let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: TextImporter.chapters(Self.sampleText))
             books.insert(book, at: 0)
         }
     }

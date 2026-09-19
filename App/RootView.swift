@@ -14,6 +14,18 @@ struct RootView: View {
             SettingsView().tabItem { Label("设置", systemImage: "slider.horizontal.3") }
         }
         .disabled(model.maintenance)
+        .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
+        .task {
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--preview-test-text") {
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("雨后的书店.txt")
+                do {
+                    let large = ProcessInfo.processInfo.arguments.contains("--large-preview-test-text")
+                    let text = large ? String(repeating: LibraryModel.sampleText, count: 8000) : LibraryModel.sampleText
+                    try Data(text.utf8).write(to: url, options: .atomic)
+                    await model.queueImports(large ? [url] : [url, url]); try? FileManager.default.removeItem(at: url)
+                } catch { model.error = error.localizedDescription }
+            }
+        }
         .overlay {
             if let title = model.maintenanceTitle {
                 VStack(spacing: 18) {
@@ -117,13 +129,7 @@ struct BookshelfView: View {
                 switch result {
                 case .success(let urls):
                     let group = filter.groupID, collection = filter.collectionID
-                    Task {
-                        for url in urls {
-                            if let book = await model.importFile(url) {
-                                model.organize { $0.bookGroups[book.id] = group; $0.setCollection(collection, for: [book.id]) }
-                            }
-                        }
-                    }
+                    Task { await model.queueImports(urls, group: group, collection: collection) }
                 case .failure(let error): model.error = error.localizedDescription
                 }
             }

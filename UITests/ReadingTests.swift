@@ -2,6 +2,46 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testLargeImportPreviewCanBeCancelled() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--preview-test-text", "--large-preview-test-text"]
+        app.launch()
+        let cancel = app.buttons["取消导入"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 20))
+        XCTAssertTrue(cancel.isHittable); cancel.tap()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+    func testPreviewCustomRuleAndBatchImport() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--preview-test-text"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["import-preview"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["import-preview"].label.contains("她在第一页写下今天的日期"))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "章节规则")).firstMatch.tap()
+        app.buttons["自定义规则"].tap()
+        let rule = app.textFields["import-rule"]
+        XCTAssertTrue(rule.waitForExistence(timeout: 10)); rule.tap(); rule.typeText("[")
+        app.buttons["更新预览"].tap()
+        XCTAssertTrue(app.staticTexts["import-error"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["confirm-text-import"].isEnabled)
+        rule.tap()
+        rule.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        rule.typeText(XCUIKeyboardKey.delete.rawValue)
+        rule.typeText("^第[一二]章.*$")
+        XCTAssertEqual(rule.value as? String, "^第[一二]章.*$")
+        app.buttons["更新预览"].tap()
+        XCTAssertTrue(app.staticTexts["import-preview"].waitForExistence(timeout: 10))
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["confirm-text-import"].tap()
+        XCTAssertTrue(app.buttons["取消导入"].waitForExistence(timeout: 10)); app.buttons["取消导入"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        XCTAssertTrue((app.textViews["reader-text"].value as? String)?.contains("她在第一页写下今天的日期") == true)
+        app.buttons["下一章"].tap()
+        XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 5))
+    }
     func testClearBodyKeepsBookmarkAfterRelaunch() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]
