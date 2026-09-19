@@ -86,7 +86,7 @@ public enum CompanionContextBuilder {
             return words.count < 12
         }
         func append(_ passage: SourcePassage, book: Book) {
-            guard passage.text.utf16.count <= budget, !passages.contains(where: { $0.id == passage.id }) else { return }
+            guard passages.count < 24, passage.text.utf16.count <= budget, !passages.contains(where: { $0.id == passage.id }) else { return }
             passages.append(passage); budget -= passage.text.utf16.count
             limits[book.id] = book.readThrough; revisions[book.id] = book.chapters.map(\.revision)
         }

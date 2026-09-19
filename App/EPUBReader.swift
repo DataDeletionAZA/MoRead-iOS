@@ -42,6 +42,13 @@ final class EPUBService {
         guard !links.isEmpty, links.count <= 50_000 else { throw MoReadError.invalid("EPUB 的阅读顺序无效。") }
         var chapters = links.enumerated().map { MoReadCore.Chapter(id: $0.offset, title: $0.element.title ?? "第 \($0.offset + 1) 章", text: "") }
         let paths = links.map { $0.url().string.components(separatedBy: "#")[0] }
+        func applyTitles(_ contents: [Link]) {
+            for link in contents {
+                if let title = link.title, let index = paths.firstIndex(of: link.url().string.components(separatedBy: "#")[0]) { chapters[index].title = title }
+                applyTitles(link.children)
+            }
+        }
+        applyTitles(publication.tableOfContents)
         var anchors: [EPUBAnchor] = []
         var totalLength = 0
         if let iterator = publication.content()?.iterator() {
@@ -64,15 +71,22 @@ final class EPUBService {
 struct EPUBReader: UIViewControllerRepresentable {
     let book: Book
     let fontSize: Double
-    let night: Bool
+    let lineSpacing: Double
+    let paper: String
+    let annotations: [Annotation]
+    let speechLocation: SpeechLocation?
     let onLocation: (Data) -> Void
     let onSelection: (SourcePassage) -> Void
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(book: book, model: model, fontSize: fontSize, night: night, onLocation: onLocation, onSelection: onSelection)
+        EPUBHostController(book: book, model: model, fontSize: fontSize, lineSpacing: lineSpacing, paper: paper, annotations: annotations, onLocation: onLocation, onSelection: onSelection)
     }
-    func updateUIViewController(_ controller: EPUBHostController, context: Context) { controller.setPreferences(fontSize: fontSize, night: night) }
+    func updateUIViewController(_ controller: EPUBHostController, context: Context) {
+        controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, paper: paper)
+        controller.setAnnotations(annotations)
+        controller.setSpeechLocation(speechLocation)
+    }
     static func dismantleUIViewController(_ controller: EPUBHostController, coordinator: ()) { controller.close() }
 }
 
@@ -87,10 +101,14 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var openTask: Task<Void, Never>?
     private var locationTask: Task<Void, Never>?
     private var fontSize: Double
-    private var night: Bool
+    private var lineSpacing: Double
+    private var paper: String
+    private var annotations: [Annotation]
+    private var speechLocation: SpeechLocation?
+    private var speechAnchor: String?
 
-    init(book: Book, model: LibraryModel, fontSize: Double, night: Bool, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
-        bookID = book.id; self.model = model; self.fontSize = fontSize; self.night = night
+    init(book: Book, model: LibraryModel, fontSize: Double, lineSpacing: Double, paper: String, annotations: [Annotation], onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
+        bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.paper = paper; self.annotations = annotations
         self.onLocation = onLocation; self.onSelection = onSelection
         super.init(nibName: nil, bundle: nil)
     }
@@ -110,21 +128,65 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 try Task.checkCancellation()
                 anchors = try JSONDecoder().decode([EPUBAnchor].self, from: Data(contentsOf: directory.appendingPathComponent("epub-map.json")))
                 let locator = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) }
+                var templates = HTMLDecorationTemplate.defaultTemplates()
+                templates["wave"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-wave'/>", stylesheet: """
+                .moread-wave { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%23d67b16' stroke-width='1.3'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom; }
+                """)
                 let config = EPUBNavigatorViewController.Configuration(preferences: preferences,
-                    editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate))])
+                    editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate))], decorationTemplates: templates)
                 let reader = try EPUBNavigatorViewController(publication: publication, initialLocation: locator, config: config)
                 navigator = reader; reader.delegate = self
                 addChild(reader); reader.view.frame = view.bounds
                 reader.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                 view.addSubview(reader.view); reader.didMove(toParent: self)
+                renderAnnotations()
                 spinner.removeFromSuperview()
             } catch is CancellationError {} catch { model.error = error.localizedDescription; spinner.stopAnimating() }
         }
     }
-    private var preferences: EPUBPreferences { EPUBPreferences(fontSize: fontSize / 16, scroll: false, theme: night ? .dark : .sepia) }
-    func setPreferences(fontSize: Double, night: Bool) {
-        guard fontSize != self.fontSize || night != self.night else { return }
-        self.fontSize = fontSize; self.night = night; navigator?.submitPreferences(preferences)
+    private var preferences: EPUBPreferences { EPUBPreferences(fontSize: fontSize / 16, lineHeight: 1 + lineSpacing / fontSize, scroll: false, theme: paper == "night" ? .dark : paper == "white" ? .light : .sepia) }
+    func setPreferences(fontSize: Double, lineSpacing: Double, paper: String) {
+        guard fontSize != self.fontSize || lineSpacing != self.lineSpacing || paper != self.paper else { return }
+        self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.paper = paper; navigator?.submitPreferences(preferences)
+    }
+    func setAnnotations(_ value: [Annotation]) {
+        guard value != annotations else { return }
+        annotations = value; renderAnnotations()
+    }
+    private func renderAnnotations() {
+        let decorations = annotations.compactMap { annotation -> Decoration? in
+            guard let locator = locator(for: annotation.passage) else { return nil }
+            let style: Decoration.Style = annotation.style == "wave" ? .init(id: "wave") : annotation.style == "underline" ? .underline(tint: .systemOrange) : .highlight(tint: .systemYellow)
+            return Decoration(id: annotation.id.uuidString, locator: locator, style: style)
+        }
+        navigator?.apply(decorations: decorations, in: "annotations")
+    }
+    private func locator(for passage: SourcePassage) -> Locator? {
+        guard let book = model.books.first(where: { $0.id == bookID }), passage.bookID == bookID,
+              let chapter = try? model.store?.chapter(passage.chapter, in: book), passage.isValid(in: chapter, scope: .wholeBook),
+              let reader = navigator, reader.publication.readingOrder.indices.contains(passage.chapter) else { return nil }
+        if let data = passage.epubLocator, let exact = try? Locator(json: JSONSerialization.jsonObject(with: data)) { return exact }
+        let end = passage.offset + passage.text.utf16.count
+        let start = TextBoundary.floor(max(0, passage.offset - 80), in: chapter.text)
+        let after = TextBoundary.floor(min(chapter.text.utf16.count, end + 80), in: chapter.text)
+        let source = chapter.text as NSString
+        return Locator(href: reader.publication.readingOrder[passage.chapter].url(), mediaType: .xhtml,
+                       text: .init(after: source.substring(with: NSRange(location: end, length: after - end)), before: source.substring(with: NSRange(location: start, length: passage.offset - start)), highlight: passage.text))
+    }
+    func setSpeechLocation(_ value: SpeechLocation?) {
+        let value = value?.bookID == bookID ? value : nil
+        guard value != speechLocation else { return }
+        speechLocation = value
+        guard let value, let book = model.books.first(where: { $0.id == bookID }), let chapter = try? model.store?.chapter(value.chapter, in: book),
+              value.range.location >= 0, NSMaxRange(value.range) <= chapter.text.utf16.count else {
+            speechAnchor = nil; navigator?.apply(decorations: [], in: "speech"); return
+        }
+        let passage = SourcePassage(bookID: bookID, chapter: chapter, offset: value.range.location, text: (chapter.text as NSString).substring(with: value.range))
+        if let locator = locator(for: passage) { navigator?.apply(decorations: [Decoration(id: "spoken", locator: locator, style: .highlight(tint: .systemTeal))], in: "speech") }
+        if let anchor = anchors.last(where: { $0.chapter == value.chapter && $0.offset <= value.range.location }), anchor.locator != speechAnchor {
+            speechAnchor = anchor.locator
+            Task { if let locator = try? Locator(jsonString: anchor.locator) { _ = await navigator?.go(to: locator) } }
+        }
     }
     func close() {
         openTask?.cancel(); locationTask?.cancel()
@@ -160,7 +222,8 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
               let chapter = try? model.store?.chapter(position.chapter, in: book) else {
             model.error = "暂时无法准确定位这段原文，请选择更完整的一段再试。"; return
         }
-        let passage = SourcePassage(bookID: bookID, chapter: chapter, offset: position.offset, text: text)
+        var passage = SourcePassage(bookID: bookID, chapter: chapter, offset: position.offset, text: text)
+        passage.epubLocator = try? JSONSerialization.data(withJSONObject: selected.locator.json)
         onSelection(passage); navigator?.clearSelection()
     }
     @objc private func jump(_ notification: Notification) {

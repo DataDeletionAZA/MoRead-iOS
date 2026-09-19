@@ -34,7 +34,7 @@ struct ReaderView: View {
             if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(book: book, fontSize: fontSize, night: paper == "night", onLocation: { data in
+                        EPUBReader(book: book, fontSize: fontSize, lineSpacing: lineSpacing, paper: paper, annotations: records.annotations, speechLocation: speech.location, onLocation: { data in
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
                         }, onSelection: { passage in selection = passage; note = "" })
                     } else if let chapter {
@@ -155,7 +155,7 @@ struct ReaderView: View {
                     List(results) { passage in
                         Button {
                             if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
-                            else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset)) }
+                            else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset, locator: passage.epubLocator)) }
                             sheet = nil
                         } label: {
                             VStack(alignment: .leading, spacing: 8) { Text(book.chapters[passage.chapter].title).font(.caption).foregroundStyle(.secondary); Text(passage.text).lineLimit(4) }.foregroundStyle(.primary)
@@ -288,11 +288,14 @@ struct TextReader: UIViewRepresentable {
                 if annotation.style == "wave" { value.addAttribute(AnnotationLayoutManager.waveKey, value: true, range: range) }
             }
             view.attributedText = value
+            coordinator.baseText = NSAttributedString(attributedString: value)
         }
         if previous.speechRange != speechRange || needsLayout {
-            view.layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: view.textStorage.length))
+            if !needsLayout, let old = previous.speechRange, old.location >= 0, NSMaxRange(old) <= coordinator.baseText.length {
+                coordinator.baseText.enumerateAttributes(in: old) { attributes, range, _ in view.textStorage.setAttributes(attributes, range: range) }
+            }
             if let speechRange, speechRange.location >= 0, NSMaxRange(speechRange) <= view.textStorage.length {
-                view.layoutManager.addTemporaryAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), forCharacterRange: speechRange)
+                view.textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: speechRange)
                 view.scrollRangeToVisible(speechRange)
             }
         }
@@ -311,6 +314,7 @@ struct TextReader: UIViewRepresentable {
         var parent: TextReader
         var navigationID: UUID?
         var lastPosition = 0
+        var baseText = NSAttributedString(string: "")
         init(_ parent: TextReader) { self.parent = parent }
         func scrollViewDidScroll(_ scrollView: UIScrollView) { if let view = scrollView as? UITextView { report(view) } }
         func report(_ view: UITextView) {

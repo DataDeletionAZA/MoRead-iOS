@@ -23,6 +23,7 @@ public struct SourcePassage: Codable, Identifiable, Hashable, Sendable {
     public var offset: Int
     public var text: String
     public var revision: String
+    public var epubLocator: Data?
     public init(bookID: UUID, chapter: Chapter, offset: Int, text: String) {
         self.bookID = bookID; self.chapter = chapter.id; self.offset = offset
         self.text = text; revision = chapter.revision
