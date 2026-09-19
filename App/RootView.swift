@@ -229,7 +229,10 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("伴读") { NavigationLink("AI 服务商") { AISettingsView() } }
+                Section("伴读") {
+                    NavigationLink("AI 服务商") { AISettingsView() }
+                    NavigationLink("向量记忆") { VectorMemoryView() }
+                }
                 Section("书籍与记录") {
                     NavigationLink("整理书架") { ShelfManager() }
                     NavigationLink("备份与恢复") { BackupView() }

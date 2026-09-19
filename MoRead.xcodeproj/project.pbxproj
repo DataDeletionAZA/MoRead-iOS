@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		019EED415FC533C1F03B245F /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = 1E5D54D0D74742D43FD22580 /* ReadiumNavigator */; };
 		0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */; };
+		174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C880FD0E398C652F62F267 /* VectorMemoryView.swift */; };
 		17C7F979065AF746BDCFAD4C /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D873B44D290EDDDCE5025C21 /* BackupView.swift */; };
 		23D5B1908720955DDBC039FC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = E13CDB21AB706B03ADB8D9DE /* LICENSE */; };
 		2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */; };
@@ -52,6 +53,7 @@
 		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7563B576C24E7177CF543069 /* CompanionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViews.swift; sourceTree = "<group>"; };
 		7C172A1663776C99A42F638F /* zipfoundation-MIT.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "zipfoundation-MIT.txt"; sourceTree = "<group>"; };
+		84C880FD0E398C652F62F267 /* VectorMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorMemoryView.swift; sourceTree = "<group>"; };
 		87E493AC9E9897EB9D669FEF /* TextImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextImportView.swift; sourceTree = "<group>"; };
 		9710D70B97A3A946E9FAED25 /* EPUBReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReader.swift; sourceTree = "<group>"; };
 		9B830F2AED127F80997D8521 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -99,6 +101,7 @@
 				08D914D6EE1624B82890502A /* SpeechPlayer.swift */,
 				B9F48B66B02BAA67D887F3A7 /* StorageView.swift */,
 				87E493AC9E9897EB9D669FEF /* TextImportView.swift */,
+				84C880FD0E398C652F62F267 /* VectorMemoryView.swift */,
 				EBF244FCCA8336B34A96B8A1 /* Resources */,
 			);
 			path = App;
@@ -281,6 +284,7 @@
 				F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */,
 				DA76CE3F28D08E3FE95FEB25 /* StorageView.swift in Sources */,
 				84BD5593D16EB897BC2E0A3A /* TextImportView.swift in Sources */,
+				174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

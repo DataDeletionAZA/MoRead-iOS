@@ -9,6 +9,8 @@ final class CompanionModel: ObservableObject {
     @Published var conversations: [Conversation] = []
     @Published var activeConversation: UUID?
     @Published var error: String?
+    @Published var memoryStatus: String?
+    var busy: Bool { activeConversation != nil || memoryStatus != nil }
     private var store: CompanionStore?
     private var task: Task<Void, Never>?
     private var lastSave = Date.distantPast
@@ -53,6 +55,44 @@ final class CompanionModel: ObservableObject {
     }
     func stop() { task?.cancel() }
     func stopAndWait() async { if let task { task.cancel(); await task.value } }
+    private func embeddingConnection() throws -> (AIProvider, String, String) {
+        guard var provider = settings.providers.first(where: { $0.id == settings.embeddingProvider }),
+              let model = settings.embeddingModel else { throw MoReadError.invalid("请先在向量记忆中选择服务商并填写向量模型。") }
+        provider.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = try KeychainStore.read(provider.id)
+        _ = try EmbeddingClient.request(provider: provider, key: key, texts: ["配置检查"])
+        return (provider, key, try EmbeddingClient.fingerprint(provider))
+    }
+    func buildMemory(_ book: Book, library: LibraryModel) {
+        guard task == nil, !library.maintenance, (settings.vectorBooks ?? []).contains(book.id),
+              book.readThrough > ReadingPosition(), let root = library.store?.root else { return }
+        do {
+            let (provider, key, fingerprint) = try embeddingConnection()
+            library.flush(); memoryStatus = "正在准备《\(book.title)》…"
+            task = Task {
+                defer { self.task = nil; self.memoryStatus = nil }
+                do {
+                    try await BookMemory.index(book: book, root: root, fingerprint: fingerprint, embed: { texts in
+                        try await EmbeddingClient.embed(provider: provider, key: key, texts: texts)
+                    }) { done, total in await self.memoryProgress(book.title, done: done, total: total) }
+                } catch is CancellationError {} catch {
+                    if !Task.isCancelled { self.error = error.localizedDescription }
+                }
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+    func clearMemory(_ book: Book, library: LibraryModel) {
+        guard task == nil, !library.maintenance, let folder = library.store?.directory(book.id) else { return }
+        perform {
+            for name in ["vectors.sqlite-journal", "vectors.sqlite"] {
+                let url = folder.appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            }
+        }
+    }
+    private func memoryProgress(_ title: String, done: Int, total: Int) {
+        memoryStatus = "《\(title)》已整理 \(done) / \(total) 章"
+    }
     func send(_ text: String, in id: UUID, library: LibraryModel, selection: SourcePassage? = nil) {
         guard !library.maintenance else { return }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,16 +113,30 @@ final class CompanionModel: ObservableObject {
             guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
             try store.save(conversation)
             conversations[index] = conversation
+            library.flush()
+            let memoryBooks = Set(settings.vectorBooks ?? [])
             let snapshot = conversation
             let books = library.books
             let userName = settings.userName
             activeConversation = id
             task = Task {
-                defer { self.task = nil; self.activeConversation = nil; self.saveConversation(id) }
+                defer { self.task = nil; self.activeConversation = nil; self.memoryStatus = nil; self.saveConversation(id) }
                 do {
-                    let context = try await Task.detached(priority: .userInitiated) {
-                        try CompanionContextBuilder.build(query: text, books: books, currentBook: snapshot.bookID, store: LibraryStore(root: root), selection: selection)
-                    }.value
+                    let targets = books.filter { memoryBooks.contains($0.id) && (snapshot.bookID == nil || $0.id == snapshot.bookID) && !$0.removed && $0.hasBody && $0.readThrough > ReadingPosition() }
+                    var semantic: [SourcePassage] = []
+                    if !targets.isEmpty {
+                        let (embedding, embeddingKey, fingerprint) = try self.embeddingConnection()
+                        self.memoryStatus = "正在检索已读原文…"
+                        semantic = try await BookMemory.retrieve(query: text, books: targets, root: root, fingerprint: fingerprint, embed: { texts in
+                            try await EmbeddingClient.embed(provider: embedding, key: embeddingKey, texts: texts)
+                        }) { title, done, total in await self.memoryProgress(title, done: done, total: total) }
+                        self.memoryStatus = nil
+                    }
+                    let evidence = semantic
+                    let contextTask = Task.detached(priority: .userInitiated) {
+                        try CompanionContextBuilder.build(query: text, books: books, currentBook: snapshot.bookID, store: LibraryStore(root: root), selection: selection, semantic: evidence)
+                    }
+                    let context = try await withTaskCancellationHandler { try await contextTask.value } onCancel: { contextTask.cancel() }
                     try Task.checkCancellation()
                     try snapshot.validateSources(books: library.books)
                     for (bookID, boundary) in context.limits {
@@ -105,7 +159,7 @@ final class CompanionModel: ObservableObject {
                 } catch is CancellationError { self.finish(id, messageID: responseID, status: "interrupted") }
                 catch {
                     self.finish(id, messageID: responseID, status: "interrupted")
-                    self.error = error is MoReadError ? error.localizedDescription : "连接中断或无法连接服务商。已保存收到的内容，请检查网络后重试。"
+                    if !Task.isCancelled { self.error = error is MoReadError ? error.localizedDescription : "连接中断或无法连接服务商。已保存收到的内容，请检查网络后重试。" }
                 }
             }
         } catch { self.error = error.localizedDescription }

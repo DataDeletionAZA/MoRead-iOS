@@ -62,6 +62,11 @@ public final class LibraryStore {
             }
             .sorted { ($0.lastOpened ?? $0.importedAt) > ($1.lastOpened ?? $1.importedAt) }
     }
+    public func book(_ id: UUID) throws -> Book {
+        let book = try decoder.decode(Book.self, from: Data(contentsOf: directory(id).appendingPathComponent("book.json")))
+        guard book.id == id else { throw MoReadError.invalid("书籍标识与存储目录不一致。") }
+        return book
+    }
     public func importBook(title: String, author: String = "", chapters: [Chapter], original: URL? = nil, format: String = "txt", readingMap: Data? = nil) throws -> Book {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !chapters.isEmpty,
               chapters.enumerated().allSatisfy({ $0.offset == $0.element.id }), ["txt", "epub"].contains(format) else {
@@ -115,7 +120,7 @@ public final class LibraryStore {
         let staging = root.appendingPathComponent(".clear-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? manager.removeItem(at: staging) }
-        let contentNames = Set(book.chapters.map { "chapter-\($0.id).json" } + ["original.txt", "original.epub", "epub-map.json"])
+        let contentNames = Set(book.chapters.map { "chapter-\($0.id).json" } + ["original.txt", "original.epub", "epub-map.json", "vectors.sqlite", "vectors.sqlite-journal"])
         for url in try manager.contentsOfDirectory(at: original, includingPropertiesForKeys: nil) where !contentNames.contains(url.lastPathComponent) {
             try manager.copyItem(at: url, to: staging.appendingPathComponent(url.lastPathComponent))
         }

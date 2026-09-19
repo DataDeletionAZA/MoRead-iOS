@@ -8,12 +8,12 @@ public struct SpeechSegment: Equatable, Sendable {
 }
 
 public enum SpeechText {
-    public static func next(in text: String, from offset: Int) -> SpeechSegment? {
+    public static func next(in text: String, from offset: Int, maximumLength: Int = 1000) -> SpeechSegment? {
         let source = text as NSString
         var start = TextBoundary.floor(offset, in: text)
         while start < source.length, let scalar = UnicodeScalar(source.character(at: start)), CharacterSet.whitespacesAndNewlines.contains(scalar) { start += 1 }
         guard start < source.length else { return nil }
-        let end = TextBoundary.floor(min(start + 1000, source.length), in: text)
+        let end = TextBoundary.floor(min(start + min(4096, max(2, maximumLength)), source.length), in: text)
         let part = source.substring(with: NSRange(location: start, length: end - start))
         let tokenizer = NLTokenizer(unit: .sentence); tokenizer.string = part
         var sentence = part

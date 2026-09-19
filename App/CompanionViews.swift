@@ -197,7 +197,7 @@ struct CompanionChat: View {
                     ForEach(conversation?.messages ?? []) { message in
                         VStack(alignment: .leading, spacing: 10) {
                             Text(message.role == "user" ? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            if message.content.isEmpty && message.status == "receiving" { ProgressView("正在阅读与思考…") }
+                            if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
                             else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                             if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
                             if !message.sources.isEmpty {
@@ -211,8 +211,8 @@ struct CompanionChat: View {
                             .id(message.id)
                             .contextMenu {
                                 Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content }
-                                Button("编辑", systemImage: "pencil") { editing = message; editText = message.content }.disabled(companion.activeConversation != nil)
-                                Button("从此处分支", systemImage: "arrow.triangle.branch") { if let id = companion.fork(conversationID, through: message.id) { conversationID = id } }.disabled(companion.activeConversation != nil)
+                                Button("编辑", systemImage: "pencil") { editing = message; editText = message.content }.disabled(companion.busy)
+                                Button("从此处分支", systemImage: "arrow.triangle.branch") { if let id = companion.fork(conversationID, through: message.id) { conversationID = id } }.disabled(companion.busy)
                             }
                     }
                 }.padding(.horizontal, 14).padding(.bottom, 20).scrollTargetLayout()
@@ -225,12 +225,12 @@ struct CompanionChat: View {
                     let text = draft; companion.send(text, in: conversationID, library: library, selection: selection)
                     if companion.activeConversation == conversationID { draft = ""; scrollPosition = conversation?.messages.last?.id }
                 } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 32)) }
-                .accessibilityLabel("发送").disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || companion.activeConversation != nil)
+                .accessibilityLabel("发送").disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || companion.busy)
             }.padding()
         }.navigationTitle(conversation?.title ?? "伴读").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) { Button("重新生成", systemImage: "arrow.clockwise") { companion.retry(conversationID, library: library) }.disabled(companion.activeConversation != nil || conversation?.messages.isEmpty != false) }
+                ToolbarItem(placement: .primaryAction) { Button("重新生成", systemImage: "arrow.clockwise") { companion.retry(conversationID, library: library) }.disabled(companion.busy || conversation?.messages.isEmpty != false) }
             }
             .sheet(item: $editing) { message in
                 NavigationStack { TextEditor(text: $editText).padding().navigationTitle("编辑消息").toolbar {

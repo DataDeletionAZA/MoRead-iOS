@@ -2,6 +2,30 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testVectorMemoryOptInAndModelSurviveRelaunch() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.tabBars.buttons["设置"].tap(); app.buttons["向量记忆"].tap()
+        let model = app.textFields["embedding-model"]
+        XCTAssertTrue(model.waitForExistence(timeout: 10)); model.tap(); model.typeText("embedding-test\n")
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        let enabled = app.switches["enable-book-memory"]
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10)); XCTAssertEqual(enabled.value as? String, "0")
+        XCTAssertTrue(enabled.isHittable)
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let toggled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: enabled)
+        XCTAssertEqual(XCTWaiter.wait(for: [toggled], timeout: 5), .completed)
+        XCTAssertFalse(app.buttons["build-book-memory"].isEnabled)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["向量记忆"].tap()
+        XCTAssertEqual(app.textFields["embedding-model"].value as? String, "embedding-test")
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertEqual(app.switches["enable-book-memory"].value as? String, "1")
+        XCTAssertEqual(app.staticTexts["book-memory-state"].label, "尚未整理原文")
+        XCTAssertFalse(app.buttons["build-book-memory"].isEnabled)
+    }
     func testLargeImportPreviewCanBeCancelled() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--preview-test-text", "--large-preview-test-text"]

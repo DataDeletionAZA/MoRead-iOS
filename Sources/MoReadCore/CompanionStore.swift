@@ -6,6 +6,9 @@ public struct CompanionSettings: Codable {
     public var selectedProvider: UUID?
     public var selectedCharacter: UUID?
     public var userName = "读者"
+    public var embeddingProvider: UUID?
+    public var embeddingModel: String?
+    public var vectorBooks: [UUID]?
     public init() {}
 }
 
@@ -72,8 +75,8 @@ public struct CompanionContext: Sendable {
 }
 
 public enum CompanionContextBuilder {
-    public static func build(query: String, books: [Book], currentBook: UUID?, store: LibraryStore, selection: SourcePassage? = nil) throws -> CompanionContext {
-        let targets = books.filter { !$0.removed && (currentBook == nil || $0.id == currentBook) }
+    public static func build(query: String, books: [Book], currentBook: UUID?, store: LibraryStore, selection: SourcePassage? = nil, semantic: [SourcePassage] = []) throws -> CompanionContext {
+        let targets = books.filter { !$0.removed && $0.hasBody && (currentBook == nil || $0.id == currentBook) }
         var passages: [SourcePassage] = []
         var limits: [UUID: ReadingPosition] = [:]
         var revisions: [UUID: [String]] = [:]
@@ -90,11 +93,17 @@ public enum CompanionContextBuilder {
             passages.append(passage); budget -= passage.text.utf16.count
             limits[book.id] = book.readThrough; revisions[book.id] = book.chapters.map(\.revision)
         }
+        if let selection, let book = targets.first(where: { $0.id == selection.bookID }), book.chapters.indices.contains(selection.chapter),
+           selection.isValid(in: try store.chapter(selection.chapter, in: book), scope: ReadingScope(through: book.readThrough)) { append(selection, book: book) }
+        for passage in semantic {
+            try Task.checkCancellation()
+            guard let book = targets.first(where: { $0.id == passage.bookID }), book.chapters.indices.contains(passage.chapter),
+                  passage.isValid(in: try store.chapter(passage.chapter, in: book), scope: ReadingScope(through: book.readThrough)) else { continue }
+            append(passage, book: book)
+        }
         for book in targets {
             try Task.checkCancellation()
             let scope = ReadingScope(through: book.readThrough)
-            if let selection, selection.bookID == book.id,
-               selection.isValid(in: try store.chapter(selection.chapter, in: book), scope: scope) { append(selection, book: book) }
             if currentBook == book.id, book.chapters.indices.contains(book.position.chapter) {
                 let chapter = try store.chapter(book.position.chapter, in: book)
                 let readable = scope.readableText(chapter)
