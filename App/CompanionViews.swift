@@ -1,5 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PhotosUI
+import ImageIO
 import MoReadCore
 
 struct ChatDestination: Identifiable { let id: UUID }
@@ -70,7 +72,7 @@ struct CharacterList: View {
                 .fileImporter(isPresented: $picker, allowedContentTypes: [.json, .png]) { result in
                     companion.perform {
                         let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
-                        companion.saveCard(try CharacterCardImporter.parse(Data(contentsOf: url)))
+                        companion.saveCard(try CharacterCardImporter.parse(CharacterCardImporter.read(url)))
                     }
                 }
         }
@@ -79,29 +81,38 @@ struct CharacterList: View {
 
 struct CharacterEditor: View {
     @State var card: CharacterCard
+    @State private var avatarSelection: PhotosPickerItem?
+    @State private var imageError: String?
     @EnvironmentObject private var companion: CompanionModel
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
             Form {
-                TextField("名字", text: $card.name)
+                Section {
+                    if let data = card.avatar, let image = UIImage(data: data) {
+                        Image(uiImage: image).resizable().scaledToFill().frame(width: 88, height: 88).clipShape(Circle()).accessibilityLabel("角色头像")
+                    }
+                    PhotosPicker("更换头像", selection: $avatarSelection, matching: .images)
+                    if card.avatar != nil { Button("移除头像", role: .destructive) { avatarSelection = nil; card.avatar = nil } }
+                    TextField("名字", text: $card.name)
+                    NavigationLink("世界书（\(card.worldBook.count) 条）") { WorldBookEditor(entries: $card.worldBook) }.accessibilityIdentifier("edit-world-book")
+                }
                 Section("人物设定") { TextEditor(text: $card.description).frame(minHeight: 130) }
                 Section("性格") { TextEditor(text: $card.personality).frame(minHeight: 80) }
                 Section("场景") { TextEditor(text: $card.scenario).frame(minHeight: 80) }
                 Section("开场白") { TextEditor(text: $card.greeting).frame(minHeight: 80) }
                 Section("说话示例") { TextEditor(text: $card.exampleDialogue).frame(minHeight: 100) }
-                Section("世界书") {
-                    ForEach($card.worldBook) { $entry in
-                        DisclosureGroup(entry.title) {
-                            Toggle("启用", isOn: $entry.enabled)
-                            Toggle("始终使用", isOn: $entry.constant)
-                            TextField("名称", text: $entry.title)
-                            TextEditor(text: $entry.content).frame(minHeight: 120)
-                            Text("触发词：" + entry.keys.joined(separator: "、")).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
+
             }.navigationTitle("角色资料")
+                .task(id: avatarSelection) {
+                    guard let avatarSelection else { return }
+                    do {
+                        guard let data = try await avatarSelection.loadTransferable(type: Data.self),
+                              let encoded = try ReaderImage.thumbnail(data, maximum: 512).pngData() else { throw MoReadError.invalid("无法读取头像。") }
+                        try Task.checkCancellation(); card.avatar = encoded
+                    } catch is CancellationError {} catch { imageError = error.localizedDescription }
+                }
+                .alert("头像未更换", isPresented: Binding(get: { imageError != nil }, set: { if !$0 { imageError = nil } })) { Button("好", role: .cancel) {} } message: { Text(imageError ?? "") }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") { companion.saveCard(card); if companion.error == nil { dismiss() } }.disabled(card.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }

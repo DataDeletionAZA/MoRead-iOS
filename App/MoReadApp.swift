@@ -1,16 +1,21 @@
 import SwiftUI
 import MoReadCore
+import CoreText
 
 @main
 struct MoReadApp: App {
+    @AppStorage("app.tintRGB") private var tint = 0x476153
     @StateObject private var model = LibraryModel()
     @StateObject private var companion = CompanionModel()
     @StateObject private var speech = SpeechPlayer()
     var body: some Scene {
         WindowGroup {
             RootView().environmentObject(model).environmentObject(companion).environmentObject(speech)
-                .tint(Color(red: 0.28, green: 0.38, blue: 0.32))
-                .onOpenURL { url in Task { await model.queueImports([url]) } }
+                .tint(Color(rgb: tint))
+                .onOpenURL { url in Task {
+                    if FontLibrary.extensions.contains(url.pathExtension.lowercased()) { model.showFonts = true; await model.importFonts([url]) }
+                    else { await model.queueImports([url]) }
+                } }
                 .onChange(of: model.books.filter { !$0.removed }.map(\.id)) { _, _ in speech.validateBooks(model.books) }
         }
     }
@@ -22,6 +27,12 @@ final class LibraryModel: ObservableObject {
     @Published var organization = ShelfOrganization()
     @Published var error: String?
     @Published var importing = false
+    @Published var readingBackground: UIImage?
+    var readingBackgroundData: Data?
+    var readingBackgroundID = UUID()
+    @Published var fonts: [ImportedFont] = []
+    @Published var showFonts = false
+    private var fontDescriptors: [UUID: CTFontDescriptor] = [:]
     @Published var textImport: TextImportDraft?
     var importQueue: [TextImportDraft] = []
     @Published var maintenanceTitle: String?
@@ -42,7 +53,7 @@ final class LibraryModel: ObservableObject {
             }
             #if DEBUG
             if reset, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
-                for key in ["reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography"] { UserDefaults.standard.removeObject(forKey: key) }
+                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             #endif
             let storage = try LibraryStore(root: root)
@@ -50,7 +61,37 @@ final class LibraryModel: ObservableObject {
             organization = try storage.organization()
             organization.prune(keeping: Set(books.map(\.id)))
             store = storage
+            try reloadFonts()
+            try loadReadingBackground()
         } catch { self.error = error.localizedDescription }
+    }
+    var fontLibrary: FontLibrary? { store.map { FontLibrary(root: $0.root) } }
+    func reloadFonts() throws {
+        guard let fontLibrary else { return }
+        let loaded = try fontLibrary.fonts()
+        var descriptors: [UUID: CTFontDescriptor] = [:]
+        for font in loaded { descriptors[font.id] = try FontLibrary.descriptors(at: fontLibrary.file(font)).first }
+        fontDescriptors = descriptors; fonts = loaded
+    }
+    func customFont(_ id: UUID?, size: CGFloat) -> UIFont? {
+        guard let id, let descriptor = fontDescriptors[id] else { return nil }
+        return CTFontCreateWithFontDescriptor(descriptor, size, nil) as UIFont
+    }
+    func importFonts(_ urls: [URL]) async {
+        guard !importing, !maintenance, let fontLibrary else { return }
+        importing = true
+        defer { importing = false }
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let font = try await Task.detached(priority: .userInitiated) { try fontLibrary.add(url) }.value
+                try reloadFonts()
+                var typography = ReaderTypography(data: UserDefaults.standard.data(forKey: "reader.typography") ?? Data())
+                typography.customFontID = font.id
+                UserDefaults.standard.set(typography.encoded(), forKey: "reader.typography")
+            } catch { self.error = error.localizedDescription; break }
+        }
     }
     func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
     @discardableResult func update(_ book: Book, immediate: Bool = false) -> Bool {

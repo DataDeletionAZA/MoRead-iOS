@@ -14,11 +14,13 @@ struct ReaderView: View {
     @AppStorage("reader.pageMode") private var pageMode = "scroll"
     @AppStorage("reader.typography") private var typographyData = Data()
     private var typography: ReaderTypography { ReaderTypography(data: typographyData) }
+    @State private var immersive = false
     @State private var chapter: Chapter?
     @State private var requestedOffset = 0
     @State private var navigationID = UUID()
     @State private var sheet: ReaderSheet?
     @State private var selection: SourcePassage?
+    @State private var bookmarkMessage: String?
     @State private var note = ""
     @State private var style = "highlight"
     @State private var records = BookRecords()
@@ -29,17 +31,18 @@ struct ReaderView: View {
     @State private var chat: ChatDestination?
     @State private var chatSelection: SourcePassage?
     private var book: Book? { model.books.first { $0.id == bookID && !$0.removed } }
-    private var paperColor: Color { paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
-    enum ReaderSheet: String, Identifiable { case contents, typography, search, notes, speech; var id: String { rawValue } }
+    private var paperColor: Color { (paper == "custom" || paper == "image") ? Color(rgb: typography.backgroundRGB ?? 0xF7F2E3) : paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
+    private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
+    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech; var id: String { rawValue } }
 
     var body: some View {
         Group {
             if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(book: book, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onLocation: { data in
+                        EPUBReader(book: book, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage in selection = passage; note = "" })
+                        }, onSelection: { passage in selection = passage; note = "" }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
@@ -50,18 +53,21 @@ struct ReaderView: View {
                                             onChapter: { direction in loadChapter(chapter.id + direction, offset: direction < 0 ? Int.max : 0) })
                                 .id(pageMode)
                         }
-                        HStack {
+                        if !immersive { HStack {
                             Button("上一章", systemImage: "chevron.left") { loadChapter(chapter.id - 1) }.disabled(chapter.id == 0)
                             Spacer()
                             Text("\(chapter.id + 1) / \(book.chapters.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                             Spacer()
                             Button("下一章", systemImage: "chevron.right") { loadChapter(chapter.id + 1) }.disabled(chapter.id + 1 >= book.chapters.count)
-                        }.font(.subheadline).padding(.horizontal, 20).padding(.vertical, 10)
+                        }.font(.subheadline).padding(.horizontal, 20).padding(.vertical, 10) }
                     } else { ProgressView("正在打开…").frame(maxWidth: .infinity, maxHeight: .infinity) }
                 }.background(paperColor)
                     .navigationTitle(chapter?.title ?? book.title)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar(.hidden, for: .tabBar)
+                    .toolbar(immersive ? .hidden : .visible, for: .navigationBar, .bottomBar)
+                    .statusBarHidden(immersive)
+                    .persistentSystemOverlays(immersive ? .hidden : .automatic)
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) { Button("伴读", systemImage: "bubble.left.and.bubble.right") { openChat() } }
                         ToolbarItem(placement: .primaryAction) { Button("听书", systemImage: "headphones") { sheet = .speech } }
@@ -70,7 +76,7 @@ struct ReaderView: View {
                             Spacer()
                             Button("搜索", systemImage: "magnifyingglass") { sheet = .search }
                             Spacer()
-                            Button("书签", systemImage: "bookmark") { addBookmark() }
+                            Button("书签", systemImage: "bookmark") { bookmarkMessage = nil; sheet = .bookmarks }
                             Spacer()
                             Button("批注", systemImage: "pencil.and.list.clipboard") { sheet = .notes }
                             Spacer()
@@ -133,24 +139,29 @@ struct ReaderView: View {
                                 }.foregroundStyle(item.id == chapter?.id ? Color.accentColor : .primary)
                             }
                         }
-                        Section("书签") {
-                            ForEach(records.bookmarks) { bookmark in
-                                Button(bookmark.label) {
-                                    if book.format == "txt" { loadChapter(bookmark.position.chapter, offset: bookmark.position.offset) }
-                                    else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: bookmark.position.chapter, offset: bookmark.position.offset, locator: bookmark.locator)) }
-                                    sheet = nil
-                                }
-                            }.onDelete { offsets in records.bookmarks.remove(atOffsets: offsets); saveRecords() }
-                        }
+                        bookmarkList(book: book)
+                    }
+                case .bookmarks:
+                    List {
+                        Button("添加当前位置书签", systemImage: "bookmark.badge.plus") { addBookmark() }
+                        if let bookmarkMessage { Text(bookmarkMessage).foregroundStyle(.secondary) }
+                        bookmarkList(book: book)
                     }
                 case .typography:
                     Form {
+                        Button("进入沉浸阅读", systemImage: "arrow.up.left.and.arrow.down.right") { sheet = nil; immersive = true }.accessibilityIdentifier("enter-immersive")
+                        Text("轻点正文中间可显示或收起阅读工具。").font(.caption).foregroundStyle(.secondary)
                         if book.format == "txt" {
                             Picker("翻页方式", selection: Binding(get: { pageMode }, set: { value in
                                 requestedOffset = self.book?.position.offset ?? 0; navigationID = UUID(); pageMode = value
                             })) {
                                 ForEach(ReaderPageMode.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                             }.accessibilityIdentifier("reader-page-mode")
+                        }
+                        if book.format == "epub" {
+                            Picker("翻页方式", selection: Binding(get: { typography.epubScroll ?? false }, set: { enabled in
+                                var value = typography; value.epubScroll = enabled; typographyData = value.encoded()
+                            })) { Text("左右翻页").tag(false); Text("上下滚动").tag(true) }.accessibilityIdentifier("epub-page-mode")
                         }
                         NavigationLink("字体与段落") { ReaderTypographyView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }), isEPUB: book.format == "epub") }
                         Section("文字") {
@@ -159,7 +170,16 @@ struct ReaderView: View {
                             LabeledContent("行距", value: "\(Int(lineSpacing))")
                             Slider(value: $lineSpacing, in: 0...24, step: 1).accessibilityLabel("行距")
                         }
-                        Picker("纸张", selection: $paper) { Text("米白").tag("paper"); Text("纯白").tag("white"); Text("夜读").tag("night") }
+                        Picker("纸张", selection: $paper) { Text("米白").tag("paper"); Text("纯白").tag("white"); Text("夜读").tag("night"); Text("自定义颜色").tag("custom"); Text("背景图片").tag("image") }
+                        NavigationLink("阅读背景图片") { ReaderBackgroundView() }
+                        if paper == "custom" || paper == "image" {
+                            ColorPicker("阅读背景", selection: Binding(get: { paperColor }, set: { color in
+                                var value = typography; value.backgroundRGB = color.savedRGB; typographyData = value.encoded()
+                            }), supportsOpacity: false)
+                            ColorPicker("正文颜色", selection: Binding(get: { Color(ink) }, set: { color in
+                                var value = typography; value.textRGB = color.savedRGB; typographyData = value.encoded()
+                            }), supportsOpacity: false)
+                        }
                     }
                 case .search:
                     List(results) { passage in
@@ -181,14 +201,15 @@ struct ReaderView: View {
                         if let markdown = try? model.store?.notesMarkdown(for: book) { ShareLink("导出笔记", item: markdown) }
                     }
                 }
-            }.navigationTitle(kind == .contents ? "目录与书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
+            }.navigationTitle(kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
     private func textContent(book: Book, chapter: Chapter) -> TextReader {
-        TextReader(text: chapter.text, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), night: paper == "night", offset: requestedOffset, navigationID: navigationID,
+        TextReader(text: chapter.text, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
+                   immersive: immersive, onToggleControls: { immersive.toggle() },
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
                    onPosition: { start, end in
             guard sheet == nil, selection == nil, chat == nil, scenePhase == .active,
@@ -216,10 +237,32 @@ struct ReaderView: View {
         if let id = companion.newConversation(book: book) { chat = ChatDestination(id: id) }
     }
     private func saveRecords() { guard let book else { return }; model.perform { try model.store?.saveRecords(records, for: book) } }
+    @ViewBuilder private func bookmarkList(book: Book) -> some View {
+        Section("已保存的书签") {
+            if records.bookmarks.isEmpty { Text("还没有书签，保存当前位置后可以随时跳回来。").foregroundStyle(.secondary) }
+            ForEach(records.bookmarks) { bookmark in
+                Button {
+                    if book.format == "txt" { loadChapter(bookmark.position.chapter, offset: bookmark.position.offset) }
+                    else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: bookmark.position.chapter, offset: bookmark.position.offset, locator: bookmark.locator)) }
+                    sheet = nil
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(bookmark.label)
+                        if let date = bookmark.createdAt { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                    }
+                }.accessibilityIdentifier("bookmark-" + bookmark.id.uuidString)
+            }.onDelete { offsets in records.bookmarks.remove(atOffsets: offsets); saveRecords() }
+        }
+    }
     private func addBookmark() {
-        guard let book else { return }
-        guard !records.bookmarks.contains(where: { $0.position == book.position && $0.locator == book.epubLocator }) else { return }
-        records.bookmarks.append(Bookmark(position: book.position, label: chapter?.title ?? book.title, locator: book.epubLocator)); saveRecords()
+        guard let book, let store = model.store else { return }
+        guard !records.bookmarks.contains(where: { $0.position == book.position && $0.locator == book.epubLocator }) else { bookmarkMessage = "这里已经有书签了"; return }
+        model.perform {
+            var updated = records
+            updated.bookmarks.append(Bookmark(position: book.position, label: chapter?.title ?? book.title, locator: book.epubLocator))
+            try store.saveRecords(updated, for: book)
+            records = updated; bookmarkMessage = "书签已保存"
+        }
     }
     private func saveAnnotation(_ passage: SourcePassage) {
         records.annotations.append(Annotation(passage: passage, note: note, style: style)); saveRecords(); selection = nil
@@ -269,15 +312,20 @@ struct ReaderView: View {
 
 struct TextReader: UIViewRepresentable {
     let text: String
+    let font: UIFont
     let fontSize: Double
     let lineSpacing: Double
     let typography: ReaderTypography
     let paper: UIColor
+    let backgroundImage: UIImage?
+    let ink: UIColor
     let night: Bool
     let offset: Int
     let navigationID: UUID
     let annotations: [Annotation]
     let speechRange: NSRange?
+    let immersive: Bool
+    let onToggleControls: () -> Void
     let isReading: Bool
     let onPosition: (Int, Int) -> Void
     let onSelection: (NSRange) -> Void
@@ -289,10 +337,13 @@ struct TextReader: UIViewRepresentable {
         let container = NSTextContainer(size: .zero)
         container.widthTracksTextView = true
         manager.addTextContainer(container); storage.addLayoutManager(manager)
-        let view = UITextView(frame: .zero, textContainer: container)
+        let view = ReaderTextView(frame: .zero, textContainer: container)
         view.isEditable = false; view.isSelectable = true
         view.textContainerInset = typography.insets
         view.delegate = context.coordinator
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.toggleControls(_:)))
+        tap.cancelsTouchesInView = false; tap.delegate = context.coordinator; view.addGestureRecognizer(tap)
+        view.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "显示或收起阅读工具", actionHandler: { _ in context.coordinator.parent.onToggleControls(); return true })]
         view.accessibilityIdentifier = "reader-text"
         return view
     }
@@ -301,9 +352,9 @@ struct TextReader: UIViewRepresentable {
         let previous = coordinator.parent
         let navigationChanged = coordinator.navigationID != navigationID
         let preservedOffset = coordinator.lastPosition
-        let needsLayout = view.text != text || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.night != night || previous.annotations != annotations
+        let needsLayout = view.text != text || previous.font != font || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.ink != ink || previous.annotations != annotations
         coordinator.parent = self
-        view.backgroundColor = paper
+        (view as? ReaderTextView)?.setPaper(paper, image: backgroundImage, opacity: typography.backgroundOpacity ?? 0.25)
         if needsLayout {
             view.textContainerInset = typography.insets
             let value = attributedText
@@ -336,7 +387,7 @@ struct TextReader: UIViewRepresentable {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.paragraphSpacing = typography.paragraphSpacing
         paragraph.firstLineHeadIndent = typography.firstLineIndent * fontSize
         paragraph.alignment = typography.justified ? .justified : .natural
-        let value = NSMutableAttributedString(string: text, attributes: [.font: typography.uiFont(size: fontSize), .kern: typography.letterSpacing * fontSize, .foregroundColor: night ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1), .paragraphStyle: paragraph])
+        let value = NSMutableAttributedString(string: text, attributes: [.font: font, .kern: typography.letterSpacing * fontSize, .foregroundColor: ink, .paragraphStyle: paragraph])
         for annotation in annotations {
             let range = NSRange(location: annotation.passage.offset, length: annotation.passage.text.utf16.count)
             guard range.location >= 0, range.location <= value.length, range.length <= value.length - range.location else { continue }
@@ -346,7 +397,7 @@ struct TextReader: UIViewRepresentable {
         }
         return value
     }
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var parent: TextReader
         var active = true
         var navigationID: UUID?
@@ -366,6 +417,12 @@ struct TextReader: UIViewRepresentable {
             let callback = parent.onPosition
             DispatchQueue.main.async { if self.active, self.parent.isReading, self.navigationID == currentID { callback(start, end) } }
         }
+        @objc func toggleControls(_ tap: UITapGestureRecognizer) {
+            guard let text = tap.view as? UITextView, text.selectedRange.length == 0, parent.isReading,
+                  abs(tap.location(in: text).x - text.bounds.midX) < text.bounds.width / 6 else { return }
+            parent.onToggleControls()
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
         func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
             guard range.length > 0 else { return nil }
             let annotation = UIAction(title: "批注", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.parent.onSelection(range) }

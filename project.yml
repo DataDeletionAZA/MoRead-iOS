@@ -65,6 +65,9 @@ targets:
           - CFBundleTypeName: Books
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.plain-text, org.idpf.epub-container]
+          - CFBundleTypeName: Fonts
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.truetype-font, public.opentype-font, public.truetype-collection-font]
   MoReadUITests:
     type: bundle.ui-testing
     platform: iOS

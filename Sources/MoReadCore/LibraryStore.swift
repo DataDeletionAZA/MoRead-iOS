@@ -14,6 +14,7 @@ public struct Annotation: Codable, Identifiable, Hashable, Sendable {
 
 public struct Bookmark: Codable, Identifiable, Hashable, Sendable {
     public var id = UUID()
+    public var createdAt: Date? = Date()
     public var position: ReadingPosition
     public var label: String
     public var locator: Data?

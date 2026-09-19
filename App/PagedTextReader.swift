@@ -32,6 +32,8 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     private var pager: UIPageViewController?
     private var visible: TextPageController?
     private let pageHost = UIView()
+    private var footer: UIStackView!
+    private var footerHeight: NSLayoutConstraint!
     private let previous = UIButton(type: .system)
     private let nextButton = UIButton(type: .system)
     private let counter = UILabel()
@@ -61,13 +63,17 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         previous.addTarget(self, action: #selector(back), for: .touchUpInside); nextButton.addTarget(self, action: #selector(forward), for: .touchUpInside)
         counter.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular); counter.textAlignment = .center; counter.textColor = .secondaryLabel
         counter.accessibilityIdentifier = "reader-page-number"
-        let footer = UIStackView(arrangedSubviews: [previous, counter, nextButton]); footer.axis = .horizontal; footer.distribution = .equalSpacing
+        footer = UIStackView(arrangedSubviews: [previous, counter, nextButton]); footer.axis = .horizontal; footer.distribution = .equalSpacing
         footer.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(footer)
+        footerHeight = footer.heightAnchor.constraint(equalToConstant: parentReader.content.immersive ? 0 : 44)
+        footer.isHidden = parentReader.content.immersive
+        let tap = UITapGestureRecognizer(target: self, action: #selector(toggleControls(_:)))
+        tap.cancelsTouchesInView = false; tap.delegate = self; pageHost.addGestureRecognizer(tap)
         NSLayoutConstraint.activate([
             pageHost.leadingAnchor.constraint(equalTo: view.leadingAnchor), pageHost.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             pageHost.topAnchor.constraint(equalTo: view.topAnchor), pageHost.bottomAnchor.constraint(equalTo: footer.topAnchor),
             footer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 22), footer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -22),
-            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor), footer.heightAnchor.constraint(equalToConstant: 44)
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor), footerHeight
         ])
         spinner.translatesAutoresizingMaskIntoConstraints = false; pageHost.addSubview(spinner)
         spinner.accessibilityLabel = "正在分页"
@@ -90,21 +96,26 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         if laidOutSize != pageHost.bounds.size || needsPagination { repaginate() }
     }
     func update(_ parent: PagedTextReader) {
+        loadViewIfNeeded()
         let old = parentReader.content
         parentReader = parent
         let content = parent.content
+        footer.isHidden = content.immersive; footerHeight.constant = content.immersive ? 0 : 44
         let navigation = old.navigationID != content.navigationID
-        let geometry = old.text != content.text || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
+        let geometry = old.text != content.text || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
         if navigation { anchor = content.offset; if transitioning { needsPagination = true } }
         view.backgroundColor = content.paper
         if geometry { needsPagination = true; view.setNeedsLayout() }
         else if needsPagination || pagination != nil { if navigation { needsPagination = true; view.setNeedsLayout() } }
         else {
-            if old.annotations != content.annotations || old.night != content.night {
+            if old.annotations != content.annotations || old.ink != content.ink {
                 baseText = content.attributedText; textStorage.setAttributedString(baseText)
             }
-            for page in pages.values { page.view.backgroundColor = content.paper; page.textView?.backgroundColor = content.paper }
-            if old.speechRange != content.speechRange || old.annotations != content.annotations || old.night != content.night {
+            for page in pages.values {
+                if let text = page.textView as? ReaderTextView { text.setPaper(content.paper, image: content.backgroundImage, opacity: content.typography.backgroundOpacity ?? 0.25) }
+                else { page.view.backgroundColor = content.paper }
+            }
+            if old.speechRange != content.speechRange || old.annotations != content.annotations || old.ink != content.ink {
                 if let previous = old.speechRange, NSMaxRange(previous) <= baseText.length {
                     baseText.enumerateAttributes(in: previous) { attributes, range, _ in textStorage.setAttributes(attributes, range: range) }
                 }
@@ -225,7 +236,12 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         if completed, let page = pageViewController.viewControllers?.first as? TextPageController { commit(page.index) }
         if needsPagination { view.setNeedsLayout() }
     }
+    @objc private func toggleControls(_ tap: UITapGestureRecognizer) { parentReader.content.onToggleControls() }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { gestureRecognizer is UITapGestureRecognizer }
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer is UITapGestureRecognizer {
+            return !transitioning && parentReader.content.isReading && ((visible ?? pager?.viewControllers?.first as? TextPageController)?.textView?.selectedRange.length ?? 0) == 0 && abs(gestureRecognizer.location(in: pageHost).x - pageHost.bounds.midX) < pageHost.bounds.width / 6
+        }
         guard !transitioning, pagination == nil, visible?.textView?.selectedRange.length ?? 0 == 0, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
         let velocity = pan.velocity(in: pageHost)
         return abs(velocity.x) > abs(velocity.y)
@@ -284,16 +300,16 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
     init(index: Int, container: NSTextContainer, range: NSRange, content: TextReader) {
         self.index = index; self.range = range
         super.init(nibName: nil, bundle: nil)
-        let text = UITextView(frame: .zero, textContainer: container)
+        let text = ReaderTextView(frame: .zero, textContainer: container)
         text.isEditable = false; text.isSelectable = true; text.isScrollEnabled = false
         container.widthTracksTextView = false; container.heightTracksTextView = false
         text.contentInsetAdjustmentBehavior = .never
         text.textContainerInset = content.typography.insets
-        text.delegate = self; text.backgroundColor = content.paper
+        text.delegate = self; text.setPaper(content.paper, image: content.backgroundImage, opacity: content.typography.backgroundOpacity ?? 0.25)
         text.accessibilityIdentifier = "reader-text"
         text.accessibilityLabel = "第 \(index + 1) 页正文"
         text.accessibilityValue = (content.text as NSString).substring(with: range)
-        text.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "上一页", actionHandler: { [weak self] _ in self?.turnPage?(-1); return true }), UIAccessibilityCustomAction(name: "下一页", actionHandler: { [weak self] _ in self?.turnPage?(1); return true })]
+        text.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "显示或收起阅读工具", actionHandler: { _ in content.onToggleControls(); return true }), UIAccessibilityCustomAction(name: "上一页", actionHandler: { [weak self] _ in self?.turnPage?(-1); return true }), UIAccessibilityCustomAction(name: "下一页", actionHandler: { [weak self] _ in self?.turnPage?(1); return true })]
         textView = text; view = text
     }
     init(index: Int, message: String, paper: UIColor) {

@@ -14,8 +14,23 @@ struct RootView: View {
             SettingsView().tabItem { Label("设置", systemImage: "slider.horizontal.3") }
         }
         .disabled(model.maintenance)
+        .sheet(isPresented: $model.showFonts) {
+            NavigationStack { FontLibraryView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { model.showFonts = false } } } }
+        }
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-font"),
+               model.fonts.isEmpty, let url = Bundle.main.url(forResource: "NotoSerifSC", withExtension: "ttf") { await model.importFonts([url]) }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-background"), model.readingBackground == nil {
+                let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 400)).image { context in
+                    UIColor.systemTeal.setFill(); context.fill(CGRect(x: 0, y: 0, width: 150, height: 400))
+                    UIColor.systemOrange.setFill(); context.fill(CGRect(x: 150, y: 0, width: 150, height: 400))
+                }
+                model.perform { try model.saveReadingBackground(image.jpegData(compressionQuality: 0.85)) }
+                UserDefaults.standard.set("image", forKey: "reader.paper")
+            }
+            #endif
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--preview-test-text") {
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent("雨后的书店.txt")
                 do {
@@ -232,6 +247,10 @@ struct SettingsView: View {
                 Section("伴读") {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
+                }
+                Section("阅读与外观") {
+                    NavigationLink("字体库") { FontLibraryView() }
+                    NavigationLink("主题与外观") { ThemeView() }
                 }
                 Section("听书") { NavigationLink("云端声音与缓存") { CloudSpeechView() } }
                 Section("书籍与记录") {

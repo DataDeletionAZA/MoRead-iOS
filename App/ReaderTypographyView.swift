@@ -4,6 +4,7 @@ import MoReadCore
 
 struct ReaderTypographyView: View {
     @Binding var value: ReaderTypography
+    @EnvironmentObject private var model: LibraryModel
     let isEPUB: Bool
     var body: some View {
         Form {
@@ -16,8 +17,16 @@ struct ReaderTypographyView: View {
                 Picker("字体", selection: $value.font) {
                     ForEach(ReaderTypography.Font.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.accessibilityIdentifier("reader-font-family")
-                Stepper("字重 \(value.weight)", value: $value.weight, in: 100...900, step: 100).accessibilityIdentifier("reader-font-weight")
-                Text("雨后的书店 · MoRead 123").font(Font(value.uiFont(size: 21))).accessibilityIdentifier("reader-font-preview")
+                    .onChange(of: value.font) { _, _ in value.customFontID = nil }
+                if !model.fonts.isEmpty {
+                    Picker("已导入字体", selection: $value.customFontID) {
+                        Text("使用上面的字体").tag(UUID?.none)
+                        ForEach(model.fonts) { Text($0.name).tag(Optional($0.id)) }
+                    }.accessibilityIdentifier("reader-custom-font")
+                }
+                NavigationLink("管理与导入字体") { FontLibraryView() }
+                Stepper("字重 \(value.weight)", value: $value.weight, in: 100...900, step: 100).accessibilityIdentifier("reader-font-weight").disabled(value.customFontID != nil)
+                Text("雨后的书店 · MoRead 123").font(Font(model.customFont(value.customFontID, size: 21) ?? value.uiFont(size: 21))).accessibilityIdentifier("reader-font-preview")
             }.disabled(isEPUB && value.publisherStyles)
             Section("段落") {
                 Stepper("字距 \(value.letterSpacing.formatted(.number.precision(.fractionLength(2)))) 字", value: $value.letterSpacing, in: 0...0.5, step: 0.05).accessibilityIdentifier("reader-letter-spacing")

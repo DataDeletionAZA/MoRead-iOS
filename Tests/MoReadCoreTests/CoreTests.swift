@@ -4,11 +4,18 @@ import XCTest
 final class CoreTests: XCTestCase {
     func testReaderTypographyRoundTripAndBounds() throws {
         var value = ReaderTypography()
+        value.customFontID = UUID(); value.epubScroll = true
+        value.backgroundOpacity = 10; value.backgroundRGB = -1; value.textRGB = 0x123456
         value.font = .serif; value.weight = 650; value.firstLineIndent = 2
         value.marginLeft = 800; value.marginTop = -.infinity
         value.letterSpacing = .nan; value.paragraphSpacing = -12
         value.publisherStyles = false; value.justified = true
         let restored = ReaderTypography(data: value.encoded())
+        XCTAssertEqual(restored.customFontID, value.customFontID)
+        XCTAssertEqual(restored.backgroundOpacity, 1); XCTAssertNil(restored.backgroundRGB); XCTAssertEqual(restored.textRGB, 0x123456); XCTAssertEqual(restored.epubScroll, true)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: value.encoded()) as? [String: Any])
+        legacy.removeValue(forKey: "customFontID")
+        XCTAssertEqual(ReaderTypography(data: try JSONSerialization.data(withJSONObject: legacy)).font, .serif)
         XCTAssertEqual(restored.font, .serif); XCTAssertEqual(restored.weight, 600)
         XCTAssertEqual(restored.firstLineIndent, 2); XCTAssertEqual(restored.marginLeft, 64)
         XCTAssertEqual(restored.marginTop, 24); XCTAssertEqual(restored.letterSpacing, 0)

@@ -8,6 +8,11 @@ public struct ReaderTypography: Codable, Equatable, Sendable {
         }
     }
     public var font: Font = .system
+    public var customFontID: UUID?
+    public var epubScroll: Bool?
+    public var backgroundOpacity: Double?
+    public var backgroundRGB: Int?
+    public var textRGB: Int?
     public var weight = 400
     public var letterSpacing = 0.0
     public var paragraphSpacing = 12.0
@@ -27,6 +32,9 @@ public struct ReaderTypography: Codable, Equatable, Sendable {
         func bound(_ number: Double, _ range: ClosedRange<Double>, _ fallback: Double) -> Double {
             number.isFinite ? min(range.upperBound, max(range.lowerBound, number)) : fallback
         }
+        if let backgroundRGB, !(0...0xFFFFFF).contains(backgroundRGB) { value.backgroundRGB = nil }
+        if let textRGB, !(0...0xFFFFFF).contains(textRGB) { value.textRGB = nil }
+        if let backgroundOpacity { value.backgroundOpacity = bound(backgroundOpacity, 0.05...1, 0.25) }
         value.weight = min(900, max(100, weight / 100 * 100))
         value.letterSpacing = bound(letterSpacing, 0...0.5, 0)
         value.paragraphSpacing = bound(paragraphSpacing, 0...60, 12)

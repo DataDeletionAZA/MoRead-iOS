@@ -8,6 +8,10 @@ public struct LoreEntry: Codable, Identifiable, Hashable, Sendable {
     public var constant: Bool
     public var keys: [String]
     public var order: Double
+    public var sourceJSON: Data?
+    public init(title: String = "新设定", content: String = "", enabled: Bool = true, constant: Bool = true, keys: [String] = [], order: Double = 0) {
+        self.title = title; self.content = content; self.enabled = enabled; self.constant = constant; self.keys = keys; self.order = order
+    }
 }
 
 public struct CharacterCard: Codable, Identifiable, Hashable, Sendable {
@@ -36,7 +40,7 @@ public struct CharacterCard: Codable, Identifiable, Hashable, Sendable {
         if !exampleDialogue.isEmpty { sections.append("对话风格示例：\n\(exampleDialogue)") }
         var remaining = max(0, loreBudget)
         for entry in worldBook.sorted(by: { $0.order < $1.order }) where entry.enabled {
-            guard entry.constant || entry.keys.contains(where: { !$0.isEmpty && conversation.localizedCaseInsensitiveContains($0) }) else { continue }
+            guard entry.constant || entry.keys.contains(where: { let key = $0.trimmingCharacters(in: .whitespacesAndNewlines); return !key.isEmpty && conversation.localizedCaseInsensitiveContains(key) }) else { continue }
             let value = substitute(entry.content, user: user)
             guard value.utf16.count <= remaining else { continue }
             sections.append(value); remaining -= value.utf16.count
@@ -46,6 +50,15 @@ public struct CharacterCard: Codable, Identifiable, Hashable, Sendable {
 }
 
 public enum CharacterCardImporter {
+    public static func read(_ url: URL, limit: Int = 32 * 1024 * 1024) throws -> Data {
+        let input = try FileHandle(forReadingFrom: url); defer { try? input.close() }
+        var data = Data()
+        while let chunk = try input.read(upToCount: 64 * 1024), !chunk.isEmpty {
+            guard chunk.count <= limit - data.count else { throw MoReadError.invalid("文件过大，请选择较小的文件。") }
+            data.append(chunk)
+        }
+        return data
+    }
     public static func parse(_ data: Data) throws -> CharacterCard {
         guard data.count <= 32 * 1024 * 1024 else { throw MoReadError.invalid("角色卡超过 32 MB。") }
         let png = data.starts(with: [137, 80, 78, 71, 13, 10, 26, 10])
@@ -60,15 +73,8 @@ public enum CharacterCardImporter {
         card.personality = string("personality"); card.scenario = string("scenario")
         card.greeting = string("first_mes"); card.exampleDialogue = string("mes_example"); card.systemPrompt = string("system_prompt")
         card.sourceJSON = json; card.avatar = png ? data : nil
-        if let book = fields["character_book"] as? [String: Any], let entries = book["entries"] as? [[String: Any]] {
-            card.worldBook = entries.compactMap { entry in
-                guard let content = entry["content"] as? String, !content.isEmpty else { return nil }
-                let keys = (entry["keys"] as? [String] ?? []).filter { !$0.isEmpty }
-                return LoreEntry(title: entry["comment"] as? String ?? keys.first ?? "设定", content: content,
-                                 enabled: entry["enabled"] as? Bool ?? true,
-                                 constant: (entry["constant"] as? Bool ?? false) || keys.isEmpty,
-                                 keys: keys, order: (entry["insertion_order"] as? NSNumber)?.doubleValue ?? 0)
-            }
+        if let book = fields["character_book"] as? [String: Any] {
+            card.worldBook = try WorldBookImporter.parse(JSONSerialization.data(withJSONObject: book))
         }
         return card
     }
@@ -93,5 +99,32 @@ public enum CharacterCardImporter {
         }
         guard let value = payloads["ccv3"] ?? payloads["chara"] else { throw MoReadError.invalid("这张 PNG 中没有角色卡资料。") }
         return value
+    }
+}
+
+public enum WorldBookImporter {
+    public static func parse(_ data: Data) throws -> [LoreEntry] {
+        guard data.count <= 4 * 1024 * 1024 else { throw MoReadError.invalid("世界书超过 4 MB。") }
+        let object = try JSONSerialization.jsonObject(with: data)
+        let root = object as? [String: Any]
+        let body = root?["data"] as? [String: Any] ?? root
+        let book = body?["character_book"] as? [String: Any] ?? body
+        let raw = book?["entries"] ?? object
+        let entries: [[String: Any]]
+        if let array = raw as? [[String: Any]] { entries = array }
+        else if let dictionary = raw as? [String: [String: Any]], book?["entries"] != nil {
+            entries = dictionary.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.compactMap { dictionary[$0] }
+        } else { throw MoReadError.invalid("没有找到世界书条目，请选择世界书 JSON 文件。") }
+        guard entries.count <= 10000 else { throw MoReadError.invalid("世界书条目超过 10000 条。") }
+        return try entries.enumerated().map { index, entry in
+            guard let content = entry["content"] as? String else { throw MoReadError.invalid("第 \(index + 1) 条世界书缺少正文。") }
+            let keys = (entry["keys"] as? [String] ?? entry["key"] as? [String] ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let order = (entry["insertion_order"] as? NSNumber ?? entry["order"] as? NSNumber)?.doubleValue ?? Double(index)
+            var value = LoreEntry(title: entry["comment"] as? String ?? entry["name"] as? String ?? keys.first ?? "设定 \(index + 1)", content: content,
+                enabled: (entry["enabled"] as? Bool ?? true) && !(entry["disable"] as? Bool ?? false),
+                constant: entry["constant"] as? Bool ?? keys.isEmpty, keys: keys, order: order.isFinite ? order : Double(index))
+            value.sourceJSON = try JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys])
+            return value
+        }.sorted { $0.order < $1.order }
     }
 }

@@ -124,6 +124,7 @@ public enum BackupArchive {
             guard written == file.bytes, checksum == entry.checksum, digest == file.sha256 else { throw MoReadError.invalid("备份中的文件损坏，原书库保持不变。") }
             completed += written
         }
+        _ = try FontLibrary(root: staging).fonts()
         let library = try LibraryStore(root: staging)
         let books = try library.books()
         _ = try library.organization()

@@ -120,18 +120,20 @@ struct BackupView: View {
     private func discardPrepared() { if let prepared { try? FileManager.default.removeItem(at: prepared.directory) }; prepared = nil }
     private func savePreferences(to root: URL) throws {
         let defaults = UserDefaults.standard
-        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.pageMode", "reader.typography", "shelf.sort", "speech.preferences", "speech.cloud"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
+        let values = ["app.tintRGB", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.pageMode", "reader.typography", "shelf.sort", "speech.preferences", "speech.cloud"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
         try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: root.appendingPathComponent("reader-settings.plist"), options: .atomic)
     }
     private func loadPreferences(from root: URL) {
         guard let data = try? Data(contentsOf: root.appendingPathComponent("reader-settings.plist")), let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return }
         let defaults = UserDefaults.standard
+        let tint = values["app.tintRGB"] as? Int ?? 0x476153
+        defaults.set((0...0xFFFFFF).contains(tint) ? tint : 0x476153, forKey: "app.tintRGB")
         let font = (values["reader.fontSize"] as? Double) ?? 21
         let spacing = (values["reader.lineSpacing"] as? Double) ?? 10
         defaults.set(font.isFinite ? min(36, max(14, font)) : 21, forKey: "reader.fontSize")
         defaults.set(spacing.isFinite ? min(24, max(0, spacing)) : 10, forKey: "reader.lineSpacing")
         let paper = values["reader.paper"] as? String ?? "paper"
-        defaults.set(["paper", "night", "white"].contains(paper) ? paper : "paper", forKey: "reader.paper")
+        defaults.set(["paper", "night", "white", "custom", "image"].contains(paper) ? paper : "paper", forKey: "reader.paper")
         defaults.set((ReaderPageMode(rawValue: values["reader.pageMode"] as? String ?? "") ?? .scroll).rawValue, forKey: "reader.pageMode")
         defaults.set(ReaderTypography(data: values["reader.typography"] as? Data ?? Data()).encoded(), forKey: "reader.typography")
         let sort = values["shelf.sort"] as? String ?? ""

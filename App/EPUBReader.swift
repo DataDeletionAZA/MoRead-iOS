@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WebKit
 import MoReadCore
 import ReadiumShared
 import ReadiumStreamer
@@ -76,12 +77,13 @@ struct EPUBReader: UIViewControllerRepresentable {
     let paper: String
     let annotations: [Annotation]
     let speechLocation: SpeechLocation?
+    let onToggleControls: () -> Void
     let onLocation: (Data) -> Void
     let onSelection: (SourcePassage) -> Void
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(book: book, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onLocation: onLocation, onSelection: onSelection)
+        EPUBHostController(book: book, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
@@ -95,6 +97,7 @@ struct EPUBReader: UIViewControllerRepresentable {
 final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let bookID: UUID
     private let model: LibraryModel
+    private let onToggleControls: () -> Void
     private let onLocation: (Data) -> Void
     private let onSelection: (SourcePassage) -> Void
     private var navigator: EPUBNavigatorViewController?
@@ -109,9 +112,9 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
 
-    init(book: Book, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
+    init(book: Book, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
-        self.onLocation = onLocation; self.onSelection = onSelection
+        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -139,6 +142,13 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 if let url = Bundle.main.url(forResource: "NotoSerifSC", withExtension: "ttf"), let file = FileURL(url: url) {
                     config.fontFamilyDeclarations.append(CSSFontFamilyDeclaration(fontFamily: "Noto Serif SC", alternates: [.serif], fontFaces: [CSSFontFace(file: file, weight: .variable(200...900))]).eraseToAnyHTMLFontFamilyDeclaration())
                 }
+                if let library = model.fontLibrary {
+                    for font in model.fonts {
+                        if let file = FileURL(url: library.file(font)) {
+                            config.fontFamilyDeclarations.append(CSSFontFamilyDeclaration(fontFamily: FontFamily(rawValue: "MoRead-" + font.id.uuidString), fontFaces: [CSSFontFace(file: file)]).eraseToAnyHTMLFontFamilyDeclaration())
+                        }
+                    }
+                }
                 let reader = try EPUBNavigatorViewController(publication: publication, initialLocation: locator, config: config)
                 navigator = reader; reader.delegate = self
                 addChild(reader); reader.view.frame = view.bounds
@@ -149,17 +159,28 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             } catch is CancellationError {} catch { model.error = error.localizedDescription; spinner.stopAnimating() }
         }
     }
+    func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts controller: WKUserContentController) {
+        guard paper == "image", let data = model.readingBackgroundData else { return }
+        let rgb = typography.backgroundRGB ?? 0xF7F2E3
+        let shade = "rgba(\((rgb >> 16) & 255),\((rgb >> 8) & 255),\(rgb & 255),\(1 - (typography.backgroundOpacity ?? 0.25)))"
+        let css = "html { isolation: isolate; } html::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(\(shade), \(shade)), url(data:image/jpeg;base64,\(data.base64EncodedString())) center / cover no-repeat !important; } body { background: transparent !important; }"
+        guard let encoded = try? JSONEncoder().encode(css), let quoted = String(data: encoded, encoding: .utf8) else { return }
+        let script = "const style = document.createElement('style'); style.textContent = \(quoted); document.head.appendChild(style);"
+        controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    }
     private var preferences: EPUBPreferences {
         let custom = !typography.publisherStyles
-        let family: FontFamily? = typography.font == .system ? nil : typography.font == .serif ? FontFamily(rawValue: "Noto Serif SC") : typography.font == .monospace ? .monospace : .sansSerif
-        return EPUBPreferences(fontFamily: custom ? family : nil, fontSize: fontSize / 16,
-                               fontWeight: custom ? Double(typography.weight) / 400 : nil,
+        let imported = model.fonts.first { $0.id == typography.customFontID }
+        let family: FontFamily? = imported.map { FontFamily(rawValue: "MoRead-" + $0.id.uuidString) } ?? (typography.font == .system ? nil : typography.font == .serif ? FontFamily(rawValue: "Noto Serif SC") : typography.font == .monospace ? .monospace : .sansSerif)
+        return EPUBPreferences(backgroundColor: (paper == "custom" || paper == "image") ? ReadiumNavigator.Color(rawValue: typography.backgroundRGB ?? 0xF7F2E3) : nil, fontFamily: custom ? family : nil, fontSize: fontSize / 16,
+                               fontWeight: custom && imported == nil ? Double(typography.weight) / 400 : nil,
                                letterSpacing: custom ? typography.letterSpacing * 2 : nil,
                                lineHeight: 1 + lineSpacing / fontSize, pageMargins: typography.epubPageMargins,
                                paragraphIndent: custom ? typography.firstLineIndent : nil,
                                paragraphSpacing: custom ? typography.paragraphSpacing / fontSize : nil,
-                               publisherStyles: typography.publisherStyles, scroll: false,
+                               publisherStyles: typography.publisherStyles, scroll: typography.epubScroll ?? false,
                                textAlign: custom ? (typography.justified ? .justify : .start) : nil,
+                               textColor: (paper == "custom" || paper == "image") ? ReadiumNavigator.Color(rawValue: typography.textRGB ?? 0x292929) : nil,
                                theme: paper == "night" ? .dark : paper == "white" ? .light : .sepia)
     }
     func setPreferences(fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String) {
@@ -257,6 +278,10 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 if let locator { _ = await navigator?.go(to: locator) }
             } catch { model.error = error.localizedDescription }
         }
+    }
+    func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
+        guard abs(point.x - view.bounds.midX) < view.bounds.width / 6 else { return }
+        onToggleControls()
     }
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) { model.error = "阅读操作失败，请重新打开这本书。" }
     func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: RelativeURL, withError error: ReadError) { model.error = "书内资源无法读取，请检查 EPUB 文件是否完整。" }

@@ -2,13 +2,112 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testBackgroundImagePersistsAcrossTextAndEPUB() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-background"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+        book.tap()
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        func screenshot(_ name: String) { let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = name; shot.lifetime = .keepAlways; add(shot) }
+        screenshot("Background-TXT-scroll")
+        app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["无动画翻页"].tap(); app.buttons["完成"].tap()
+        XCTAssertTrue(app.staticTexts["reader-page-number"].waitForExistence(timeout: 10)); screenshot("Background-TXT-page")
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); book.tap()
+        app.buttons["排版"].tap()
+        for _ in 0..<3 { if app.buttons["阅读背景图片"].isHittable { break }; app.swipeUp() }
+        app.buttons["阅读背景图片"].tap()
+        XCTAssertTrue(app.images["阅读背景预览"].exists)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-background"]; app.launch()
+        app.buttons["add-epub-sample"].tap()
+        let epub = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
+        XCTAssertTrue(epub.waitForExistence(timeout: 20)); epub.tap()
+        XCTAssertTrue(app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "林遥")).firstMatch.waitForExistence(timeout: 20))
+        screenshot("Background-EPUB")
+        app.buttons["排版"].tap(); app.buttons["epub-page-mode"].tap(); app.buttons["上下滚动"].tap(); app.buttons["完成"].tap()
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10)); screenshot("Background-EPUB-scroll")
+    }
+    func testImmersiveReadingHidesControlsAndReturnsToPosition() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["无动画翻页"].tap(); app.buttons["完成"].tap()
+        let page = app.staticTexts["reader-page-number"]
+        XCTAssertTrue(page.waitForExistence(timeout: 10))
+        app.buttons["reader-next-page"].tap()
+        let anchorText = app.textViews["reader-text"].firstMatch.value as? String
+        app.buttons["排版"].tap(); app.buttons["enter-immersive"].tap()
+        XCTAssertFalse(app.buttons["排版"].exists); XCTAssertFalse(app.buttons["下一章"].exists)
+        XCTAssertFalse(app.buttons["reader-next-page"].isHittable)
+        XCTAssertTrue(app.statusBars.allElementsBoundByIndex.allSatisfy { !$0.isHittable })
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
+        app.textViews["reader-text"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 10))
+        XCTAssertTrue(page.label.hasPrefix("本章 2 /"))
+        XCTAssertEqual(app.textViews["reader-text"].firstMatch.value as? String, anchorText)
+    }
+    func testWorldBookEditingPersistsWithAvatarPickerAvailable() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        func openEditor() {
+            app.tabBars.buttons["伴读"].tap()
+            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "角色与世界书")).firstMatch.tap()
+            app.buttons["编辑"].firstMatch.tap()
+            XCTAssertTrue(app.buttons["更换头像"].exists)
+            app.buttons["edit-world-book"].tap()
+        }
+        openEditor()
+        XCTAssertTrue(app.buttons["导入世界书 JSON"].exists)
+        app.buttons["新建设定"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "新设定")).firstMatch.tap()
+        app.textViews["lore-content"].tap(); app.textViews["lore-content"].typeText("The lighthouse is beside the sea.")
+        app.navigationBars["世界书设定"].buttons.firstMatch.tap()
+        app.navigationBars["世界书"].buttons.firstMatch.tap()
+        app.buttons["保存"].tap(); app.buttons["完成"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        openEditor()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "The lighthouse is beside the sea.")).firstMatch.exists)
+    }
+    func testImportedFontLibrarySurvivesRelaunchAndDeletion() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-font"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["字体库"].tap()
+        let rename = app.buttons["重命名"]
+        XCTAssertTrue(rename.waitForExistence(timeout: 20)); rename.tap()
+        let field = app.alerts.textFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("My Reading Font")
+        XCTAssertEqual(field.value as? String, "My Reading Font")
+        let save = app.alerts.buttons["保存"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["My Reading Font"].waitForExistence(timeout: 5))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        app.buttons["排版"].tap(); app.buttons["字体与段落"].tap()
+        XCTAssertTrue(app.buttons["reader-custom-font"].label.contains("My Reading Font"))
+        app.buttons["管理与导入字体"].tap()
+        app.buttons["删除字体"].tap()
+        app.sheets.buttons["删除字体"].tap()
+        let deleted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.staticTexts["My Reading Font"])
+        XCTAssertEqual(XCTWaiter.wait(for: [deleted], timeout: 5), .completed)
+        app.navigationBars["字体库"].buttons.firstMatch.tap()
+        XCTAssertFalse(app.buttons["reader-custom-font"].exists)
+        app.navigationBars["字体与段落"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+    }
     func testTypographyPreservesAnchorAndSurvivesRelaunch() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["无动画翻页"].tap(); app.buttons["完成"].tap()
-        XCTAssertTrue(app.buttons["reader-next-page"].waitForExistence(timeout: 10)); app.buttons["reader-next-page"].tap()
+        XCTAssertTrue(app.buttons["reader-next-page"].waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: app.buttons["reader-next-page"])
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        app.buttons["reader-next-page"].tap()
+        let turned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", "本章 2 /"), object: app.staticTexts["reader-page-number"])
+        XCTAssertEqual(XCTWaiter.wait(for: [turned], timeout: 10), .completed)
         let original = app.textViews["reader-text"].firstMatch.value as? String
         func openTypography() { app.buttons["排版"].tap(); app.buttons["字体与段落"].tap() }
         func closeTypography() { app.navigationBars["字体与段落"].buttons.firstMatch.tap(); app.buttons["完成"].tap() }
@@ -53,7 +152,8 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [second], timeout: 10), .completed)
         let text = app.textViews["reader-text"].firstMatch.value as? String
         XCTAssertFalse(text?.isEmpty ?? true)
-        app.buttons["书签"].tap()
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap()
+        XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
         mode("覆盖翻页"); XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
         app.textViews["reader-text"].firstMatch.swipeLeft()
         let third = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", "本章 3 /"), object: number)
@@ -87,9 +187,9 @@ final class ReadingTests: XCTestCase {
         app.buttons["reader-previous-page"].tap()
         XCTAssertTrue(app.navigationBars["第一章 雨后"].waitForExistence(timeout: 10))
         XCTAssertTrue(number.label.contains("/")); XCTAssertFalse(app.alerts["需要处理"].exists)
-        app.buttons["目录"].tap()
-        let marks = app.buttons.matching(identifier: "第一章 雨后")
-        XCTAssertEqual(marks.count, 2); marks.element(boundBy: 1).tap()
+        app.buttons["书签"].tap()
+        let marks = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-"))
+        XCTAssertEqual(marks.count, 1); marks.firstMatch.tap()
         XCTAssertTrue(number.label.hasPrefix("本章 2 /"))
         XCTAssertEqual(app.textViews["reader-text"].firstMatch.value as? String, text)
     }
@@ -259,7 +359,8 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
-        app.buttons["书签"].tap()
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap()
+        XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.tabBars.buttons["设置"].tap()
         app.buttons["存储与阅读记录"].tap()
@@ -316,7 +417,7 @@ final class ReadingTests: XCTestCase {
 
     func testEPUBContentsAndLocationSurviveRelaunch() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reset-test-library"]
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-font"]
         app.launch()
         XCTAssertTrue(app.buttons["add-epub-sample"].waitForExistence(timeout: 15))
         app.buttons["add-epub-sample"].tap()
@@ -330,7 +431,7 @@ final class ReadingTests: XCTestCase {
         app.buttons["排版"].tap(); app.buttons["字体与段落"].tap()
         app.switches["reader-publisher-styles"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(app.switches["reader-publisher-styles"].value as? String, "0")
-        app.buttons["reader-font-family"].tap(); app.buttons["衬线字体"].tap()
+        XCTAssertTrue(app.buttons["reader-custom-font"].label.contains("Noto"))
         app.navigationBars["字体与段落"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
         XCTAssertTrue(text.waitForExistence(timeout: 20))
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
