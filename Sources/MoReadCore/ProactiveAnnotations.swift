@@ -88,7 +88,7 @@ public enum ProactiveAnnotations {
         return result
     }
 
-    public static func messages(chapter: Chapter, target: ProactiveParagraph, card: CharacterCard, user: String, background: String = "", minimum: Int = 1) throws -> [ChatMessage] {
+    public static func messages(chapter: Chapter, target: ProactiveParagraph, card: CharacterCard, user: String, background: String = "", minimum: Int = 1, identity: ChatIdentity? = nil) throws -> [ChatMessage] {
         guard target.start >= 0, target.end > target.start, target.end <= chapter.text.utf16.count,
               TextBoundary.floor(target.start, in: chapter.text) == target.start,
               TextBoundary.floor(target.end, in: chapter.text) == target.end else { throw MoReadError.invalid("段评原文位置无效。") }
@@ -104,7 +104,7 @@ public enum ProactiveAnnotations {
         只输出 JSON 对象：quote、note、style。style 只能为 HIGHLIGHT、WAVY、UNDERLINE。
         """
         let context = background.isEmpty ? "" : "相关前文资料：\n" + TextBoundary.prefix(background, end: 12_000) + "\n\n"
-        return [.init(role: "system", content: persona + "\n\n" + rules),
+        return [.init(role: "system", content: persona + "\n\n" + (identity?.prompt ?? "") + "\n\n" + rules),
                 .init(role: "user", content: context + "正文前缀（只到目标结束）：\n" + prefix + "\n\n唯一目标段落：\n" + quote)]
     }
 

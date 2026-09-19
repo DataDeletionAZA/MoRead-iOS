@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 
 public struct CompanionSettings: Codable {
+    public var userMasks: UserMaskSettings?
     public var summarySettings: SummarySettings?
     public var proactive: ProactiveSettings?
     public var providers: [AIProvider] = []

@@ -20,6 +20,10 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedIdentities, companion.settings.providers.isEmpty {
+                var provider = AIProvider(); provider.name = "本地身份测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
+                companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id; companion.saveSettings()
+            }
             if companion.simulatedSummary, companion.conversations.isEmpty, let card = companion.characters.first {
                 var provider = AIProvider(); provider.name = "本地提要测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
                 companion.settings.providers = [provider]
@@ -260,6 +264,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 Section("伴读") {
+                    NavigationLink("我的身份") { UserMaskSettingsView() }
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("随读段评") { ProactiveSettingsView() }

@@ -2,6 +2,44 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testUserIdentitySwitchRetryAndHistorySurviveRelaunch() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-identities"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["我的身份"].tap(); app.buttons["新建身份"].tap()
+        app.textFields["mask-name"].tap(); app.textFields["mask-name"].typeText("Linyao")
+        app.textViews["mask-description"].tap(); app.textViews["mask-description"].typeText("A bookshop guest.")
+        app.buttons["保存"].tap()
+        XCTAssertTrue(app.buttons["select-mask-Linyao"].waitForExistence(timeout: 5)); app.buttons["select-mask-Linyao"].tap()
+        app.tabBars.buttons["伴读"].tap(); app.buttons["开启新话题"].tap()
+        XCTAssertTrue(app.buttons["chat-identity"].label.contains("扮演：Linyao"))
+        let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+        input.tap(); input.typeText("Hello."); app.buttons["发送"].tap()
+        let maskedReply = app.staticTexts["本地模拟回复：【用户（扮演：Linyao）】"]
+        XCTAssertTrue(maskedReply.waitForExistence(timeout: 10))
+        app.buttons["chat-identity"].tap()
+        app.switches["mask-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["chat-identity"].label.contains("本人：读者"))
+        app.buttons["重新生成"].tap()
+        XCTAssertTrue(maskedReply.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["扮演：Linyao"].exists)
+        input.tap(); input.typeText("Now I am myself."); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["本地模拟回复：【用户（本人：读者）】"].waitForExistence(timeout: 10))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-identities"]; app.launch()
+        app.tabBars.buttons["伴读"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "与阿翎聊聊")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["扮演：Linyao"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["本人：读者"].exists)
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.staticTexts["扮演：Linyao"].isHittable && app.staticTexts["本人：读者"].isHittable }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed)
+        let restoredShot = XCTAttachment(screenshot: app.screenshot()); restoredShot.name = "Identity-history-after-relaunch"; restoredShot.lifetime = .keepAlways; add(restoredShot)
+        app.buttons["chat-identity"].tap()
+        XCTAssertEqual(app.switches["mask-enabled"].value as? String, "0")
+        app.buttons["select-mask-Linyao"].swipeLeft(); app.buttons.matching(NSPredicate(format: "label IN %@", ["删除", "Delete"])).firstMatch.tap()
+        XCTAssertFalse(app.buttons["select-mask-Linyao"].exists)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.staticTexts["扮演：Linyao"].exists)
+    }
     func testConversationSummaryGenerationSettingsAndDeletionPersist() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-summary"]; app.launch()
         func openSummary() {

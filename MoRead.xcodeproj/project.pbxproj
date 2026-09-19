@@ -29,6 +29,7 @@
 		84BD5593D16EB897BC2E0A3A /* TextImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87E493AC9E9897EB9D669FEF /* TextImportView.swift */; };
 		8863B1DE85FB0E330B55382C /* ReaderTypographyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEBDFD9464F9BE8B1B39C0D /* ReaderTypographyView.swift */; };
 		8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */; };
+		9468C4DD3A460A45139DFA7E /* UserMaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF601B6CB703407F00D933F4 /* UserMaskView.swift */; };
 		99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9710D70B97A3A946E9FAED25 /* EPUBReader.swift */; };
 		9FF3734F8AA0D55A11AEE0B1 /* ProactiveSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A54F6F92AE038D4FAE8616 /* ProactiveSettingsView.swift */; };
 		AA8820FC4DEEE252D22378C1 /* MoReadCore in Frameworks */ = {isa = PBXBuildFile; productRef = 38BD1D23C9915BE266F16756 /* MoReadCore */; };
@@ -92,6 +93,7 @@
 		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
 		E13CDB21AB706B03ADB8D9DE /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSpeechView.swift; sourceTree = "<group>"; };
+		EF601B6CB703407F00D933F4 /* UserMaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserMaskView.swift; sourceTree = "<group>"; };
 		F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViews.swift; sourceTree = "<group>"; };
 		FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -137,6 +139,7 @@
 				B9F48B66B02BAA67D887F3A7 /* StorageView.swift */,
 				87E493AC9E9897EB9D669FEF /* TextImportView.swift */,
 				19BD21C3358729CF22FAB2EE /* ThemeView.swift */,
+				EF601B6CB703407F00D933F4 /* UserMaskView.swift */,
 				84C880FD0E398C652F62F267 /* VectorMemoryView.swift */,
 				6BB9A7F794DA1BB7C6E13AE1 /* WorldBookEditor.swift */,
 				C896CA2E37370968F1E2418B /* Fonts */,
@@ -343,6 +346,7 @@
 				DA76CE3F28D08E3FE95FEB25 /* StorageView.swift in Sources */,
 				84BD5593D16EB897BC2E0A3A /* TextImportView.swift in Sources */,
 				BCDF913B40D55473023F0D35 /* ThemeView.swift in Sources */,
+				9468C4DD3A460A45139DFA7E /* UserMaskView.swift in Sources */,
 				174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */,
 				DCEBAAED542218D931A97965 /* WorldBookEditor.swift in Sources */,
 			);

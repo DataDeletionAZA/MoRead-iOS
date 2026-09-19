@@ -27,6 +27,7 @@ struct CompanionHome: View {
                     Button("开启新话题", systemImage: "square.and.pencil") {
                         if let id = companion.newConversation(book: nil) { chat = ChatDestination(id: id) }
                     }
+                    NavigationLink("我的身份：\(companion.settings.currentIdentity.label)") { UserMaskSettingsView() }
                 }
                 Section("最近的对话") {
                     ForEach(companion.conversations.sorted { $0.updatedAt > $1.updatedAt }) { conversation in
@@ -192,6 +193,7 @@ struct CompanionChat: View {
     @State private var editing: ChatMessage?
     @State private var editText = ""
     @State private var showSummary = false
+    @State private var showIdentity = false
     @State private var source: SourcePassage?
     @State private var scrollPosition: UUID?
     private var conversation: Conversation? { companion.conversations.first { $0.id == conversationID } }
@@ -208,7 +210,7 @@ struct CompanionChat: View {
                     }
                     ForEach(conversation?.messages ?? []) { message in
                         VStack(alignment: .leading, spacing: 10) {
-                            Text(message.role == "user" ? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(message.role == "user" ? message.identity?.label ?? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
                             else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                             if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
@@ -231,8 +233,10 @@ struct CompanionChat: View {
             }.scrollPosition(id: $scrollPosition, anchor: .bottom)
                 .defaultScrollAnchor(.bottom)
             if generating { Button("停止回复", systemImage: "stop.circle") { companion.stop() }.padding(8) }
+            Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
+                .font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).accessibilityIdentifier("chat-identity")
             HStack(alignment: .bottom, spacing: 12) {
-                TextField(selection == nil ? "聊聊这本书…" : "问问这一段…", text: $draft, axis: .vertical).lineLimit(1...6).padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
+                TextField(selection == nil ? "聊聊这本书…" : "问问这一段…", text: $draft, axis: .vertical).lineLimit(1...6).padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("chat-input")
                 Button {
                     let text = draft; companion.send(text, in: conversationID, library: library, selection: selection)
                     if companion.activeConversation == conversationID { draft = ""; scrollPosition = conversation?.messages.last?.id }
@@ -247,6 +251,7 @@ struct CompanionChat: View {
             }
             .onDisappear { companion.refreshSummary(conversationID, library: library) }
             .sheet(isPresented: $showSummary) { NavigationStack { ConversationSummaryView(conversationID: conversationID).toolbar { Button("完成") { showSummary = false } } } }
+            .sheet(isPresented: $showIdentity) { NavigationStack { UserMaskSettingsView().toolbar { Button("完成") { showIdentity = false } } } }
             .sheet(item: $editing) { message in
                 NavigationStack { TextEditor(text: $editText).padding().navigationTitle("编辑消息").toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { editing = nil } }

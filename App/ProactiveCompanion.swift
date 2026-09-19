@@ -27,7 +27,7 @@ extension CompanionModel {
             #endif
             _ = try ChatRequest.make(provider: provider, key: key, messages: [.init(role: "user", content: "段评配置检查")])
             let chapter = try libraryStore.chapter(chapterIndex, in: book)
-            let user = settings.userName
+            let identity = settings.currentIdentity
             annotationRunning = true; annotationStatus = "正在准备随读段评…"
             annotationTask = Task {
                 defer {
@@ -52,7 +52,7 @@ extension CompanionModel {
                         var countForCard = 0
                         for target in candidates {
                             try Task.checkCancellation()
-                            guard self.annotationAllowed(book: book, card: card, provider: provider, policy: policy, user: user, library: library) else { throw CancellationError() }
+                            guard self.annotationAllowed(book: book, card: card, provider: provider, policy: policy, identity: identity, library: library) else { throw CancellationError() }
                             guard countForCard < share else { break }
                             let latest = try libraryStore.records(for: book)
                             let jobKey = ProactiveAnnotations.key(chapter: chapter, target: target, characterID: card.id)
@@ -71,7 +71,7 @@ extension CompanionModel {
                             }
                             let background = try await withTaskCancellationHandler { try await backgroundTask.value } onCancel: { backgroundTask.cancel() }
                             try Task.checkCancellation()
-                            guard self.annotationAllowed(book: book, card: card, provider: provider, policy: policy, user: user, library: library) else { throw CancellationError() }
+                            guard self.annotationAllowed(book: book, card: card, provider: provider, policy: policy, identity: identity, library: library) else { throw CancellationError() }
                             try library.modifyRecords(for: book) { value in
                                 var next = attempt; next.count += 1; next.updatedAt = Date()
                                 if value.annotationAttempts == nil { value.annotationAttempts = [:] }
@@ -79,10 +79,10 @@ extension CompanionModel {
                             }
                             self.annotationStatus = "\(card.name)正在读《\(book.title)》…"
                             do {
-                                let messages = try ProactiveAnnotations.messages(chapter: chapter, target: target, card: card, user: user, background: background, minimum: policy.minimumPerChapter)
+                                let messages = try ProactiveAnnotations.messages(chapter: chapter, target: target, card: card, user: identity.name, background: background, minimum: policy.minimumPerChapter, identity: identity)
                                 let raw = try await self.annotationReply(provider: provider, key: key, messages: messages, target: query)
                                 try Task.checkCancellation()
-                                guard self.annotationAllowed(book: book, card: card, provider: provider, policy: policy, user: user, library: library) else { throw CancellationError() }
+                                guard self.annotationAllowed(book: book, card: card, provider: provider, policy: policy, identity: identity, library: library) else { throw CancellationError() }
                                 let currentChapter = try libraryStore.chapter(chapterIndex, in: book)
                                 guard currentChapter.revision == chapter.revision else { throw CancellationError() }
                                 let note = try ProactiveAnnotations.annotation(from: raw, bookID: bookID, chapter: chapter, target: target, character: card)
@@ -119,8 +119,8 @@ extension CompanionModel {
         #endif
         return try await ChatClient.complete(provider: provider, key: key, messages: messages, maximumBytes: 64 * 1024)
     }
-    private func annotationAllowed(book: Book, card: CharacterCard, provider: AIProvider, policy: ProactiveSettings, user: String, library: LibraryModel) -> Bool {
-        annotationReaderID == book.id && !library.maintenance && (settings.proactive ?? ProactiveSettings()).validated() == policy && settings.userName == user &&
+    private func annotationAllowed(book: Book, card: CharacterCard, provider: AIProvider, policy: ProactiveSettings, identity: ChatIdentity, library: LibraryModel) -> Bool {
+        annotationReaderID == book.id && !library.maintenance && (settings.proactive ?? ProactiveSettings()).validated() == policy && settings.currentIdentity == identity &&
         (policy.characterIDs.isEmpty ? settings.selectedCharacter == card.id : policy.characterIDs.contains(card.id)) && characters.contains(card) && settings.providers.first(where: { $0.id == (policy.providerID ?? settings.selectedProvider) }) == provider &&
         library.books.contains { $0.id == book.id && !$0.removed && $0.hasBody && $0.readThrough >= book.readThrough && $0.chapters.map(\.revision) == book.chapters.map(\.revision) }
     }

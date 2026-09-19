@@ -18,6 +18,7 @@ public struct AIProvider: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
+    public var identity: ChatIdentity?
     public var id = UUID()
     public var role: String
     public var content: String
