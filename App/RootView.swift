@@ -20,6 +20,15 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedSummary, companion.conversations.isEmpty, let card = companion.characters.first {
+                var provider = AIProvider(); provider.name = "本地提要测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
+                companion.settings.providers = [provider]
+                var policy = SummarySettings(); policy.providerID = provider.id
+                companion.settings.summarySettings = policy; companion.saveSettings()
+                var conversation = Conversation(title: "书店里的对话", bookID: nil, characterID: card.id)
+                conversation.messages = (0..<32).map { ChatMessage(role: $0.isMultiple(of: 2) ? "user" : "assistant", content: "第\($0)条：我们慢慢读雨后的书店。") }
+                companion.perform { try companion.store?.save(conversation); companion.conversations = [conversation] }
+            }
             if companion.simulatedAnnotations {
                 var provider = AIProvider(); provider.name = "本地段评测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
                 companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id
@@ -254,6 +263,7 @@ struct SettingsView: View {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("随读段评") { ProactiveSettingsView() }
+                    NavigationLink("对话记忆") { SummarySettingsView() }
                 }
                 Section("阅读与外观") {
                     NavigationLink("字体库") { FontLibraryView() }

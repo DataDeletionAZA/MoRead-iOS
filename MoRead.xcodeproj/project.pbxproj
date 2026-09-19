@@ -28,6 +28,7 @@
 		812C283C0232E1F3BAE8B34D /* zipfoundation-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7C172A1663776C99A42F638F /* zipfoundation-MIT.txt */; };
 		84BD5593D16EB897BC2E0A3A /* TextImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87E493AC9E9897EB9D669FEF /* TextImportView.swift */; };
 		8863B1DE85FB0E330B55382C /* ReaderTypographyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEBDFD9464F9BE8B1B39C0D /* ReaderTypographyView.swift */; };
+		8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */; };
 		99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9710D70B97A3A946E9FAED25 /* EPUBReader.swift */; };
 		9FF3734F8AA0D55A11AEE0B1 /* ProactiveSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A54F6F92AE038D4FAE8616 /* ProactiveSettingsView.swift */; };
 		AA8820FC4DEEE252D22378C1 /* MoReadCore in Frameworks */ = {isa = PBXBuildFile; productRef = 38BD1D23C9915BE266F16756 /* MoReadCore */; };
@@ -83,6 +84,7 @@
 		A9B96A8349156328D108EE1E /* readium-BSD-3-Clause.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "readium-BSD-3-Clause.txt"; sourceTree = "<group>"; };
 		B12B808B9926C791C07C1201 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		B3F4574B9E426BB11EBDB89D /* notoserifsc-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "notoserifsc-OFL.txt"; sourceTree = "<group>"; };
+		B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSummaryView.swift; sourceTree = "<group>"; };
 		B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		B925A6CE73A58A5EA514FB00 /* sample.epub */ = {isa = PBXFileReference; path = sample.epub; sourceTree = "<group>"; };
 		B9F48B66B02BAA67D887F3A7 /* StorageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageView.swift; sourceTree = "<group>"; };
@@ -116,6 +118,7 @@
 				E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */,
 				E08C16806605250221F9CB65 /* CompanionModel.swift */,
 				7563B576C24E7177CF543069 /* CompanionViews.swift */,
+				B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */,
 				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
 				10876F211B91CB27519F3138 /* FontLibraryView.swift */,
 				4F1C7E35F6BA22FAB8ED449F /* Info.plist */,
@@ -322,6 +325,7 @@
 				52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */,
 				BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */,
 				3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */,
+				8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */,
 				99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */,
 				3363F5D260EF8FD6F95EC143 /* FontLibraryView.swift in Sources */,
 				7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */,

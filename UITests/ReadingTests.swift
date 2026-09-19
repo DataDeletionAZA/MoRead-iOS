@@ -2,6 +2,32 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testConversationSummaryGenerationSettingsAndDeletionPersist() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-summary"]; app.launch()
+        func openSummary() {
+            app.tabBars.buttons["伴读"].tap()
+            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "书店里的对话")).firstMatch.tap()
+            app.buttons["前情提要"].tap()
+        }
+        openSummary(); app.buttons["现在整理"].tap()
+        let summary = app.staticTexts["conversation-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertEqual(summary.label, "用户喜欢雨后的书店，希望我陪着慢慢读。")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); openSummary()
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        app.buttons["对话记忆设置"].tap()
+        XCTAssertTrue(app.buttons["summary-provider"].label.contains("本地提要测试"))
+        app.switches["summary-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["BackButton"].tap()
+        XCTAssertTrue(app.buttons["清除提要"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["现在整理"].isEnabled)
+        app.buttons["清除提要"].tap(); XCTAssertFalse(summary.exists)
+        app.terminate(); app.launch(); openSummary()
+        XCTAssertFalse(summary.exists)
+        app.buttons["对话记忆设置"].tap()
+        XCTAssertEqual(app.switches["summary-enabled"].value as? String, "0")
+    }
     func testGeneratedAnnotationsSurviveBookmarkWritesAndRelaunch() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-annotations"]; app.launch()
         app.buttons["add-sample"].tap()

@@ -191,6 +191,7 @@ struct CompanionChat: View {
     @State private var draft = ""
     @State private var editing: ChatMessage?
     @State private var editText = ""
+    @State private var showSummary = false
     @State private var source: SourcePassage?
     @State private var scrollPosition: UUID?
     private var conversation: Conversation? { companion.conversations.first { $0.id == conversationID } }
@@ -241,8 +242,11 @@ struct CompanionChat: View {
         }.navigationTitle(conversation?.title ?? "伴读").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) { Button("前情提要", systemImage: "text.alignleft") { showSummary = true } }
                 ToolbarItem(placement: .primaryAction) { Button("重新生成", systemImage: "arrow.clockwise") { companion.retry(conversationID, library: library) }.disabled(companion.busy || conversation?.messages.isEmpty != false) }
             }
+            .onDisappear { companion.refreshSummary(conversationID, library: library) }
+            .sheet(isPresented: $showSummary) { NavigationStack { ConversationSummaryView(conversationID: conversationID).toolbar { Button("完成") { showSummary = false } } } }
             .sheet(item: $editing) { message in
                 NavigationStack { TextEditor(text: $editText).padding().navigationTitle("编辑消息").toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { editing = nil } }

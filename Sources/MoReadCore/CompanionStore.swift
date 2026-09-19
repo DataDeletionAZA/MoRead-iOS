@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 
 public struct CompanionSettings: Codable {
+    public var summarySettings: SummarySettings?
     public var proactive: ProactiveSettings?
     public var providers: [AIProvider] = []
     public var selectedProvider: UUID?
@@ -18,6 +19,7 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
     public var title: String
     public var bookID: UUID?
     public var characterID: UUID
+    public var summary: ConversationSummary?
     public var messages: [ChatMessage] = []
     public var sourceLimits: [UUID: ReadingPosition] = [:]
     public var sourceRevisions: [UUID: [String]] = [:]
