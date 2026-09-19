@@ -48,7 +48,7 @@ public final class LibraryStore {
             .map { try decoder.decode(Book.self, from: Data(contentsOf: $0.appendingPathComponent("book.json"))) }
             .sorted { ($0.lastOpened ?? $0.importedAt) > ($1.lastOpened ?? $1.importedAt) }
     }
-    public func importBook(title: String, author: String = "", chapters: [Chapter], original: URL? = nil, format: String = "txt") throws -> Book {
+    public func importBook(title: String, author: String = "", chapters: [Chapter], original: URL? = nil, format: String = "txt", readingMap: Data? = nil) throws -> Book {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !chapters.isEmpty,
               chapters.enumerated().allSatisfy({ $0.offset == $0.element.id }), ["txt", "epub"].contains(format) else {
             throw MoReadError.invalid("书籍标题或章节信息不完整。")
@@ -59,6 +59,7 @@ public final class LibraryStore {
         defer { try? manager.removeItem(at: temporary) }
         for chapter in chapters { try encoder.encode(chapter).write(to: temporary.appendingPathComponent("chapter-\(chapter.id).json"), options: .atomic) }
         if let original { try manager.copyItem(at: original, to: temporary.appendingPathComponent("original.\(format)")) }
+        if let readingMap { try readingMap.write(to: temporary.appendingPathComponent("epub-map.json"), options: .atomic) }
         try encoder.encode(book).write(to: temporary.appendingPathComponent("book.json"), options: .atomic)
         try encoder.encode(BookRecords()).write(to: temporary.appendingPathComponent("records.json"), options: .atomic)
         try manager.moveItem(at: temporary, to: directory(book.id))

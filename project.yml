@@ -1,0 +1,69 @@
+name: MoRead
+options:
+  bundleIdPrefix: io.github.datadeletionaza
+  deploymentTarget:
+    iOS: '17.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    DEVELOPMENT_TEAM: ''
+    CODE_SIGN_STYLE: Automatic
+packages:
+  MoReadCore:
+    path: .
+  Readium:
+    url: https://github.com/readium/swift-toolkit.git
+    exactVersion: 3.8.0
+targets:
+  MoRead:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: MoReadCore
+      - package: Readium
+        product: ReadiumShared
+      - package: Readium
+        product: ReadiumStreamer
+      - package: Readium
+        product: ReadiumNavigator
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.datadeletionaza.MoRead
+        MARKETING_VERSION: '0.1.0'
+        CURRENT_PROJECT_VERSION: '1'
+        TARGETED_DEVICE_FAMILY: '1,2'
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 墨知
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes: [audio]
+        LSSupportsOpeningDocumentsInPlace: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Books
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.plain-text, org.idpf.epub-container]
+  MoReadUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: MoRead
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  MoRead:
+    build:
+      targets:
+        MoRead: all
+    test:
+      targets: [MoReadUITests]
