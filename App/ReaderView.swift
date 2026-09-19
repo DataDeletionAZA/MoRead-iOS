@@ -25,7 +25,7 @@ struct ReaderView: View {
     @State private var readingStarted: Date?
     @State private var chat: ChatDestination?
     @State private var chatSelection: SourcePassage?
-    private var book: Book? { model.books.first { $0.id == bookID } }
+    private var book: Book? { model.books.first { $0.id == bookID && !$0.removed } }
     private var paperColor: Color { paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     enum ReaderSheet: String, Identifiable { case contents, typography, search, notes, speech; var id: String { rawValue } }
 

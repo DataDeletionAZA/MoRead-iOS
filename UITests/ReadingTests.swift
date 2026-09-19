@@ -2,6 +2,31 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testClearBodyKeepsBookmarkAfterRelaunch() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]
+        app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        app.buttons["书签"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["存储与阅读记录"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["clear-book-body"].tap()
+        app.alerts.buttons["清理正文"].tap()
+        XCTAssertTrue(app.staticTexts["正文已清理，阅读记录保存在本机。"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["存储与阅读记录"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["正文已清理，阅读记录保存在本机。"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "第一章 雨后")).firstMatch.exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+    }
+
     func testShelfGroupAndAssignmentSurviveRelaunch() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]

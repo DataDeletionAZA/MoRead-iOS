@@ -227,11 +227,7 @@ struct SettingsView: View {
                 Section("书籍与记录") {
                     NavigationLink("整理书架") { ShelfManager() }
                     NavigationLink("备份与恢复") { BackupView() }
-                    NavigationLink("已移除的书籍") {
-                        List(model.books.filter(\.removed)) { book in
-                            HStack { Text(book.title); Spacer(); Button("恢复") { var copy = book; copy.removed = false; model.update(copy, immediate: true) } }
-                        }.navigationTitle("已移除的书籍")
-                    }
+                    NavigationLink("存储与阅读记录") { StorageView() }
                 }
                 Section("关于") {
                     Text("墨知 MoRead").font(.headline)

@@ -117,4 +117,13 @@ final class LibraryModel: ObservableObject {
             else if let index = books.firstIndex(where: { $0.id == book.id }) { books[index].removed = true }
         }
     }
+    func clearBody(_ id: UUID) {
+        guard !maintenance, !importing, let store, let index = books.firstIndex(where: { $0.id == id }) else { return }
+        pendingSaves[id]?.cancel(); pendingSaves[id] = nil
+        do { books[index] = try store.clearBody(books[index]) }
+        catch {
+            if let current = try? store.books().first(where: { $0.id == id }) { books[index] = current }
+            self.error = error.localizedDescription
+        }
+    }
 }

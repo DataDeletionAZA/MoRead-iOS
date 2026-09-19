@@ -120,7 +120,7 @@ struct BackupView: View {
     private func discardPrepared() { if let prepared { try? FileManager.default.removeItem(at: prepared.directory) }; prepared = nil }
     private func savePreferences(to root: URL) throws {
         let defaults = UserDefaults.standard
-        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
+        let values = ["reader.fontSize", "reader.lineSpacing", "reader.paper", "shelf.sort"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
         try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: root.appendingPathComponent("reader-settings.plist"), options: .atomic)
     }
     private func loadPreferences(from root: URL) {
@@ -132,5 +132,7 @@ struct BackupView: View {
         defaults.set(spacing.isFinite ? min(24, max(0, spacing)) : 10, forKey: "reader.lineSpacing")
         let paper = values["reader.paper"] as? String ?? "paper"
         defaults.set(["paper", "night", "white"].contains(paper) ? paper : "paper", forKey: "reader.paper")
+        let sort = values["shelf.sort"] as? String ?? ""
+        defaults.set((ShelfSort(rawValue: sort) ?? .recent).rawValue, forKey: "shelf.sort")
     }
 }

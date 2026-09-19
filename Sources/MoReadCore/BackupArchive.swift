@@ -1,6 +1,5 @@
 import Foundation
 import CryptoKit
-import Darwin
 import ReadiumZIPFoundation
 
 public struct BackupManifest: Codable, Sendable {
@@ -133,12 +132,13 @@ public enum BackupArchive {
                   book.chapters.indices.contains(book.position.chapter), book.chapters.indices.contains(book.readThrough.chapter),
                   book.position.offset >= 0, book.position.offset <= book.chapters[book.position.chapter].length,
                   book.readThrough.offset >= 0, book.readThrough.offset <= book.chapters[book.readThrough.chapter].length else { throw MoReadError.invalid("备份中的书籍索引无效。") }
-            for index in book.chapters.indices {
+            guard book.hasBody || book.removed else { throw MoReadError.invalid("备份中的正文清理状态无效。") }
+            for index in book.chapters.indices where book.hasBody {
                 let chapter = try library.chapter(index, in: book)
                 guard chapter.text.utf16.count == book.chapters[index].length else { throw MoReadError.invalid("备份中的章节长度不一致。") }
             }
             _ = try library.records(for: book)
-            if book.format == "epub" {
+            if book.format == "epub", book.hasBody {
                 guard manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("original.epub").path), manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("epub-map.json").path) else { throw MoReadError.invalid("备份缺少 EPUB 正文或定位信息。") }
             }
         }
@@ -163,9 +163,7 @@ public enum BackupArchive {
     private static func swap(_ other: URL, with root: URL) throws {
         guard other.deletingLastPathComponent().standardizedFileURL == root.deletingLastPathComponent().standardizedFileURL,
               other.lastPathComponent.hasPrefix("MoRead-restore-"), other != root else { throw MoReadError.invalid("恢复数据必须位于书库所在磁盘。") }
-        guard renameatx_np(AT_FDCWD, root.path, AT_FDCWD, other.path, UInt32(RENAME_SWAP)) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
+        try LibraryStore.swapDirectories(root, other)
     }
 
     private static func safePath(_ value: String) -> Bool {

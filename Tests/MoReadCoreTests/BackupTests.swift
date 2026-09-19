@@ -4,6 +4,46 @@ import ReadiumZIPFoundation
 @testable import MoReadCore
 
 final class BackupTests: XCTestCase {
+    func testClearingBodyKeepsRecordsAndRemainsRestorable() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appendingPathComponent("library")
+        let store = try LibraryStore(root: root)
+        let chapter = Chapter(id: 0, title: "第一章", text: "灯塔在海边。")
+        var book = try store.importBook(title: "小说", chapters: [chapter])
+        book.record(position: .init(offset: 2), visibleEnd: .init(offset: 4)); try store.save(book)
+        var records = BookRecords()
+        records.bookmarks = [Bookmark(position: book.position, label: "灯塔")]
+        records.annotations = [Annotation(passage: SourcePassage(bookID: book.id, chapter: chapter, offset: 0, text: "灯塔"), note: "地点")]
+        records.readingSeconds = ["2026-09-19": 123]
+        try store.saveRecords(records, for: book)
+        let companion = try CompanionStore(root: root)
+        let conversation = Conversation(title: "话题", bookID: book.id, characterID: UUID())
+        try companion.save(conversation)
+        let recordsURL = store.directory(book.id).appendingPathComponent("records.json")
+        let recordData = try Data(contentsOf: recordsURL)
+        try Data("broken".utf8).write(to: recordsURL)
+        XCTAssertThrowsError(try store.clearBody(book))
+        XCTAssertEqual(try store.books(), [book])
+        XCTAssertEqual(try store.chapter(0, in: book), chapter)
+        try recordData.write(to: recordsURL)
+        let cleared = try store.clearBody(book)
+        XCTAssertFalse(cleared.hasBody); XCTAssertTrue(cleared.removed)
+        XCTAssertEqual(cleared.position, book.position); XCTAssertEqual(cleared.readThrough, book.readThrough)
+        XCTAssertEqual(try store.records(for: cleared).annotations, records.annotations)
+        XCTAssertEqual(try store.records(for: cleared).readingSeconds, records.readingSeconds)
+        XCTAssertEqual(try companion.conversations(), [conversation])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory(book.id).appendingPathComponent("chapter-0.json").path))
+        XCTAssertThrowsError(try store.chapter(0, in: cleared))
+        var invalid = cleared; invalid.removed = false
+        XCTAssertThrowsError(try store.save(invalid))
+        let zip = directory.appendingPathComponent("records.zip")
+        _ = try await BackupArchive.create(root: root, output: zip)
+        let prepared = try await BackupArchive.prepare(zip, beside: root)
+        try BackupArchive.activate(prepared, replacing: root)
+        XCTAssertEqual(try store.books(), [cleared])
+        XCTAssertEqual(try store.records(for: cleared).bookmarks, records.bookmarks)
+    }
     func testVerifiedBackupRestoresAtomicallyAndKeepsPreviousLibrary() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = directory.appendingPathComponent("library")

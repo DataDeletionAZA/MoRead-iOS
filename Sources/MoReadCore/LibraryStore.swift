@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public struct Annotation: Codable, Identifiable, Hashable, Sendable {
     public var id = UUID()
@@ -79,9 +80,11 @@ public final class LibraryStore {
         return book
     }
     public func save(_ book: Book) throws {
+        guard book.hasBody || book.removed else { throw MoReadError.invalid("正文已清理，请重新导入书籍后阅读。") }
         try encoder.encode(book).write(to: directory(book.id).appendingPathComponent("book.json"), options: .atomic)
     }
     public func chapter(_ index: Int, in book: Book) throws -> Chapter {
+        guard book.hasBody else { throw MoReadError.invalid("正文已清理，阅读记录仍保留。") }
         guard book.chapters.indices.contains(index) else { throw MoReadError.invalid("找不到这一章。") }
         let chapter = try decoder.decode(Chapter.self, from: Data(contentsOf: directory(book.id).appendingPathComponent("chapter-\(index).json")))
         guard chapter.id == index, chapter.revision == book.chapters[index].revision else { throw MoReadError.invalid("章节内容与索引不一致，请从备份恢复。") }
@@ -98,6 +101,34 @@ public final class LibraryStore {
         else {
             var copy = book; copy.removed = true
             try save(copy)
+        }
+    }
+    public func storageBytes(for book: Book) throws -> Int64 {
+        let files = try manager.contentsOfDirectory(at: directory(book.id), includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey])
+        return try files.reduce(0) { sum, url in
+            let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            return sum + (values.isRegularFile == true ? Int64(values.fileSize ?? 0) : 0)
+        }
+    }
+    public func clearBody(_ book: Book) throws -> Book {
+        let original = directory(book.id)
+        let staging = root.appendingPathComponent(".clear-" + UUID().uuidString, isDirectory: true)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: staging) }
+        let contentNames = Set(book.chapters.map { "chapter-\($0.id).json" } + ["original.txt", "original.epub", "epub-map.json"])
+        for url in try manager.contentsOfDirectory(at: original, includingPropertiesForKeys: nil) where !contentNames.contains(url.lastPathComponent) {
+            try manager.copyItem(at: url, to: staging.appendingPathComponent(url.lastPathComponent))
+        }
+        var cleared = book; cleared.removed = true; cleared.bodyCleared = true
+        try encoder.encode(cleared).write(to: staging.appendingPathComponent("book.json"), options: .atomic)
+        _ = try decoder.decode(BookRecords.self, from: Data(contentsOf: staging.appendingPathComponent("records.json")))
+        try Self.swapDirectories(original, staging)
+        try manager.removeItem(at: staging)
+        return cleared
+    }
+    static func swapDirectories(_ first: URL, _ second: URL) throws {
+        guard renameatx_np(AT_FDCWD, first.path, AT_FDCWD, second.path, UInt32(RENAME_SWAP)) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
     public func notesMarkdown(for book: Book) throws -> String {
