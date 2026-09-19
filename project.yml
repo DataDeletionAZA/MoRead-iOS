@@ -18,7 +18,14 @@ targets:
   MoRead:
     type: application
     platform: iOS
-    sources: [App]
+    sources:
+      - path: App
+      - path: LICENSE
+        buildPhase: resources
+      - path: THIRD_PARTY_NOTICES.md
+        buildPhase: resources
+      - path: licenses/readium-BSD-3-Clause.txt
+        buildPhase: resources
     dependencies:
       - package: MoReadCore
       - package: Readium

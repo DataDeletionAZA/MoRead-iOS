@@ -1,0 +1,550 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		019EED415FC533C1F03B245F /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = 1E5D54D0D74742D43FD22580 /* ReadiumNavigator */; };
+		23D5B1908720955DDBC039FC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = E13CDB21AB706B03ADB8D9DE /* LICENSE */; };
+		2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */; };
+		31FD632648FF4E9182F6D30F /* sample.epub in Resources */ = {isa = PBXBuildFile; fileRef = B925A6CE73A58A5EA514FB00 /* sample.epub */; };
+		3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563B576C24E7177CF543069 /* CompanionViews.swift */; };
+		43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B830F2AED127F80997D8521 /* RootView.swift */; };
+		50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */; };
+		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
+		7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12B808B9926C791C07C1201 /* KeychainStore.swift */; };
+		99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9710D70B97A3A946E9FAED25 /* EPUBReader.swift */; };
+		AA8820FC4DEEE252D22378C1 /* MoReadCore in Frameworks */ = {isa = PBXBuildFile; productRef = 38BD1D23C9915BE266F16756 /* MoReadCore */; };
+		BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08C16806605250221F9CB65 /* CompanionModel.swift */; };
+		BEF2716A50044F7320F6FEF9 /* readium-BSD-3-Clause.txt in Resources */ = {isa = PBXBuildFile; fileRef = A9B96A8349156328D108EE1E /* readium-BSD-3-Clause.txt */; };
+		C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */; };
+		D2A3F338980736D1EF1739F8 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */; };
+		EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */; };
+		F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D914D6EE1624B82890502A /* SpeechPlayer.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4D5373626FF266E2F4D4641D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0ABE5A17538C76DC53F45029 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7EED9921ECB13CDD164085A0;
+			remoteInfo = MoRead;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		08D914D6EE1624B82890502A /* SpeechPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayer.swift; sourceTree = "<group>"; };
+		0B11F73FB9652E1D10E8E07D /* MoReadUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MoReadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		153247B56B294E5613324D91 /* MoRead-iOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "MoRead-iOS"; path = .; sourceTree = SOURCE_ROOT; };
+		1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoReadApp.swift; sourceTree = "<group>"; };
+		4D83A1D135AC7055CF1DB440 /* MoRead.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MoRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7563B576C24E7177CF543069 /* CompanionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViews.swift; sourceTree = "<group>"; };
+		9710D70B97A3A946E9FAED25 /* EPUBReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReader.swift; sourceTree = "<group>"; };
+		9B830F2AED127F80997D8521 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingTests.swift; sourceTree = "<group>"; };
+		A9B96A8349156328D108EE1E /* readium-BSD-3-Clause.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "readium-BSD-3-Clause.txt"; sourceTree = "<group>"; };
+		B12B808B9926C791C07C1201 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
+		B925A6CE73A58A5EA514FB00 /* sample.epub */ = {isa = PBXFileReference; path = sample.epub; sourceTree = "<group>"; };
+		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
+		E13CDB21AB706B03ADB8D9DE /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D7084B504C5B4E8F05A02774 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA8820FC4DEEE252D22378C1 /* MoReadCore in Frameworks */,
+				2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */,
+				6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */,
+				019EED415FC533C1F03B245F /* ReadiumNavigator in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		35DAECD5C8C28CB546FD3469 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E08C16806605250221F9CB65 /* CompanionModel.swift */,
+				7563B576C24E7177CF543069 /* CompanionViews.swift */,
+				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
+				4F1C7E35F6BA22FAB8ED449F /* Info.plist */,
+				B12B808B9926C791C07C1201 /* KeychainStore.swift */,
+				1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */,
+				FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */,
+				9B830F2AED127F80997D8521 /* RootView.swift */,
+				08D914D6EE1624B82890502A /* SpeechPlayer.swift */,
+				EBF244FCCA8336B34A96B8A1 /* Resources */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		45F9F9AF4771021162CB08A9 = {
+			isa = PBXGroup;
+			children = (
+				E13CDB21AB706B03ADB8D9DE /* LICENSE */,
+				B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */,
+				35DAECD5C8C28CB546FD3469 /* App */,
+				F1ACAF9EE103D4F78482F1BB /* licenses */,
+				F8E60DAF6DD2363E4B659331 /* Packages */,
+				4BCC38DC3B05A81D5C43662C /* UITests */,
+				B48E5A4E48B0719AB1469247 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4BCC38DC3B05A81D5C43662C /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		B48E5A4E48B0719AB1469247 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4D83A1D135AC7055CF1DB440 /* MoRead.app */,
+				0B11F73FB9652E1D10E8E07D /* MoReadUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EBF244FCCA8336B34A96B8A1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B925A6CE73A58A5EA514FB00 /* sample.epub */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F1ACAF9EE103D4F78482F1BB /* licenses */ = {
+			isa = PBXGroup;
+			children = (
+				A9B96A8349156328D108EE1E /* readium-BSD-3-Clause.txt */,
+			);
+			path = licenses;
+			sourceTree = "<group>";
+		};
+		F8E60DAF6DD2363E4B659331 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				153247B56B294E5613324D91 /* MoRead-iOS */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1D843F49F2DF80A88ED97FC2 /* MoReadUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7C51B0476A9900EA329B9730 /* Build configuration list for PBXNativeTarget "MoReadUITests" */;
+			buildPhases = (
+				C561336540A23DDEB2CF919D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9E9C778FCAC05B7ACEEB7D70 /* PBXTargetDependency */,
+			);
+			name = MoReadUITests;
+			packageProductDependencies = (
+			);
+			productName = MoReadUITests;
+			productReference = 0B11F73FB9652E1D10E8E07D /* MoReadUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		7EED9921ECB13CDD164085A0 /* MoRead */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6F0409CDE64817126787180B /* Build configuration list for PBXNativeTarget "MoRead" */;
+			buildPhases = (
+				6614057E94A761F2DC159EBC /* Sources */,
+				1F9536DA02548A0B6DA89024 /* Resources */,
+				D7084B504C5B4E8F05A02774 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MoRead;
+			packageProductDependencies = (
+				38BD1D23C9915BE266F16756 /* MoReadCore */,
+				2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */,
+				273B7BD2FBC9672415970DB2 /* ReadiumStreamer */,
+				1E5D54D0D74742D43FD22580 /* ReadiumNavigator */,
+			);
+			productName = MoRead;
+			productReference = 4D83A1D135AC7055CF1DB440 /* MoRead.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0ABE5A17538C76DC53F45029 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					1D843F49F2DF80A88ED97FC2 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+						TestTargetID = 7EED9921ECB13CDD164085A0;
+					};
+					7EED9921ECB13CDD164085A0 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 98DE7A17425671933F391A73 /* Build configuration list for PBXProject "MoRead" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 45F9F9AF4771021162CB08A9;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9E9EE9EB3BCD3F1BAAA3C269 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
+				86ED3995099A591A171524CC /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B48E5A4E48B0719AB1469247 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7EED9921ECB13CDD164085A0 /* MoRead */,
+				1D843F49F2DF80A88ED97FC2 /* MoReadUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1F9536DA02548A0B6DA89024 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				23D5B1908720955DDBC039FC /* LICENSE in Resources */,
+				D2A3F338980736D1EF1739F8 /* THIRD_PARTY_NOTICES.md in Resources */,
+				BEF2716A50044F7320F6FEF9 /* readium-BSD-3-Clause.txt in Resources */,
+				31FD632648FF4E9182F6D30F /* sample.epub in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6614057E94A761F2DC159EBC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */,
+				3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */,
+				99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */,
+				7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */,
+				EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */,
+				C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */,
+				43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */,
+				F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C561336540A23DDEB2CF919D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9E9C778FCAC05B7ACEEB7D70 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7EED9921ECB13CDD164085A0 /* MoRead */;
+			targetProxy = 4D5373626FF266E2F4D4641D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		24E76DDE61CC46F6547B5B31 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		2FB59332B4F68E9DCD898794 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.datadeletionaza.MoReadUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MoRead;
+			};
+			name = Debug;
+		};
+		7296B11331C92E0B0B46FB69 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.datadeletionaza.MoRead;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B05FBE7247B6A58F9079C08E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.datadeletionaza.MoReadUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MoRead;
+			};
+			name = Release;
+		};
+		B09D27DDA8097840495CE0AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F4EC0CBE7EE82F5209B8941B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.datadeletionaza.MoRead;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6F0409CDE64817126787180B /* Build configuration list for PBXNativeTarget "MoRead" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F4EC0CBE7EE82F5209B8941B /* Debug */,
+				7296B11331C92E0B0B46FB69 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7C51B0476A9900EA329B9730 /* Build configuration list for PBXNativeTarget "MoReadUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2FB59332B4F68E9DCD898794 /* Debug */,
+				B05FBE7247B6A58F9079C08E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		98DE7A17425671933F391A73 /* Build configuration list for PBXProject "MoRead" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B09D27DDA8097840495CE0AA /* Debug */,
+				24E76DDE61CC46F6547B5B31 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		86ED3995099A591A171524CC /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9E9EE9EB3BCD3F1BAAA3C269 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1E5D54D0D74742D43FD22580 /* ReadiumNavigator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E9EE9EB3BCD3F1BAAA3C269 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumNavigator;
+		};
+		273B7BD2FBC9672415970DB2 /* ReadiumStreamer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E9EE9EB3BCD3F1BAAA3C269 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumStreamer;
+		};
+		2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E9EE9EB3BCD3F1BAAA3C269 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumShared;
+		};
+		38BD1D23C9915BE266F16756 /* MoReadCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MoReadCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0ABE5A17538C76DC53F45029 /* Project object */;
+}

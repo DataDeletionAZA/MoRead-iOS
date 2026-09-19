@@ -39,7 +39,12 @@ struct BookshelfView: View {
                     } description: { Text("从“文件”导入 TXT 或 EPUB，阅读位置会自动保存。") }
                     actions: {
                         Button("导入书籍") { picker = true }.buttonStyle(.borderedProminent)
-                        if model.books.isEmpty { Button("打开示例书") { model.addSample() }.accessibilityIdentifier("add-sample") }
+                        if model.books.isEmpty {
+                            Button("打开示例书") { model.addSample() }.accessibilityIdentifier("add-sample")
+                            Button("打开 EPUB 示例") {
+                                if let url = Bundle.main.url(forResource: "sample", withExtension: "epub") { Task { await model.importFile(url) } }
+                            }.accessibilityIdentifier("add-epub-sample")
+                        }
                     }
                 } else {
                     ScrollView {
@@ -146,6 +151,15 @@ struct SettingsView: View {
                     Text("墨知 MoRead").font(.headline)
                     Text("书籍、阅读位置和笔记保存在本机。").foregroundStyle(.secondary)
                     Link("源代码与版本", destination: URL(string: "https://github.com/DataDeletionAZA/MoRead-iOS")!)
+                    NavigationLink("开源许可") {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 24) {
+                                ForEach(["THIRD_PARTY_NOTICES.md", "LICENSE", "readium-BSD-3-Clause.txt"], id: \.self) { name in
+                                    if let url = Bundle.main.url(forResource: name, withExtension: nil), let text = try? String(contentsOf: url, encoding: .utf8) { Text(text).textSelection(.enabled) }
+                                }
+                            }.font(.footnote).padding()
+                        }.navigationTitle("开源许可")
+                    }
                 }
             }.navigationTitle("设置")
         }

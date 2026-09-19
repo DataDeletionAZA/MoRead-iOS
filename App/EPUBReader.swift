@@ -42,7 +42,7 @@ final class EPUBService {
         guard !links.isEmpty, links.count <= 50_000 else { throw MoReadError.invalid("EPUB 的阅读顺序无效。") }
         var chapters = links.enumerated().map { MoReadCore.Chapter(id: $0.offset, title: $0.element.title ?? "第 \($0.offset + 1) 章", text: "") }
         let paths = links.map { $0.url().string.components(separatedBy: "#")[0] }
-        func applyTitles(_ contents: [Link]) {
+        func applyTitles(_ contents: [ReadiumShared.Link]) {
             for link in contents {
                 if let title = link.title, let index = paths.firstIndex(of: link.url().string.components(separatedBy: "#")[0]) { chapters[index].title = title }
                 applyTitles(link.children)
