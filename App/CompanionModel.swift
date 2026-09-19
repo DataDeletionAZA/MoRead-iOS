@@ -10,7 +10,12 @@ final class CompanionModel: ObservableObject {
     @Published var activeConversation: UUID?
     @Published var error: String?
     @Published var memoryStatus: String?
-    var busy: Bool { activeConversation != nil || memoryStatus != nil }
+    @Published var annotationStatus: String?
+    @Published var annotationRunning = false
+    var annotationBookID: UUID?
+    var annotationReaderID: UUID?
+    var annotationTask: Task<Void, Never>?
+    var busy: Bool { activeConversation != nil || memoryStatus != nil || annotationRunning }
     private var store: CompanionStore?
     private var task: Task<Void, Never>?
     private var lastSave = Date.distantPast
@@ -53,8 +58,12 @@ final class CompanionModel: ObservableObject {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
         perform { try store?.save(conversation) }
     }
-    func stop() { task?.cancel() }
-    func stopAndWait() async { if let task { task.cancel(); await task.value } }
+    func stop() { task?.cancel(); stopAnnotations() }
+    func stopAndWait() async {
+        task?.cancel(); annotationTask?.cancel()
+        if let task { await task.value }
+        if let annotationTask { await annotationTask.value }
+    }
     private func embeddingConnection() throws -> (AIProvider, String, String) {
         guard var provider = settings.providers.first(where: { $0.id == settings.embeddingProvider }),
               let model = settings.embeddingModel else { throw MoReadError.invalid("请先在向量记忆中选择服务商并填写向量模型。") }

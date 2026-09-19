@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 
 public struct CompanionSettings: Codable {
+    public var proactive: ProactiveSettings?
     public var providers: [AIProvider] = []
     public var selectedProvider: UUID?
     public var selectedCharacter: UUID?

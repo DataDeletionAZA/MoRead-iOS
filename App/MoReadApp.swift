@@ -25,6 +25,7 @@ struct MoReadApp: App {
 final class LibraryModel: ObservableObject {
     @Published var books: [Book] = []
     @Published var organization = ShelfOrganization()
+    @Published var recordsRevision = UUID()
     @Published var error: String?
     @Published var importing = false
     @Published var readingBackground: UIImage?
@@ -92,6 +93,12 @@ final class LibraryModel: ObservableObject {
                 UserDefaults.standard.set(typography.encoded(), forKey: "reader.typography")
             } catch { self.error = error.localizedDescription; break }
         }
+    }
+    @discardableResult func modifyRecords(for book: Book, _ change: (inout BookRecords) throws -> Void) throws -> BookRecords {
+        guard !maintenance, let store else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
+        let value = try store.modifyRecords(for: book, change)
+        recordsRevision = UUID()
+        return value
     }
     func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
     @discardableResult func update(_ book: Book, immediate: Bool = false) -> Bool {

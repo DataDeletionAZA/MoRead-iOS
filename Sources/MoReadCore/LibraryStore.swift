@@ -4,6 +4,10 @@ import Darwin
 public struct Annotation: Codable, Identifiable, Hashable, Sendable {
     public var id = UUID()
     public var passage: SourcePassage
+    public var generationKey: String?
+    public var characterID: UUID?
+    public var characterName: String?
+    public var sourceThrough: ReadingPosition?
     public var note: String
     public var style: String
     public var createdAt = Date()
@@ -24,6 +28,7 @@ public struct Bookmark: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct BookRecords: Codable, Sendable {
+    public var annotationAttempts: [String: ProactiveAttempt]?
     public var annotations: [Annotation] = []
     public var bookmarks: [Bookmark] = []
     public var readingSeconds: [String: Double] = [:]
@@ -102,6 +107,12 @@ public final class LibraryStore {
     public func saveRecords(_ records: BookRecords, for book: Book) throws {
         try encoder.encode(records).write(to: directory(book.id).appendingPathComponent("records.json"), options: .atomic)
     }
+    @discardableResult public func modifyRecords(for book: Book, _ update: (inout BookRecords) throws -> Void) throws -> BookRecords {
+        var current = try records(for: book)
+        try update(&current)
+        try saveRecords(current, for: book)
+        return current
+    }
     public func remove(_ book: Book, permanently: Bool) throws {
         if permanently { try manager.removeItem(at: directory(book.id)) }
         else {
@@ -141,7 +152,8 @@ public final class LibraryStore {
         let records = try records(for: book)
         return "# \(book.title)\n\n" + records.annotations.map { annotation in
             let heading = book.chapters.first { $0.id == annotation.passage.chapter }?.title ?? ""
-            return "## \(heading)\n\n> " + annotation.passage.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n\(annotation.note)\n"
+            let author = annotation.characterName.map { "\n\n\($0)的段评" } ?? ""
+            return "## \(heading)\(author)\n\n> " + annotation.passage.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n\(annotation.note)\n"
         }.joined(separator: "\n")
     }
 }

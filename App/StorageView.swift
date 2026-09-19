@@ -63,6 +63,7 @@ struct StoredBookView: View {
                 Section("笔记与批注") {
                     ForEach(records.annotations) { annotation in
                         VStack(alignment: .leading, spacing: 8) {
+                            if let name = annotation.characterName { Text(name + "的段评").font(.caption).foregroundStyle(.secondary) }
                             Text(annotation.passage.text).foregroundStyle(.secondary)
                             if !annotation.note.isEmpty { Text(annotation.note) }
                         }.textSelection(.enabled)

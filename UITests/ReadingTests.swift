@@ -2,6 +2,44 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testGeneratedAnnotationsSurviveBookmarkWritesAndRelaunch() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-annotations"]; app.launch()
+        app.buttons["add-sample"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+        book.tap()
+        for _ in 0..<6 { app.textViews["reader-text"].swipeUp() }
+        app.buttons["批注"].tap()
+        let generated = app.staticTexts.matching(NSPredicate(format: "label == %@", "这是一条本地模拟的随读段评。"))
+        XCTAssertTrue(generated.firstMatch.waitForExistence(timeout: 15))
+        let completed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in generated.count == 2 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 10), .completed)
+        XCTAssertTrue(app.staticTexts["阿翎的段评"].firstMatch.exists)
+        app.buttons["完成"].tap(); app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap()
+        XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-annotations"]; app.launch(); book.tap()
+        app.buttons["批注"].tap()
+        XCTAssertTrue(generated.firstMatch.waitForExistence(timeout: 10)); XCTAssertEqual(generated.count, 2)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
+        app.buttons["完成"].tap(); app.buttons["书签"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.exists)
+    }
+    func testProactiveSettingsPersistAndMissingConnectionIsExplained() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["随读段评"].tap()
+        app.switches["proactive-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        for _ in 0..<3 { if app.steppers["proactive-chapter-limit"].isHittable { break }; app.swipeUp() }
+        app.steppers["proactive-chapter-limit"].buttons.matching(NSPredicate(format: "label ENDSWITH %@", "Increment")).firstMatch.tap()
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["随读段评"].tap()
+        XCTAssertEqual(app.switches["proactive-enabled"].value as? String, "1")
+        for _ in 0..<3 { if app.steppers["proactive-chapter-limit"].isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(app.steppers["proactive-chapter-limit"].label.contains("3"))
+        app.terminate(); app.launch()
+        app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["下一章"].tap(); app.buttons["批注"].tap()
+        XCTAssertTrue(app.staticTexts["请先为随读段评选择 AI 服务商。"].waitForExistence(timeout: 10))
+    }
     func testBackgroundImagePersistsAcrossTextAndEPUB() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-background"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()

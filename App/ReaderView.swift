@@ -31,6 +31,10 @@ struct ReaderView: View {
     @State private var chat: ChatDestination?
     @State private var chatSelection: SourcePassage?
     private var book: Book? { model.books.first { $0.id == bookID && !$0.removed } }
+    private var completedChapter: Int? {
+        guard let book else { return nil }
+        return book.chapters.indices.last { $0 <= book.position.chapter && ReadingPosition(chapter: $0, offset: book.chapters[$0].length) <= book.readThrough }
+    }
     private var paperColor: Color { (paper == "custom" || paper == "image") ? Color(rgb: typography.backgroundRGB ?? 0xF7F2E3) : paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
     enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech; var id: String { rawValue } }
@@ -87,6 +91,7 @@ struct ReaderView: View {
                         model.perform { if let value = try model.store?.records(for: book) { records = value } }
                         if book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
                         readingStarted = Date()
+                        companion.setAnnotationReader(bookID, library: model)
                     }
                     .sheet(item: $sheet) { kind in readerSheet(kind, book: book) }
                     .sheet(item: $chat) { target in NavigationStack { CompanionChat(conversationID: target.id, selection: chatSelection) } }
@@ -109,9 +114,14 @@ struct ReaderView: View {
                     }
             } else { ContentUnavailableView("书籍已移除", systemImage: "book.closed") }
         }
-        .onDisappear { recordTime(); model.flush(); searchTask?.cancel() }
+        .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
+        .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
+        .onChange(of: model.recordsRevision) { _, _ in
+            if let book { model.perform { if let value = try model.store?.records(for: book) { records = value } } }
+        }
+        .onDisappear { companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { refreshReadingTime() } else { recordTime(); model.flush() }
+            if phase == .active { refreshReadingTime(); companion.setAnnotationReader(bookID, library: model) } else { companion.setAnnotationReader(nil, library: model); recordTime(); model.flush() }
         }
         .onChange(of: sheet) { _, _ in refreshReadingTime() }
         .onChange(of: selection) { _, _ in refreshReadingTime() }
@@ -194,10 +204,15 @@ struct ReaderView: View {
                         .onChange(of: query) { _, value in search(value, book: book) }
                 case .notes:
                     List {
+                        NavigationLink("随读段评设置") { ProactiveSettingsView() }
+                        if companion.annotationBookID == bookID, let status = companion.annotationStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
                         if records.annotations.isEmpty { Text("长按正文，选择“批注”即可保存。").foregroundStyle(.secondary) }
                         ForEach(records.annotations) { annotation in
-                            VStack(alignment: .leading, spacing: 10) { Text(annotation.passage.text).font(.callout); if !annotation.note.isEmpty { Text(annotation.note).foregroundStyle(.secondary) } }
-                        }.onDelete { offsets in records.annotations.remove(atOffsets: offsets); saveRecords() }
+                            VStack(alignment: .leading, spacing: 10) { if let name = annotation.characterName { Text(name + "的段评").font(.caption).foregroundStyle(.secondary) }; Text(annotation.passage.text).font(.callout); if !annotation.note.isEmpty { Text(annotation.note).foregroundStyle(.secondary) } }
+                        }.onDelete { offsets in
+                            let ids = Set(offsets.map { records.annotations[$0].id })
+                            changeRecords { $0.annotations.removeAll { ids.contains($0.id) } }
+                        }
                         if let markdown = try? model.store?.notesMarkdown(for: book) { ShareLink("导出笔记", item: markdown) }
                     }
                 }
@@ -236,7 +251,10 @@ struct ReaderView: View {
         chatSelection = passage
         if let id = companion.newConversation(book: book) { chat = ChatDestination(id: id) }
     }
-    private func saveRecords() { guard let book else { return }; model.perform { try model.store?.saveRecords(records, for: book) } }
+    private func changeRecords(_ change: (inout BookRecords) throws -> Void) {
+        guard let book else { return }
+        model.perform { records = try model.modifyRecords(for: book, change) }
+    }
     @ViewBuilder private func bookmarkList(book: Book) -> some View {
         Section("已保存的书签") {
             if records.bookmarks.isEmpty { Text("还没有书签，保存当前位置后可以随时跳回来。").foregroundStyle(.secondary) }
@@ -251,21 +269,30 @@ struct ReaderView: View {
                         if let date = bookmark.createdAt { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                     }
                 }.accessibilityIdentifier("bookmark-" + bookmark.id.uuidString)
-            }.onDelete { offsets in records.bookmarks.remove(atOffsets: offsets); saveRecords() }
+            }.onDelete { offsets in
+                let ids = Set(offsets.map { records.bookmarks[$0].id })
+                changeRecords { $0.bookmarks.removeAll { ids.contains($0.id) } }
+            }
         }
     }
     private func addBookmark() {
-        guard let book, let store = model.store else { return }
+        guard let book else { return }
         guard !records.bookmarks.contains(where: { $0.position == book.position && $0.locator == book.epubLocator }) else { bookmarkMessage = "这里已经有书签了"; return }
         model.perform {
-            var updated = records
-            updated.bookmarks.append(Bookmark(position: book.position, label: chapter?.title ?? book.title, locator: book.epubLocator))
-            try store.saveRecords(updated, for: book)
-            records = updated; bookmarkMessage = "书签已保存"
+            records = try model.modifyRecords(for: book) { value in
+                if !value.bookmarks.contains(where: { $0.position == book.position && $0.locator == book.epubLocator }) {
+                    value.bookmarks.append(Bookmark(position: book.position, label: chapter?.title ?? book.title, locator: book.epubLocator))
+                }
+            }
+            bookmarkMessage = "书签已保存"
         }
     }
     private func saveAnnotation(_ passage: SourcePassage) {
-        records.annotations.append(Annotation(passage: passage, note: note, style: style)); saveRecords(); selection = nil
+        guard let book else { return }
+        model.perform {
+            records = try model.modifyRecords(for: book) { $0.annotations.append(Annotation(passage: passage, note: note, style: style)) }
+            selection = nil
+        }
     }
     private func recordTime() {
         guard let start = readingStarted else { return }
@@ -274,13 +301,14 @@ struct ReaderView: View {
         let calendar = Calendar.current
         var cursor = start
         let formatter = DateFormatter(); formatter.calendar = calendar; formatter.dateFormat = "yyyy-MM-dd"
+        var elapsed: [String: Double] = [:]
         while cursor < end {
             guard let next = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: cursor)) else { break }
             let sliceEnd = min(end, next)
-            records.readingSeconds[formatter.string(from: cursor), default: 0] += sliceEnd.timeIntervalSince(cursor)
+            elapsed[formatter.string(from: cursor), default: 0] += sliceEnd.timeIntervalSince(cursor)
             cursor = sliceEnd
         }
-        saveRecords()
+        changeRecords { value in for (day, seconds) in elapsed { value.readingSeconds[day, default: 0] += seconds } }
     }
     private func refreshReadingTime() {
         if sheet == nil, selection == nil, chat == nil, scenePhase == .active {

@@ -129,7 +129,28 @@ final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     }
 }
 
+private actor CollectedReply {
+    private var value = ""
+    private var size = 0
+    private var overflow = false
+    func append(_ text: String, limit: Int) {
+        guard !overflow else { return }
+        guard text.utf8.count <= limit - size else { overflow = true; return }
+        size += text.utf8.count; value += text
+    }
+    func result() throws -> String {
+        guard !overflow else { throw MoReadError.invalid("服务商返回的内容过长，未保存。") }
+        return value
+    }
+}
+
 public enum ChatClient {
+    public static func complete(provider: AIProvider, key: String, messages: [ChatMessage], maximumBytes: Int = 64 * 1024) async throws -> String {
+        let reply = CollectedReply()
+        try await stream(provider: provider, key: key, messages: messages) { await reply.append($0, limit: min(1024 * 1024, max(1, maximumBytes))) }
+        return try await reply.result()
+    }
+
     public static func stream(provider: AIProvider, key: String, messages: [ChatMessage], onDelta: @escaping @Sendable (String) async -> Void) async throws {
         let request = try ChatRequest.make(provider: provider, key: key, messages: messages)
         let config = URLSessionConfiguration.ephemeral

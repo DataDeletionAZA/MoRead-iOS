@@ -20,6 +20,12 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedAnnotations {
+                var provider = AIProvider(); provider.name = "本地段评测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
+                companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id
+                var policy = companion.settings.proactive ?? ProactiveSettings(); policy.enabled = true
+                companion.settings.proactive = policy; companion.saveSettings()
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-font"),
                model.fonts.isEmpty, let url = Bundle.main.url(forResource: "NotoSerifSC", withExtension: "ttf") { await model.importFonts([url]) }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-background"), model.readingBackground == nil {
@@ -247,6 +253,7 @@ struct SettingsView: View {
                 Section("伴读") {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
+                    NavigationLink("随读段评") { ProactiveSettingsView() }
                 }
                 Section("阅读与外观") {
                     NavigationLink("字体库") { FontLibraryView() }
