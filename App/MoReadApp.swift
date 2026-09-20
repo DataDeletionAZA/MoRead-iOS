@@ -26,6 +26,7 @@ final class LibraryModel: ObservableObject {
     @Published var books: [Book] = []
     @Published var organization = ShelfOrganization()
     @Published var recordsRevision = UUID()
+    @Published var coverRevision = UUID()
     @Published var error: String?
     @Published var importing = false
     @Published var readingBackground: UIImage?
@@ -64,6 +65,7 @@ final class LibraryModel: ObservableObject {
             store = storage
             try reloadFonts()
             try loadReadingBackground()
+            coverRevision = UUID()
         } catch { self.error = error.localizedDescription }
     }
     var fontLibrary: FontLibrary? { store.map { FontLibrary(root: $0.root) } }

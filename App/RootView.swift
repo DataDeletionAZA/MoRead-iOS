@@ -154,6 +154,7 @@ struct BookshelfView: View {
     @State private var query = ""
     @State private var remove: Book?
     @State private var editing: Book?
+    @State private var coverEditing: Book?
     @State private var showFilters = false
     @State private var filter = ShelfFilter()
     @AppStorage("shelf.sort") private var sort = ShelfSort.recent.rawValue
@@ -190,8 +191,10 @@ struct BookshelfView: View {
                                         return false
                                     }
                                     .accessibilityAction(named: "编辑资料") { editing = book }
+                                    .accessibilityAction(named: "更换封面") { coverEditing = book }
                                     .contextMenu {
                                         Button("编辑资料", systemImage: "pencil") { editing = book }
+                                        Button("更换封面", systemImage: "photo") { coverEditing = book }
                                         Button(book.pinned ? "取消置顶" : "置顶", systemImage: "pin") {
                                             var copy = book; copy.pinned.toggle(); model.update(copy, immediate: true)
                                         }
@@ -228,6 +231,9 @@ struct BookshelfView: View {
             }
             .navigationDestination(for: UUID.self) { id in ReaderView(bookID: id) }
             .overlay { if model.importing { ProgressView("正在整理书籍…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) } }
+            .sheet(item: $coverEditing) { book in
+                NavigationStack { BookCoverEditor(bookID: book.id).toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { coverEditing = nil } } } }
+            }
             .sheet(item: $editing) { BookMetadataEditor(bookID: $0.id) }
             .sheet(isPresented: $showFilters) { ShelfFiltersView(filter: $filter, sort: $sort) }
             .fileImporter(isPresented: $picker, allowedContentTypes: [.plainText, UTType(filenameExtension: "epub") ?? .data], allowsMultipleSelection: true) { result in
@@ -283,20 +289,32 @@ struct BookshelfView: View {
 
 struct BookCover: View {
     let book: Book
+    @EnvironmentObject private var model: LibraryModel
+    @State private var image: UIImage?
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.86, green: 0.85, blue: 0.78).gradient)
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack { Text(book.format.uppercased()).font(.caption2.monospaced()); Spacer(); if book.pinned { Image(systemName: "pin.fill") } }.foregroundStyle(.black.opacity(0.55))
-                    Text(book.title).font(.system(size: 25, weight: .medium, design: .serif)).foregroundStyle(Color(red: 0.19, green: 0.25, blue: 0.21)).lineLimit(4)
-                    Spacer(minLength: 0)
-                    Text(book.author.isEmpty ? "本地藏书" : book.author).font(.caption).foregroundStyle(.black.opacity(0.65))
-                }.padding(18)
-            }.frame(height: 215)
+                if let image {
+                    GeometryReader { geometry in Image(uiImage: image).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped() }
+                    if book.pinned { Image(systemName: "pin.fill").padding(8).background(.regularMaterial, in: Circle()).padding(10).accessibilityLabel("已置顶") }
+                } else {
+                    RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.86, green: 0.85, blue: 0.78).gradient)
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack { Text(book.format.uppercased()).font(.caption2.monospaced()); Spacer(); if book.pinned { Image(systemName: "pin.fill") } }.foregroundStyle(.black.opacity(0.55))
+                        Text(book.title).font(.system(size: 25, weight: .medium, design: .serif)).foregroundStyle(Color(red: 0.19, green: 0.25, blue: 0.21)).lineLimit(4)
+                        Spacer(minLength: 0)
+                        Text(book.author.isEmpty ? "本地藏书" : book.author).font(.caption).foregroundStyle(.black.opacity(0.65))
+                    }.padding(18)
+                }
+            }.aspectRatio(2.0 / 3, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 12))
             Text(book.title).font(.subheadline.weight(.medium)).lineLimit(1)
             HStack { Text(book.state); Spacer(); Text(book.progress, format: .percent.precision(.fractionLength(0))) }.font(.caption).foregroundStyle(.secondary)
         }.accessibilityElement(children: .combine)
+            .task(id: model.coverRevision) {
+                guard let store = model.store else { return }; let id = book.id
+                let data = await Task.detached(priority: .utility) { try? store.coverData(for: id) }.value
+                guard !Task.isCancelled else { return }; image = data.flatMap(UIImage.init(data:))
+            }
     }
 }
 

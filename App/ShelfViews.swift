@@ -167,9 +167,11 @@ struct BookMetadataEditor: View {
     @State private var selectedTags: Set<UUID> = []
     @State private var newTag = ""
     @State private var pendingTags: [ShelfTag] = []
+    @State private var loaded = false
     var body: some View {
         NavigationStack {
             Form {
+                Section { NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) } }
                 Section("书籍资料") {
                     TextField("书名", text: $title).accessibilityIdentifier("book-title")
                     TextField("作者", text: $author)
@@ -204,7 +206,8 @@ struct BookMetadataEditor: View {
                 }
             }.navigationTitle("编辑书籍")
                 .task {
-                    guard let book = model.books.first(where: { $0.id == bookID }) else { return }
+                    guard !loaded, let book = model.books.first(where: { $0.id == bookID }) else { return }
+                    loaded = true
                     title = book.title; author = book.author; state = book.state; pinned = book.pinned
                     group = model.organization.bookGroups[bookID]
                     collection = model.organization.collections.first { $0.bookIDs.contains(bookID) }?.id

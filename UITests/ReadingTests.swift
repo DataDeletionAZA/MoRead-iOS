@@ -7,6 +7,45 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testBookCoverCropCancelSaveResetAndRelaunch() {
+        executionTimeAllowance = 600
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-cover"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        func openCover() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.press(forDuration: 1)
+            app.buttons["更换封面"].tap()
+            XCTAssertTrue(app.navigationBars["书籍封面"].waitForExistence(timeout: 5))
+        }
+        func tap(_ name: String) {
+            let button = app.buttons[name]
+            for _ in 0..<4 { if button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.isHittable); button.tap()
+        }
+        openCover(); tap("选择测试封面")
+        XCTAssertTrue(app.images["draft-book-cover"].waitForExistence(timeout: 5))
+        tap("取消裁剪"); XCTAssertTrue(app.staticTexts["文字封面"].waitForExistence(timeout: 5))
+        tap("选择测试封面"); app.sliders["cover-focus-y"].adjust(toNormalizedSliderPosition: 0.9)
+        let crop = XCTAttachment(screenshot: app.screenshot()); crop.name = "Cover-crop"; crop.lifetime = .keepAlways; add(crop)
+        tap("save-book-cover"); XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        app.buttons["完成"].tap()
+        let shelf = XCTAttachment(screenshot: app.screenshot()); shelf.name = "Cover-bookshelf"; shelf.lifetime = .keepAlways; add(shelf)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-cover"]; app.launch(); openCover()
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        tap("选择测试封面"); tap("取消裁剪"); XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        tap("恢复文字封面"); app.sheets.buttons["恢复文字封面"].tap()
+        XCTAssertTrue(app.staticTexts["文字封面"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); openCover()
+        XCTAssertTrue(app.staticTexts["文字封面"].waitForExistence(timeout: 5)); XCTAssertFalse(app.images["saved-book-cover"].exists)
+        app.buttons["完成"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.press(forDuration: 1)
+        app.buttons["编辑资料"].tap()
+        let title = app.textFields["book-title"]; title.tap(); title.typeText("海岸")
+        let draftTitle = title.value as? String
+        app.buttons["书籍封面"].tap(); app.navigationBars["书籍封面"].buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(title.value as? String, draftTitle)
+        app.buttons["取消"].tap()
+    }
     func testWebSearchOptInSourcesFailuresAndSettingsPersist() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-web"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
