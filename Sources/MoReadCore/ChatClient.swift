@@ -18,6 +18,7 @@ public struct AIProvider: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
+    public var toolTrace: [ChatToolTrace]?
     public var retrievalNotice: String?
     public var bookScopes: [MemoryBookScope]?
     public var identity: ChatIdentity?
@@ -31,7 +32,7 @@ public struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
 }
 
 public enum ChatRequest {
-    public static func make(provider: AIProvider, key: String, messages: [ChatMessage]) throws -> URLRequest {
+    public static func make(provider: AIProvider, key: String, messages: [ChatMessage], tools: [ChatTool] = [], exchanges: [ChatToolExchange] = []) throws -> URLRequest {
         guard !key.isEmpty, !provider.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               var components = URLComponents(string: provider.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               components.scheme?.lowercased() == "https", components.host != nil,
@@ -73,6 +74,7 @@ public enum ChatRequest {
         }
         components.path = "/" + path
         guard let url = components.url else { throw MoReadError.invalid("接口地址无效。") }
+        try ChatToolWire.apply(to: &body, dialect: provider.dialect, tools: tools, exchanges: exchanges)
         let encoded = try JSONSerialization.data(withJSONObject: body)
         guard encoded.count <= 6 * 1024 * 1024 else { throw MoReadError.invalid("对话内容过长，请开启新话题。") }
         var request = URLRequest(url: url)
@@ -87,16 +89,26 @@ public enum ChatRequest {
 public struct ChatStreamDecoder {
     public let dialect: AIProtocol
     public private(set) var finished = false
-    public init(dialect: AIProtocol) { self.dialect = dialect }
+    private var tools: ToolStreamAccumulator?
+    private var text = ""
+    public init(dialect: AIProtocol, allowsTools: Bool = false) { self.dialect = dialect; tools = allowsTools ? ToolStreamAccumulator(dialect: dialect) : nil }
+    public func toolRound() throws -> ChatToolRound { try tools?.finish(text: text) ?? ChatToolRound(text: text, calls: [], replay: Data("[]".utf8)) }
     public mutating func consume(_ payload: String) throws -> String {
         if payload == "[DONE]" { finished = true; return "" }
         guard let data = payload.data(using: .utf8), let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw MoReadError.invalid("服务商返回了无法识别的回复。") }
         if json["error"] != nil || json["type"] as? String == "error" { throw MoReadError.invalid("服务商返回错误，请检查模型和服务商设置。") }
+        try tools?.consume(json, bytes: data.count)
+        let delta = try consumeText(json)
+        text += delta
+        guard text.utf8.count <= 2 * 1024 * 1024 else { throw MoReadError.invalid("回复文字过长。") }
+        return delta
+    }
+    private mutating func consumeText(_ json: [String: Any]) throws -> String {
         switch dialect {
         case .openAI:
             guard let choice = (json["choices"] as? [[String: Any]])?.first else { return "" }
             if let finish = choice["finish_reason"] as? String {
-                guard finish == "stop" else { throw MoReadError.invalid(finish == "length" ? "回复达到服务商长度上限，已保留收到的部分。" : "服务商没有正常完成回复。") }
+                guard finish == "stop" || (tools != nil && finish == "tool_calls") else { throw MoReadError.invalid(finish == "length" ? "回复达到服务商长度上限，已保留收到的部分。" : "服务商没有正常完成回复。") }
                 finished = true
             }
             return (choice["delta"] as? [String: Any])?["content"] as? String ?? ""
@@ -109,7 +121,7 @@ public struct ChatStreamDecoder {
             let type = json["type"] as? String
             if type == "message_stop" { finished = true }
             let delta = json["delta"] as? [String: Any]
-            if let reason = delta?["stop_reason"] as? String, !["end_turn", "stop_sequence"].contains(reason) { throw MoReadError.invalid("回复未完整结束，已保留收到的部分。") }
+            if let reason = delta?["stop_reason"] as? String, !(tools == nil ? ["end_turn", "stop_sequence"] : ["end_turn", "stop_sequence", "tool_use"]).contains(reason) { throw MoReadError.invalid("回复未完整结束，已保留收到的部分。") }
             return delta?["type"] as? String == "text_delta" ? delta?["text"] as? String ?? "" : ""
         case .gemini:
             guard let candidate = (json["candidates"] as? [[String: Any]])?.first else {
@@ -155,7 +167,10 @@ public enum ChatClient {
     }
 
     public static func stream(provider: AIProvider, key: String, messages: [ChatMessage], onDelta: @escaping @Sendable (String) async -> Void) async throws {
-        let request = try ChatRequest.make(provider: provider, key: key, messages: messages)
+        _ = try await turn(provider: provider, key: key, messages: messages, onDelta: onDelta)
+    }
+    public static func turn(provider: AIProvider, key: String, messages: [ChatMessage], tools: [ChatTool] = [], exchanges: [ChatToolExchange] = [], onDelta: @escaping @Sendable (String) async -> Void) async throws -> ChatToolRound {
+        let request = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: tools, exchanges: exchanges)
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil; config.httpCookieStorage = nil; config.timeoutIntervalForResource = 300
         let delegate = NoRedirects()
@@ -164,7 +179,7 @@ public enum ChatClient {
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw MoReadError.invalid("服务商没有返回有效响应。") }
         guard (200...299).contains(http.statusCode) else { throw MoReadError.invalid("连接失败（HTTP \(http.statusCode)）。请检查地址、密钥、模型或服务商余额。") }
-        var decoder = ChatStreamDecoder(dialect: provider.dialect)
+        var decoder = ChatStreamDecoder(dialect: provider.dialect, allowsTools: !tools.isEmpty)
         var event: [String] = []
         var eventSize = 0
         var total = 0
@@ -200,6 +215,8 @@ public enum ChatClient {
         let final = try consumeLine("")
         if !final.isEmpty { hasText = true; await onDelta(final) }
         guard decoder.finished else { throw MoReadError.invalid("连接提前中断，已保留收到的回复，可以重试。") }
-        guard hasText else { throw MoReadError.invalid("服务商返回了空回复。") }
+        let round = try decoder.toolRound()
+        guard hasText || !round.calls.isEmpty else { throw MoReadError.invalid("服务商返回了空回复。") }
+        return round
     }
 }

@@ -23,9 +23,11 @@
 		3FE4A055F33822AEEDEF6FE5 /* RerankSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11477324D774EAB870E5221 /* RerankSettingsView.swift */; };
 		43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B830F2AED127F80997D8521 /* RootView.swift */; };
 		457D71997185824C45A19866 /* ReaderBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 035CD3F1A06D22ADFB39DD82 /* ReaderBackgroundView.swift */; };
+		49DC7E6FF60B2348E8F97793 /* CompanionToolsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */; };
 		50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */; };
 		51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2065DE60076241DE16C071 /* SpeechControls.swift */; };
 		52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */; };
+		6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */; };
 		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
 		7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12B808B9926C791C07C1201 /* KeychainStore.swift */; };
 		812C283C0232E1F3BAE8B34D /* zipfoundation-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7C172A1663776C99A42F638F /* zipfoundation-MIT.txt */; };
@@ -74,6 +76,7 @@
 		4D83A1D135AC7055CF1DB440 /* MoRead.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MoRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagedTextReader.swift; sourceTree = "<group>"; };
 		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionToolsSettingsView.swift; sourceTree = "<group>"; };
 		5868308952DB53DF46DE561A /* ProactiveCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProactiveCompanion.swift; sourceTree = "<group>"; };
 		6BB9A7F794DA1BB7C6E13AE1 /* WorldBookEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldBookEditor.swift; sourceTree = "<group>"; };
 		7563B576C24E7177CF543069 /* CompanionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViews.swift; sourceTree = "<group>"; };
@@ -100,6 +103,7 @@
 		E13CDB21AB706B03ADB8D9DE /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSpeechView.swift; sourceTree = "<group>"; };
 		EF601B6CB703407F00D933F4 /* UserMaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserMaskView.swift; sourceTree = "<group>"; };
+		F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionToolModel.swift; sourceTree = "<group>"; };
 		F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViews.swift; sourceTree = "<group>"; };
 		FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -125,6 +129,8 @@
 				D873B44D290EDDDCE5025C21 /* BackupView.swift */,
 				E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */,
 				E08C16806605250221F9CB65 /* CompanionModel.swift */,
+				F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */,
+				527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */,
 				7563B576C24E7177CF543069 /* CompanionViews.swift */,
 				B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */,
 				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
@@ -336,6 +342,8 @@
 				17C7F979065AF746BDCFAD4C /* BackupView.swift in Sources */,
 				52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */,
 				BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */,
+				6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */,
+				49DC7E6FF60B2348E8F97793 /* CompanionToolsSettingsView.swift in Sources */,
 				3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */,
 				8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */,
 				99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */,

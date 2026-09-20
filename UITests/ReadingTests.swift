@@ -2,6 +2,23 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testToolQueriesKeepCitationsAndRefuseUnreadChapters() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools"]; app.launch()
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
+        openChat()
+        let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+        input.tap(); input.typeText("Please check chapter one."); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["已查到第一章，并拦住未读章节。"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["来源 1"].exists)
+        app.buttons["来源 1"].tap(); XCTAssertTrue(app.staticTexts["lighthouse first clue."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools"]; app.launch(); openChat()
+        XCTAssertTrue(app.staticTexts["已查到第一章，并拦住未读章节。"].waitForExistence(timeout: 10))
+        let trace = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "查询过程（3 步）")).firstMatch
+        XCTAssertTrue(trace.waitForExistence(timeout: 5)); trace.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "查看已读目录 · 完成")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Future secret")).firstMatch.exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Reading-tool-trace"; shot.lifetime = .keepAlways; add(shot)
+    }
     func testRerankOrderCitationsFallbackAndSettingsPersist() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-rerank"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "寻找灯塔")).firstMatch.tap() }

@@ -98,6 +98,7 @@ struct CharacterEditor: View {
                     TextField("名字", text: $card.name)
                     NavigationLink("世界书（\(card.worldBook.count) 条）") { WorldBookEditor(entries: $card.worldBook) }.accessibilityIdentifier("edit-world-book")
                     NavigationLink("角色记忆") { PersonaMemoryView(characterID: card.id) }
+                    NavigationLink("可用查询工具") { CharacterToolsView(enabled: $card.enabledTools) }
                 }
                 Section("人物设定") { TextEditor(text: $card.description).frame(minHeight: 130) }
                 Section("性格") { TextEditor(text: $card.personality).frame(minHeight: 80) }
@@ -215,6 +216,16 @@ struct CompanionChat: View {
                             if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
                             else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                             if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
+                            if let traces = message.toolTrace, !traces.isEmpty {
+                                DisclosureGroup("查询过程（\(traces.count) 步）") {
+                                    ForEach(traces) { trace in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Label(trace.title + " · " + (trace.state == "succeeded" ? "完成" : trace.state == "failed" ? "未完成" : trace.state == "interrupted" ? "已停止" : "进行中"), systemImage: trace.state == "succeeded" ? "checkmark.circle" : "magnifyingglass")
+                                            if !trace.preview.isEmpty { Text(trace.preview).font(.caption).textSelection(.enabled) }
+                                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                                    }
+                                }.font(.caption).accessibilityIdentifier("tool-trace")
+                            }
                             if let notice = message.retrievalNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
                             if !message.sources.isEmpty {
                                 ScrollView(.horizontal) {

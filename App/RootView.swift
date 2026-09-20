@@ -20,6 +20,20 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedTools, companion.conversations.isEmpty, let card = companion.characters.first {
+                companion.perform {
+                    var provider = AIProvider(); provider.name = "本地工具测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"
+                    companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id; companion.saveSettings()
+                    if let store = model.store {
+                        let chapters = [Chapter(id: 0, title: "First", text: "lighthouse first clue."), Chapter(id: 1, title: "Second", text: "lighthouse second clue."), Chapter(id: 2, title: "Future secret", text: "lighthouse secret identity.")]
+                        var book = try store.importBook(title: "查询测试", chapters: chapters)
+                        book.readThrough = .init(chapter: 1, offset: chapters[1].text.utf16.count)
+                        try store.save(book); model.load()
+                        let chat = Conversation(title: "工具查询", bookID: book.id, characterID: card.id)
+                        try companion.store?.save(chat); companion.conversations = [chat]
+                    }
+                }
+            }
             if companion.simulatedRerank, companion.conversations.isEmpty, let card = companion.characters.first {
                 companion.perform {
                     var provider = AIProvider(); provider.name = "本地排序测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"
@@ -294,6 +308,7 @@ struct SettingsView: View {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("原文相关性排序") { RerankSettingsView() }
+                    NavigationLink("伴读查询工具") { CompanionToolsSettingsView() }
                     NavigationLink("随读段评") { ProactiveSettingsView() }
                     NavigationLink("对话记忆") { SummarySettingsView() }
                     NavigationLink("长期记忆") { PersonaMemorySettingsView() }

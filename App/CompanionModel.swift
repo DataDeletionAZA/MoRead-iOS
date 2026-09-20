@@ -38,6 +38,9 @@ final class CompanionModel: ObservableObject {
             for index in conversations.indices {
                 for message in conversations[index].messages.indices where conversations[index].messages[message].status == "receiving" {
                     conversations[index].messages[message].status = "interrupted"
+                    if let traces = conversations[index].messages[message].toolTrace {
+                        conversations[index].messages[message].toolTrace = traces.map { trace in var trace = trace; if trace.state == "running" { trace.state = "interrupted" }; return trace }
+                    }
                 }
             }
             store = storage
@@ -45,12 +48,12 @@ final class CompanionModel: ObservableObject {
     }
     func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
     func saveSettings() { perform { try store?.save(settings) } }
-    func saveCard(_ card: CharacterCard) {
+    func saveCard(_ card: CharacterCard, select: Bool = true) {
         perform {
             guard let store else { throw MoReadError.invalid("角色资料存储尚未打开。") }
             try store.save(card)
             if let index = characters.firstIndex(where: { $0.id == card.id }) { characters[index] = card } else { characters.append(card) }
-            settings.selectedCharacter = card.id; try store.save(settings)
+            if select { settings.selectedCharacter = card.id }; try store.save(settings)
         }
     }
     func newConversation(book: Book?) -> UUID? {
@@ -121,7 +124,7 @@ final class CompanionModel: ObservableObject {
         do {
             let key: String
             #if DEBUG
-            key = (simulatedIdentities || simulatedMemory || simulatedRerank) ? "local-test" : try KeychainStore.read(provider.id)
+            key = (simulatedIdentities || simulatedMemory || simulatedRerank || simulatedTools) ? "local-test" : try KeychainStore.read(provider.id)
             #else
             key = try KeychainStore.read(provider.id)
             #endif
@@ -182,7 +185,7 @@ final class CompanionModel: ObservableObject {
                     let recap = (self.settings.summarySettings ?? SummarySettings()).enabled ? RollingSummary.block(summary: snapshot.summary, messages: snapshot.messages) : ""
                     let system = rules + recap + remembered + "\n\n" + persona + "\n\n" + identity.prompt + "\n\n以下为本次可用原文：\n" + (context.text.isEmpty ? "暂无可用的已读原文。" : context.text)
                     let history = snapshot.messages.filter { $0.status == "complete" && ["user", "assistant"].contains($0.role) }.suffix(30).map(\.withIdentityLabel)
-                    try await self.streamReply(provider: provider, key: key, messages: [ChatMessage(role: "system", content: system)] + history, conversationID: id, responseID: responseID)
+                    try await self.streamReply(provider: provider, key: key, messages: [ChatMessage(role: "system", content: system)] + history, conversationID: id, responseID: responseID, library: library, books: books, card: card)
                     try self.conversations.first(where: { $0.id == id })?.validateSources(books: library.books)
                     self.finish(id, messageID: responseID, status: "complete")
                     self.refreshSummary(id, library: library)
@@ -200,7 +203,7 @@ final class CompanionModel: ObservableObject {
         ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--simulate-identities")
     }
     #endif
-    private func streamReply(provider: AIProvider, key: String, messages: [ChatMessage], conversationID: UUID, responseID: UUID) async throws {
+    private func streamReply(provider: AIProvider, key: String, messages: [ChatMessage], conversationID: UUID, responseID: UUID, library: LibraryModel, books: [Book], card: CharacterCard) async throws {
         #if DEBUG
         if simulatedRerank {
             let passages = conversations.first { $0.id == conversationID }?.messages.last?.sources ?? []
@@ -221,11 +224,9 @@ final class CompanionModel: ObservableObject {
             return
         }
         #endif
-        try await ChatClient.stream(provider: provider, key: key, messages: messages) { delta in
-            await self.append(delta, to: conversationID, messageID: responseID)
-        }
+        try await runToolChat(provider: provider, key: key, messages: messages, conversationID: conversationID, responseID: responseID, library: library, books: books, card: card)
     }
-    private func append(_ text: String, to id: UUID, messageID: UUID) {
+    func append(_ text: String, to id: UUID, messageID: UUID) {
         guard let index = conversations.firstIndex(where: { $0.id == id }), let message = conversations[index].messages.firstIndex(where: { $0.id == messageID }) else { return }
         conversations[index].messages[message].content += text
         if Date().timeIntervalSince(lastSave) > 0.5 { lastSave = Date(); saveConversation(id) }
@@ -233,6 +234,9 @@ final class CompanionModel: ObservableObject {
     private func finish(_ id: UUID, messageID: UUID, status: String) {
         guard let index = conversations.firstIndex(where: { $0.id == id }), let message = conversations[index].messages.firstIndex(where: { $0.id == messageID }) else { return }
         conversations[index].messages[message].status = status; conversations[index].updatedAt = Date()
+        if let traces = conversations[index].messages[message].toolTrace {
+            conversations[index].messages[message].toolTrace = traces.map { trace in var trace = trace; if trace.state == "running" { trace.state = "interrupted" }; return trace }
+        }
     }
     func retry(_ id: UUID, library: LibraryModel) {
         guard task == nil, let index = conversations.firstIndex(where: { $0.id == id }), let user = conversations[index].messages.lastIndex(where: { $0.role == "user" }) else { return }
