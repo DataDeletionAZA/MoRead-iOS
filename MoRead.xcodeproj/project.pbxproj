@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		019EED415FC533C1F03B245F /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = 1E5D54D0D74742D43FD22580 /* ReadiumNavigator */; };
+		0886402407784524318950E4 /* BookCoverSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B4246095AE328B93E305E4 /* BookCoverSearchView.swift */; };
 		0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */; };
 		116F8C245B899EE9BE56335E /* PagedTextReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */; };
 		174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C880FD0E398C652F62F267 /* VectorMemoryView.swift */; };
@@ -98,6 +99,7 @@
 		9710D70B97A3A946E9FAED25 /* EPUBReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReader.swift; sourceTree = "<group>"; };
 		9B830F2AED127F80997D8521 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9CB4AB0E592A32B4110298DE /* NotoSerifSC.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = NotoSerifSC.ttf; sourceTree = "<group>"; };
+		A0B4246095AE328B93E305E4 /* BookCoverSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCoverSearchView.swift; sourceTree = "<group>"; };
 		A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingTests.swift; sourceTree = "<group>"; };
 		A9B96A8349156328D108EE1E /* readium-BSD-3-Clause.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "readium-BSD-3-Clause.txt"; sourceTree = "<group>"; };
 		B12B808B9926C791C07C1201 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 			children = (
 				D873B44D290EDDDCE5025C21 /* BackupView.swift */,
 				08188C57F9403EDB541C9DC8 /* BookCoverEditor.swift */,
+				A0B4246095AE328B93E305E4 /* BookCoverSearchView.swift */,
 				E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */,
 				E08C16806605250221F9CB65 /* CompanionModel.swift */,
 				F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */,
@@ -356,6 +359,7 @@
 			files = (
 				17C7F979065AF746BDCFAD4C /* BackupView.swift in Sources */,
 				75AD0A5C70524BD568EEF9F3 /* BookCoverEditor.swift in Sources */,
+				0886402407784524318950E4 /* BookCoverSearchView.swift in Sources */,
 				52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */,
 				BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */,
 				6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */,

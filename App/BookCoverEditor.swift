@@ -8,6 +8,7 @@ struct BookCoverEditor: View {
     @EnvironmentObject private var model: LibraryModel
     @State private var selection: PhotosPickerItem?
     @State private var filePicker = false
+    @State private var searchPicker = false
     @State private var original: UIImage?
     @State private var draft: UIImage?
     @State private var focusX = 0.5
@@ -47,16 +48,12 @@ struct BookCoverEditor: View {
                 Section {
                     PhotosPicker("从照片选择", selection: $selection, matching: .images)
                     Button("从文件选择") { filePicker = true }
+                    Button("网络搜索封面") { searchPicker = true }
                     if original != nil { Button("恢复文字封面", role: .destructive) { remove = true } }
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-cover") {
                         Button("选择测试封面") {
-                            let format = UIGraphicsImageRendererFormat(); format.scale = 1
-                            draft = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 1200), format: format).image { context in
-                                for (index, color) in [UIColor.systemTeal, .systemOrange, .systemIndigo].enumerated() {
-                                    color.setFill(); context.fill(CGRect(x: 0, y: index * 400, width: 600, height: 400))
-                                }
-                            }
+                            draft = ReaderImage.coverFixture()
                             focusX = 0.5; focusY = 0.5
                         }
                     }
@@ -91,6 +88,11 @@ struct BookCoverEditor: View {
                         do { try await prepare(data) } catch is CancellationError {} catch { self.error = error.localizedDescription }
                     }
                 } catch { self.error = error.localizedDescription }
+            }
+            .sheet(isPresented: $searchPicker) {
+                if let book = model.books.first(where: { $0.id == bookID }) {
+                    NavigationStack { BookCoverSearchView(book: book) { image in draft = image; focusX = 0.5; focusY = 0.5 } }
+                }
             }
             .onDisappear { importTask?.cancel() }
             .confirmationDialog("恢复文字封面？", isPresented: $remove, titleVisibility: .visible) {
@@ -128,3 +130,16 @@ extension LibraryModel {
         try store.saveCover(data, for: id); coverRevision = UUID()
     }
 }
+
+#if DEBUG
+extension ReaderImage {
+    @MainActor static func coverFixture() -> UIImage {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: 600, height: 1200), format: format).image { context in
+            for (index, color) in [UIColor.systemTeal, .systemOrange, .systemIndigo].enumerated() {
+                color.setFill(); context.fill(CGRect(x: 0, y: index * 400, width: 600, height: 400))
+            }
+        }
+    }
+}
+#endif

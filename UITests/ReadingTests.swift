@@ -7,6 +7,35 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testOnlineCoverSearchSelectCancelFailuresAndStop() {
+        executionTimeAllowance = 360
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-cover-search"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.press(forDuration: 1)
+        app.buttons["更换封面"].tap()
+        func tap(_ name: String) {
+            let button = app.buttons[name]
+            for _ in 0..<5 { if button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.isHittable); button.tap()
+        }
+        func openSearch(_ suffix: String = "") {
+            tap("网络搜索封面")
+            XCTAssertTrue(app.navigationBars["网络封面"].waitForExistence(timeout: 5))
+            if !suffix.isEmpty { let title = app.textFields["cover-search-title"]; title.tap(); title.typeText(suffix) }
+            tap("搜索封面")
+        }
+        let select = "select-cover-https://example.invalid/cover.jpg"
+        openSearch(); XCTAssertTrue(app.buttons[select].waitForExistence(timeout: 5))
+        let result = XCTAttachment(screenshot: app.screenshot()); result.name = "Online-cover-results"; result.lifetime = .keepAlways; add(result)
+        tap(select); XCTAssertEqual(app.state, .runningForeground); XCTAssertTrue(app.images["draft-book-cover"].waitForExistence(timeout: 5))
+        tap("取消裁剪"); XCTAssertTrue(app.staticTexts["文字封面"].waitForExistence(timeout: 5))
+        openSearch(" unavailable"); XCTAssertTrue(app.staticTexts["封面服务暂不可用。"].waitForExistence(timeout: 5)); app.buttons["关闭"].tap()
+        openSearch(" empty"); XCTAssertTrue(app.staticTexts["没有找到可用封面，可以调整书名或作者再试。"].waitForExistence(timeout: 5)); app.buttons["关闭"].tap()
+        openSearch(" slow"); tap("停止"); XCTAssertTrue(app.staticTexts["已停止。"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons[select].exists); app.buttons["关闭"].tap()
+        openSearch(); XCTAssertTrue(app.buttons[select].waitForExistence(timeout: 5)); tap(select); XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(app.images["draft-book-cover"].waitForExistence(timeout: 5)); tap("save-book-cover")
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+    }
     func testBookCoverCropCancelSaveResetAndRelaunch() {
         executionTimeAllowance = 600
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-cover"]; app.launch()
