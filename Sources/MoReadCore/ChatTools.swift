@@ -92,6 +92,7 @@ public enum ChatToolWire {
 
 struct ToolStreamAccumulator {
     let dialect: AIProtocol
+    init(dialect: AIProtocol) { self.dialect = dialect }
     private var slots: [Int: [String: Any]] = [:]
     private var arguments: [Int: String] = [:]
     private var parts: [[String: Any]] = []
