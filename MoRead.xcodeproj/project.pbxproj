@@ -52,6 +52,7 @@
 		E367312840CDF010168D4FD7 /* notoserifsc-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = B3F4574B9E426BB11EBDB89D /* notoserifsc-OFL.txt */; };
 		EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */; };
 		F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D914D6EE1624B82890502A /* SpeechPlayer.swift */; };
+		F9AED182E87FFA6A3BA17002 /* ConversationScopeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B10978B459EE4E3BCC4F65F /* ConversationScopeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +82,7 @@
 		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionToolsSettingsView.swift; sourceTree = "<group>"; };
 		5868308952DB53DF46DE561A /* ProactiveCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProactiveCompanion.swift; sourceTree = "<group>"; };
+		6B10978B459EE4E3BCC4F65F /* ConversationScopeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationScopeView.swift; sourceTree = "<group>"; };
 		6BB9A7F794DA1BB7C6E13AE1 /* WorldBookEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldBookEditor.swift; sourceTree = "<group>"; };
 		711CE6FD1F1EE272D2CAAA67 /* ReadingNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingNotesView.swift; sourceTree = "<group>"; };
 		7563B576C24E7177CF543069 /* CompanionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViews.swift; sourceTree = "<group>"; };
@@ -136,6 +138,7 @@
 				F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */,
 				527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */,
 				7563B576C24E7177CF543069 /* CompanionViews.swift */,
+				6B10978B459EE4E3BCC4F65F /* ConversationScopeView.swift */,
 				B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */,
 				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
 				10876F211B91CB27519F3138 /* FontLibraryView.swift */,
@@ -351,6 +354,7 @@
 				6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */,
 				49DC7E6FF60B2348E8F97793 /* CompanionToolsSettingsView.swift in Sources */,
 				3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */,
+				F9AED182E87FFA6A3BA17002 /* ConversationScopeView.swift in Sources */,
 				8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */,
 				99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */,
 				3363F5D260EF8FD6F95EC143 /* FontLibraryView.swift in Sources */,

@@ -7,6 +7,26 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testGlobalFocusOnDemandSourcesAndRetryUseOriginalBooks() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-scope"]; app.launch()
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "多书范围")).firstMatch.tap() }
+        func toggle(_ title: String) { app.switches["focus-book-" + title].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
+        func send(_ text: String) { let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch; input.tap(); input.typeText(text); app.buttons["发送"].tap() }
+        openChat(); app.buttons["重点书籍"].tap(); toggle("森林"); app.buttons["保存"].tap()
+        send("Just chat.")
+        XCTAssertTrue(app.staticTexts["本轮未发送书籍原文。"].waitForExistence(timeout: 15)); XCTAssertFalse(app.buttons["来源 1"].exists)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-scope"]; app.launch(); openChat()
+        app.buttons["重点书籍"].tap(); XCTAssertEqual(app.switches["focus-book-森林"].value as? String, "1"); app.buttons["保存"].tap()
+        send("Read both books.")
+        let reply = app.staticTexts["重点：森林；已核对两本书的已读原文。"]
+        XCTAssertTrue(reply.waitForExistence(timeout: 15))
+        app.buttons["来源 1"].tap(); XCTAssertTrue(app.staticTexts["Forest visible."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        app.buttons["来源 2"].tap(); XCTAssertTrue(app.staticTexts["Harbor."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        app.buttons["重点书籍"].tap(); toggle("森林"); toggle("海岸"); app.buttons["保存"].tap()
+        app.buttons["重新生成"].tap(); XCTAssertTrue(reply.waitForExistence(timeout: 15))
+        app.buttons["重点书籍"].tap(); XCTAssertEqual(app.switches["focus-book-森林"].value as? String, "1"); XCTAssertEqual(app.switches["focus-book-海岸"].value as? String, "0")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Per-book-reading-scopes"; shot.lifetime = .keepAlways; add(shot)
+    }
     func testLibraryOrganizationPreviewConfirmationCancellationAndRelaunch() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-organization"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }

@@ -30,7 +30,22 @@ struct RootView: View {
                         var book = try store.importBook(title: "海岸与灯塔", chapters: chapters); book.readThrough = .init(chapter: 2, offset: visible.utf16.count)
                         try store.save(book); model.load()
                         companion.settings.vectorBooks = [book.id]; companion.saveSettings()
-                        let chat = Conversation(title: "检索测试", bookID: nil, characterID: card.id)
+                        let chat = Conversation(title: "检索测试", bookID: book.id, characterID: card.id)
+                        try companion.store?.save(chat); companion.conversations = [chat]
+                    }
+                }
+            }
+            if companion.simulatedTools, ProcessInfo.processInfo.arguments.contains("--simulate-scope"), companion.conversations.isEmpty, let card = companion.characters.first {
+                companion.perform {
+                    var provider = AIProvider(); provider.name = "本地范围测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"
+                    companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id; companion.saveSettings()
+                    if let store = model.store {
+                        for (title, visible) in [("海岸", "Harbor."), ("森林", "Forest visible."), ("草原", "Grass."), ("山川", "Hill."), ("星空", "Star.")] {
+                            var book = try store.importBook(title: title, chapters: [.init(id: 0, title: "第一章", text: visible + " Hidden future.")])
+                            book.readThrough = .init(offset: visible.utf16.count); try store.save(book)
+                        }
+                        model.load()
+                        let chat = Conversation(title: "多书范围", bookID: nil, characterID: card.id)
                         try companion.store?.save(chat); companion.conversations = [chat]
                     }
                 }
@@ -62,7 +77,7 @@ struct RootView: View {
                         book.readThrough = .init(chapter: 1, offset: chapters[1].text.utf16.count)
                         try store.save(book); model.load()
                     }
-                    let chat = Conversation(title: "寻找灯塔", bookID: nil, characterID: card.id)
+                    let chat = Conversation(title: "寻找灯塔", bookID: model.books.first { $0.title == "灯塔线索" }?.id, characterID: card.id)
                     try companion.store?.save(chat); companion.conversations = [chat]
                 }
             }

@@ -114,7 +114,7 @@ final class CompanionModel: ObservableObject {
     private func memoryProgress(_ title: String, done: Int, total: Int) {
         memoryStatus = "《\(title)》已整理 \(done) / \(total) 章"
     }
-    func send(_ text: String, in id: UUID, library: LibraryModel, selection: SourcePassage? = nil, identity: ChatIdentity? = nil) {
+    func send(_ text: String, in id: UUID, library: LibraryModel, selection: SourcePassage? = nil, identity: ChatIdentity? = nil, focusedBooks: [UUID]? = nil) {
         guard !library.maintenance else { return }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, task == nil, let index = conversations.firstIndex(where: { $0.id == id }),
@@ -122,6 +122,7 @@ final class CompanionModel: ObservableObject {
               let card = characters.first(where: { $0.id == conversations[index].characterID }),
               let root = library.store?.root else { error = "请先在设置中添加 AI 服务商并选择模型。"; return }
         do {
+            try conversations[index].validateUserText(text)
             let key: String
             #if DEBUG
             key = (simulatedIdentities || simulatedMemory || simulatedRerank || simulatedTools || simulatedHybrid) ? "local-test" : try KeychainStore.read(provider.id)
@@ -130,14 +131,15 @@ final class CompanionModel: ObservableObject {
             #endif
             _ = try ChatRequest.make(provider: provider, key: key, messages: [.init(role: "user", content: text)])
             var conversation = conversations[index]
-            try conversation.validateSources(books: library.books)
+            try conversation.prepareLibraryTurn(books: library.books, focus: focusedBooks)
             let identity = identity ?? settings.currentIdentity
-            var userMessage = ChatMessage(role: "user", content: text); userMessage.identity = identity
+            var userMessage = ChatMessage(role: "user", content: text); userMessage.identity = identity; userMessage.focusedBookIDs = conversation.focusedBookIDs
             conversation.messages.append(userMessage)
             var response = ChatMessage(role: "assistant", content: ""); response.status = "receiving"
             response.identity = identity
             let responseID = response.id
             conversation.messages.append(response)
+            try conversation.updateTurnScopes()
             conversation.updatedAt = Date()
             guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
             try store.save(conversation)
@@ -150,7 +152,7 @@ final class CompanionModel: ObservableObject {
             task = Task {
                 defer { self.task = nil; self.activeConversation = nil; self.memoryStatus = nil; self.saveConversation(id) }
                 do {
-                    let targets = books.filter { memoryBooks.contains($0.id) && (snapshot.bookID == nil || $0.id == snapshot.bookID) && !$0.removed && $0.hasBody && $0.readThrough > ReadingPosition() }
+                    let targets = books.filter { memoryBooks.contains($0.id) && snapshot.bookID == $0.id && !$0.removed && $0.hasBody && $0.readThrough > ReadingPosition() }
                     var semantic: [RetrievalCandidate] = [], vectorNotice: String?
                     if !targets.isEmpty {
                         do {
@@ -176,7 +178,7 @@ final class CompanionModel: ObservableObject {
                     }
                     let evidence = semantic
                     let contextTask = Task.detached(priority: .userInitiated) {
-                        try CompanionContextBuilder.build(query: text, books: books, currentBook: snapshot.bookID, store: LibraryStore(root: root), selection: selection, vector: evidence)
+                        try CompanionContextBuilder.build(query: text, books: snapshot.bookID == nil ? [] : books, currentBook: snapshot.bookID, store: LibraryStore(root: root), selection: selection, vector: evidence)
                     }
                     var context = try await withTaskCancellationHandler { try await contextTask.value } onCancel: { contextTask.cancel() }
                     let rankingNotice = try await self.rerankContext(&context, query: text, selection: selection, library: library)
@@ -199,7 +201,7 @@ final class CompanionModel: ObservableObject {
                     let persona = card.prompt(user: identity.name, conversation: snapshot.messages.suffix(12).map(\.content).joined(separator: "\n"))
                     let recap = (self.settings.summarySettings ?? SummarySettings()).enabled ? RollingSummary.block(summary: snapshot.summary, messages: snapshot.messages) : ""
                     let organization = LibraryOrganizationPlan.context(conversation: snapshot, shelf: library.organization)
-                    let system = rules + recap + remembered + organization + "\n\n" + persona + "\n\n" + identity.prompt + "\n\n以下为本次可用原文：\n" + (context.text.isEmpty ? "暂无可用的已读原文。" : context.text)
+                    let system = rules + snapshot.libraryContext(books: books) + recap + remembered + organization + "\n\n" + persona + "\n\n" + identity.prompt + "\n\n以下为本次可用原文：\n" + (context.text.isEmpty ? "暂无可用的已读原文。" : context.text)
                     let history = snapshot.messages.filter { $0.status == "complete" && ["user", "assistant"].contains($0.role) }.suffix(30).map(\.withIdentityLabel)
                     try await self.streamReply(provider: provider, key: key, messages: [ChatMessage(role: "system", content: system)] + history, conversationID: id, responseID: responseID, library: library, books: books, card: card)
                     try self.conversations.first(where: { $0.id == id })?.validateSources(books: library.books)
@@ -270,24 +272,33 @@ final class CompanionModel: ObservableObject {
     }
     func retry(_ id: UUID, library: LibraryModel) {
         guard task == nil, let index = conversations.firstIndex(where: { $0.id == id }), let user = conversations[index].messages.lastIndex(where: { $0.role == "user" }) else { return }
-        let original = conversations[index]
-        let text = conversations[index].messages[user].content
-        conversations[index].messages.removeSubrange(user...)
-        send(text, in: id, library: library, identity: original.messages[user].identity ?? ChatIdentity(name: settings.userName))
-        if task == nil { conversations[index] = original; saveConversation(id) }
+        let original = conversations[index], text = original.messages[user].content
+        do {
+            var retained = original; retained.messages = Array(original.messages.prefix(user + 1))
+            try retained.retainSourcesForHistory(); try retained.validateSources(books: library.books)
+            retained.messages.removeLast(); try retained.retainSourcesForHistory()
+            conversations[index] = retained
+            send(text, in: id, library: library, identity: original.messages[user].identity ?? ChatIdentity(name: settings.userName), focusedBooks: original.messages[user].focusedBookIDs ?? [])
+            if task == nil { conversations[index] = original; saveConversation(id) }
+        } catch { self.error = error.localizedDescription }
     }
     func edit(_ id: UUID, messageID: UUID, text: String) {
         guard task == nil, let index = conversations.firstIndex(where: { $0.id == id }), let message = conversations[index].messages.firstIndex(where: { $0.id == messageID }) else { return }
-        stopSummary(for: id); personaMemoryTask?.cancel(); conversations[index].summary = nil
-        conversations[index].messages[message].content = text
-        if conversations[index].messages[message].role == "user" { conversations[index].messages.removeSubrange((message + 1)...); }
-        saveConversation(id)
+        perform {
+            var copy = conversations[index]
+            if copy.messages[message].role == "user" { try copy.validateUserText(text) }
+            copy.summary = nil; copy.messages[message].content = text
+            if copy.messages[message].role == "user" { copy.messages.removeSubrange((message + 1)...); try copy.retainSourcesForHistory() }
+            guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
+            try store.save(copy); stopSummary(for: id); personaMemoryTask?.cancel(); conversations[index] = copy
+        }
     }
     func fork(_ id: UUID, through messageID: UUID) -> UUID? {
         guard task == nil, var copy = conversations.first(where: { $0.id == id }), let index = copy.messages.firstIndex(where: { $0.id == messageID }) else { return nil }
         if let summary = copy.summary, !summary.matches(Array(copy.messages.prefix(index + 1))) { copy.summary = nil }
         copy.id = UUID(); copy.title += " · 分支"; copy.messages = Array(copy.messages.prefix(index + 1)); copy.updatedAt = Date()
-        do { try store?.save(copy); conversations.insert(copy, at: 0); return copy.id } catch { self.error = error.localizedDescription; return nil }
+        copy.focusedBookIDs = copy.messages.last(where: { $0.role == "user" })?.focusedBookIDs
+        do { try copy.retainSourcesForHistory(); try store?.save(copy); conversations.insert(copy, at: 0); return copy.id } catch { self.error = error.localizedDescription; return nil }
     }
     func delete(_ id: UUID) {
         guard activeConversation != id else { return }

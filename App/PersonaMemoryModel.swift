@@ -87,11 +87,16 @@ extension CompanionModel {
             if !(conversation.bookID == nil || policy.crossBook) || !profile.isValid(books: library.books, conversations: conversations) { profile = MemoryProfile() }
             let origins = entries.flatMap(\.origins) + profile.origins
             if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+                var updated = conversations[index]
+                try updated.validateSources(books: library.books)
                 for scope in origins.flatMap(\.books) {
                     guard let book = library.books.first(where: { $0.id == scope.id }), scope.isValid(in: library.books) else { return "" }
-                    conversations[index].sourceLimits[scope.id] = max(conversations[index].sourceLimits[scope.id] ?? ReadingPosition(), scope.through)
-                    conversations[index].sourceRevisions[scope.id] = book.chapters.map(\.revision)
+                    updated.sourceLimits[scope.id] = max(updated.sourceLimits[scope.id] ?? ReadingPosition(), scope.through)
+                    updated.sourceRevisions[scope.id] = book.chapters.map(\.revision)
                 }
+                try updated.validateLibraryLimit(); try updated.updateTurnScopes()
+                guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
+                try store.save(updated); conversations[index] = updated
             }
             let lines = entries.map { "- [\($0.identity?.label ?? "本人")] \($0.text)" }.joined(separator: "\n")
             return (profile.text.isEmpty ? "" : "\n\n【对用户本人的了解】\n" + profile.text) + (lines.isEmpty ? "" : "\n\n【相关长期记忆】来自过去对话，仅作交流背景，不替代原文证据；保持本人和扮演身份的区别：\n" + lines)

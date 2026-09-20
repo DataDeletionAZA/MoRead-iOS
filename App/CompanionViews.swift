@@ -195,6 +195,7 @@ struct CompanionChat: View {
     @State private var editing: ChatMessage?
     @State private var editText = ""
     @State private var organizationPlan: LibraryOrganizationPlan?
+    @State private var showFocus = false
     @State private var showSummary = false
     @State private var showIdentity = false
     @State private var source: SourcePassage?
@@ -257,7 +258,7 @@ struct CompanionChat: View {
             Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
                 .font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).accessibilityIdentifier("chat-identity")
             HStack(alignment: .bottom, spacing: 12) {
-                TextField(selection == nil ? "聊聊这本书…" : "问问这一段…", text: $draft, axis: .vertical).lineLimit(1...6).padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("chat-input")
+                TextField(selection != nil ? "问问这一段…" : conversation?.bookID == nil ? "聊聊，或问问书库里的内容…" : "聊聊这本书…", text: $draft, axis: .vertical).lineLimit(1...6).padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("chat-input")
                 Button {
                     let text = draft; companion.send(text, in: conversationID, library: library, selection: selection)
                     if companion.activeConversation == conversationID { draft = ""; scrollPosition = conversation?.messages.last?.id }
@@ -267,10 +268,12 @@ struct CompanionChat: View {
         }.navigationTitle(conversation?.title ?? "伴读").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } }
+                if conversation?.bookID == nil { ToolbarItem(placement: .primaryAction) { Button("重点书籍", systemImage: "books.vertical") { showFocus = true }.disabled(companion.busy) } }
                 ToolbarItem(placement: .primaryAction) { Button("前情提要", systemImage: "text.alignleft") { showSummary = true } }
                 ToolbarItem(placement: .primaryAction) { Button("重新生成", systemImage: "arrow.clockwise") { companion.retry(conversationID, library: library) }.disabled(companion.busy || conversation?.messages.isEmpty != false) }
             }
             .onDisappear { companion.refreshSummary(conversationID, library: library); companion.consolidateMemory(conversationID, library: library, onClose: true) }
+            .sheet(isPresented: $showFocus) { NavigationStack { ConversationScopeView(conversationID: conversationID) } }
             .sheet(item: $organizationPlan) { plan in NavigationStack { LibraryOrganizationPreview(conversationID: conversationID, plan: plan) } }
             .sheet(isPresented: $showSummary) { NavigationStack { ConversationSummaryView(conversationID: conversationID).toolbar { Button("完成") { showSummary = false } } } }
             .sheet(isPresented: $showIdentity) { NavigationStack { UserMaskSettingsView().toolbar { Button("完成") { showIdentity = false } } } }

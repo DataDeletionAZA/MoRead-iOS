@@ -18,6 +18,7 @@ public struct CompanionSettings: Codable {
 }
 
 public struct Conversation: Codable, Identifiable, Hashable, Sendable {
+    public var focusedBookIDs: [UUID]?
     public var id = UUID()
     public var title: String
     public var bookID: UUID?
@@ -31,6 +32,7 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
         self.title = title; self.bookID = bookID; self.characterID = characterID
     }
     public func validateOrganizationPlans() throws {
+        try validateFocus()
         for message in messages {
             for trace in message.toolTrace ?? [] {
                 if let plan = trace.organizationPlan {
@@ -43,6 +45,7 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
     public func validateSources(books: [Book]) throws {
         for (id, end) in sourceLimits {
             guard let book = books.first(where: { $0.id == id }), !book.removed,
+                  book.chapters.indices.contains(end.chapter), end.offset >= 0, end.offset <= book.chapters[end.chapter].length,
                   book.readThrough >= end, sourceRevisions[id] == book.chapters.map(\.revision) else {
                 throw MoReadError.invalid("这个话题引用的书籍或已读范围发生了变化，请新建话题后继续。")
             }

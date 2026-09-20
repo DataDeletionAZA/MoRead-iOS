@@ -43,6 +43,7 @@ extension CompanionModel {
             if call.name != "find_books" {
                 let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks)
                 guard accessed.contains(book.id) || accessed.count < 4 else { throw MoReadError.invalid("一轮最多查阅 4 本书，请缩小范围。") }
+                guard conversation.bookID != nil || latest.sourceLimits[book.id] != nil || latest.sourceLimits.count < 32 else { throw MoReadError.invalid("本话题已涉及 32 本书，请新建话题。") }
                 try ReaderTools.validate(book, current: library.books); accessed.insert(book.id)
             }
             var output: ReaderToolOutput
@@ -127,9 +128,8 @@ extension CompanionModel {
             conversation.sourceRevisions[book.id] = book.chapters.map(\.revision)
         }
         conversation.messages[message].sources = passages
-        let scopes = try MemoryBookScope.snapshot(conversation)
-        conversation.messages[message].bookScopes = scopes
-        if message > 0 { conversation.messages[message - 1].bookScopes = scopes }
+        try conversation.validateLibraryLimit()
+        try conversation.updateTurnScopes()
         guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
         try store.save(conversation); conversations[index] = conversation
         return text
@@ -162,6 +162,32 @@ extension CompanionModel {
         _ = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: specs, exchanges: exchanges)
         try await Task.sleep(for: .milliseconds(200))
         let calls: [ChatToolCall]
+        if ProcessInfo.processInfo.arguments.contains("--simulate-scope") {
+            let conversation = conversations.first { $0.id == conversationID }
+            if messages.last?.content.contains("Just chat") == true {
+                let empty = conversation?.messages.last?.sources.isEmpty == true && messages.first?.content.contains("visible.") == false
+                let answer = empty ? "本轮未发送书籍原文。" : "本轮包含额外原文。"
+                append(answer, to: conversationID, messageID: responseID)
+                return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+            }
+            if exchanges.isEmpty { return try mockToolCalls([ChatToolCall(id: "catalog", name: "find_books", arguments: "{}")]) }
+            let catalog = exchanges[0].results[0].content
+            func bookID(_ title: String) -> String { catalog.components(separatedBy: "\n").first { $0.contains("《" + title + "》") }.map { String($0.dropFirst("book_id=".count).prefix(36)) } ?? "" }
+            if exchanges.count == 1 {
+                let calls = try ["森林", "海岸"].map { title -> ChatToolCall in
+                    let args = try JSONSerialization.data(withJSONObject: ["book_id": bookID(title), "from_chapter": 1])
+                    return ChatToolCall(id: title, name: "read_book_section", arguments: String(decoding: args, as: UTF8.self))
+                }
+                return try mockToolCalls(calls)
+            }
+            let results = exchanges.last!.results.map(\.content).joined()
+            let focused = conversation?.messages.last(where: { $0.role == "user" })?.focusedBookIDs ?? []
+            let forest = UUID(uuidString: bookID("森林")).map { focused.contains($0) } == true
+            let valid = results.contains("Forest visible.") && results.contains("Harbor.") && !results.contains("Hidden future")
+            let answer = valid ? "重点：\(forest ? "森林" : "海岸")；已核对两本书的已读原文。" : "多书范围检查失败。"
+            append(answer, to: conversationID, messageID: responseID)
+            return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+        }
         if ProcessInfo.processInfo.arguments.contains("--simulate-organization") {
             if exchanges.isEmpty { return try mockToolCalls([ChatToolCall(id: "catalog", name: "find_books", arguments: "{}")]) }
             if exchanges.count == 1 {
