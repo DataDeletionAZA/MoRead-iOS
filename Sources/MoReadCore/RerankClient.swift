@@ -83,6 +83,6 @@ public enum RerankClient {
         let indices = try await rank(TextBoundary.prefix(query, end: 512), documents)
         try Task.checkCancellation()
         guard indices.count == documents.count, Set(indices) == Set(documents.indices) else { throw MoReadError.invalid("重排结果的段落编号无效。") }
-        return pinned + indices.map { candidates[$0] } + candidates.dropFirst(documents.count)
+        return pinned + indices.map { candidates[$0] } + Array(candidates.dropFirst(documents.count))
     }
 }
