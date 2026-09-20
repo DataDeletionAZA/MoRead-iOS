@@ -13,7 +13,7 @@ public struct ChatToolCall: Codable, Hashable, Sendable, Identifiable {
     public let arguments: String
     public init(id: String, name: String, arguments: String) { self.id = id; self.name = name; self.arguments = arguments }
     public func object() throws -> [String: Any] {
-        guard arguments.utf8.count <= 64 * 1024, let value = try JSONSerialization.jsonObject(with: Data(arguments.utf8)) as? [String: Any] else { throw MoReadError.invalid("工具参数必须是有效的 JSON 对象。") }
+        guard arguments.utf8.count <= 256 * 1024, let value = try JSONSerialization.jsonObject(with: Data(arguments.utf8)) as? [String: Any] else { throw MoReadError.invalid("工具参数必须是有效的 JSON 对象。") }
         return value
     }
 }
@@ -204,7 +204,7 @@ public enum ChatToolEvent: Sendable {
 public enum ChatToolLoop {
     public static func run(tools: [ChatTool], stream: ([ChatToolExchange]) async throws -> ChatToolRound,
                            execute: (ChatToolCall) async throws -> String, validate: () async throws -> Void,
-                           report: (ChatToolEvent) async -> Void) async throws {
+                           report: (ChatToolEvent) async throws -> Void) async throws {
         var exchanges: [ChatToolExchange] = [], resultBytes = 0
         let allowed = Set(tools.map(\.name))
         for _ in 0..<8 {
@@ -216,7 +216,7 @@ public enum ChatToolLoop {
             var results: [ChatToolResult] = []
             for call in round.calls {
                 try Task.checkCancellation(); try await validate()
-                await report(.started(call))
+                try await report(.started(call))
                 let result: ChatToolResult
                 do {
                     guard allowed.contains(call.name) else { throw MoReadError.invalid("这个工具没有启用。") }
@@ -230,7 +230,7 @@ public enum ChatToolLoop {
                     try Task.checkCancellation()
                     result = ChatToolResult(call: call, content: error is MoReadError ? error.localizedDescription : "查询未完成，请换用其他可用工具或说明缺少的资料。", failed: true)
                 }
-                try await validate(); await report(.finished(result)); results.append(result)
+                try await validate(); try await report(.finished(result)); results.append(result)
             }
             exchanges.append(ChatToolExchange(round: round, results: results))
         }

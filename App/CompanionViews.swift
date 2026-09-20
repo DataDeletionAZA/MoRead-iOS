@@ -98,7 +98,7 @@ struct CharacterEditor: View {
                     TextField("名字", text: $card.name)
                     NavigationLink("世界书（\(card.worldBook.count) 条）") { WorldBookEditor(entries: $card.worldBook) }.accessibilityIdentifier("edit-world-book")
                     NavigationLink("角色记忆") { PersonaMemoryView(characterID: card.id) }
-                    NavigationLink("可用查询工具") { CharacterToolsView(enabled: $card.enabledTools) }
+                    NavigationLink("可用工具") { CharacterToolsView(enabled: $card.enabledTools) }
                 }
                 Section("人物设定") { TextEditor(text: $card.description).frame(minHeight: 130) }
                 Section("性格") { TextEditor(text: $card.personality).frame(minHeight: 80) }

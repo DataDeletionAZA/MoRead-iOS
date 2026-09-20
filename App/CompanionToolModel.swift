@@ -15,8 +15,10 @@ extension CompanionModel {
             return
         }
         var accessed = Set<UUID>()
+        var roundIndex = 0
         let availableBooks = books.filter { !$0.removed && $0.hasBody && (conversation.bookID == nil || $0.id == conversation.bookID) }
         try await ChatToolLoop.run(tools: specs, stream: { exchanges in
+            roundIndex = exchanges.count
             if let previous = exchanges.last, !previous.round.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 self.append("\n\n", to: conversationID, messageID: responseID)
             }
@@ -39,7 +41,35 @@ extension CompanionModel {
                 try ReaderTools.validate(book, current: library.books); accessed.insert(book.id)
             }
             var output: ReaderToolOutput
-            if call.name == "search_book" {
+            if ReaderTools.writing.contains(call.name) {
+                let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks)
+                guard conversation.bookID == book.id else { throw MoReadError.invalid("请在这本书的伴读中保存内容。") }
+                let mutationKey = "tool:\(responseID):\(roundIndex):\(call.id)"
+                var annotation: Annotation?
+                if call.name == "add_annotation" {
+                    let sources = latest.messages.first { $0.id == responseID }?.sources ?? []
+                    let work = Task.detached { try ReaderTools.writingAnnotation(call, book: book, sources: sources, character: card, store: LibraryStore(root: root), mutationKey: mutationKey) }
+                    annotation = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+                }
+                try Task.checkCancellation(); try ReaderTools.validate(book, current: library.books)
+                guard !library.maintenance, self.settings.toolsEnabled ?? true, self.settings.providers.contains(provider),
+                      let currentCard = self.characters.first(where: { $0.id == card.id }), currentCard.enabledTools == card.enabledTools else { throw CancellationError() }
+                _ = try self.saveToolSources(.init(text: "", passages: annotation.map { [$0.passage] } ?? [], books: [book]), conversationID: conversationID, responseID: responseID)
+                var result = ""
+                try library.modifyRecords(for: book) { records in
+                    if let annotation {
+                        if !records.annotations.contains(where: { $0.generationKey == mutationKey }) { records.annotations.append(annotation) }
+                        result = "已在第 \(annotation.passage.chapter + 1) 章保存\(card.name)的批注，可在阅读页的批注列表查看。"
+                    } else {
+                        let note = try ReaderTools.writingNote(call, book: book, records: records, character: card, conversationID: conversationID, mutationKey: mutationKey)
+                        var notes = records.notes ?? []
+                        if let index = notes.firstIndex(where: { $0.id == note.id }) { notes[index] = note } else { notes.append(note) }
+                        records.notes = notes
+                        result = "已保存\(note.kind == "plot_summary" ? "剧情梗概" : "读书笔记")《\(note.title)》，note_id=\(note.id)。可在阅读页的“读书笔记与梗概”查看。"
+                    }
+                }
+                return result
+            } else if call.name == "search_book" {
                 let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks), query = try ReaderTools.query(args)
                 var semantic: [SourcePassage] = []
                 var notice = ""
@@ -70,7 +100,7 @@ extension CompanionModel {
             try latest.validateSources(books: books)
             try latest.validateSources(books: library.books)
             for book in availableBooks where accessed.contains(book.id) { try ReaderTools.validate(book, current: library.books) }
-        }, report: { event in self.recordTool(event, conversationID: conversationID, responseID: responseID) })
+        }, report: { event in try self.recordTool(event, conversationID: conversationID, responseID: responseID) })
     }
     private func saveToolSources(_ output: ReaderToolOutput, conversationID: UUID, responseID: UUID) throws -> String {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }), let message = conversations[index].messages.firstIndex(where: { $0.id == responseID }) else { throw CancellationError() }
@@ -82,7 +112,7 @@ extension CompanionModel {
                 offset = old
                 if passage.text.utf16.count > passages[old].text.utf16.count { passages[old] = passage }
             } else { offset = passages.count; passages.append(passage) }
-            text += (text.isEmpty ? "" : "\n\n") + "【来源 \(offset + 1)】第 \(passage.chapter + 1) 章，偏移 \(passage.offset)\n" + passage.text
+            text += (text.isEmpty ? "" : "\n\n") + "【来源 \(offset + 1)】第 \(passage.chapter + 1) 章，偏移 \(passage.offset)，source_ref=\(passage.id)\n" + passage.text
         }
         guard passages.count <= 128, passages.reduce(0, { $0 + $1.text.utf16.count }) <= 128_000, text.utf8.count <= 128 * 1024 else { throw MoReadError.invalid("本轮原文引用已达到上限，请缩小查询范围。") }
         for book in output.books {
@@ -97,37 +127,67 @@ extension CompanionModel {
         try store.save(conversation); conversations[index] = conversation
         return text
     }
-    private func recordTool(_ event: ChatToolEvent, conversationID: UUID, responseID: UUID) {
-        guard let index = conversations.firstIndex(where: { $0.id == conversationID }), let message = conversations[index].messages.firstIndex(where: { $0.id == responseID }) else { return }
-        var traces = conversations[index].messages[message].toolTrace ?? []
+    private func recordTool(_ event: ChatToolEvent, conversationID: UUID, responseID: UUID) throws {
+        guard let store, let index = conversations.firstIndex(where: { $0.id == conversationID }), let message = conversations[index].messages.firstIndex(where: { $0.id == responseID }) else { throw CancellationError() }
+        var conversation = conversations[index], traces = conversation.messages[message].toolTrace ?? []
         switch event {
         case .started(let call):
             traces.append(ChatToolTrace(call: call, title: ReaderTools.titles[call.name] ?? "查询资料"))
             memoryStatus = ReaderTools.titles[call.name] ?? "正在查询资料…"
         case .finished(let result):
             if let trace = traces.lastIndex(where: { $0.call.id == result.call.id && $0.state == "running" }) {
-                traces[trace].state = result.failed ? "failed" : "succeeded"; traces[trace].preview = TextBoundary.prefix(result.content, end: 2000)
+                traces[trace].state = result.failed ? "failed" : "succeeded"
+                let preview = result.content.replacingOccurrences(of: "，source_ref=[^\\n]+", with: "", options: .regularExpression)
+                traces[trace].preview = TextBoundary.prefix(preview, end: 2000)
             }
             memoryStatus = nil
         }
-        conversations[index].messages[message].toolTrace = traces; saveConversation(conversationID)
+        conversation.messages[message].toolTrace = traces
+        try store.save(conversation); conversations[index] = conversation
     }
     #if DEBUG
     private func simulateToolRound(exchanges: [ChatToolExchange], specs: [ChatTool], provider: AIProvider, key: String, messages: [ChatMessage], conversationID: UUID, responseID: UUID) async throws -> ChatToolRound {
         _ = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: specs, exchanges: exchanges)
         try await Task.sleep(for: .milliseconds(200))
         let calls: [ChatToolCall]
+        let writing = ProcessInfo.processInfo.arguments.contains("--simulate-writing")
+        if writing, messages.last?.content.contains("Update my edited note.") == true {
+            switch exchanges.count {
+            case 0: calls = [ChatToolCall(id: "notes", name: "list_notes", arguments: "{\"kind\":\"note\"}")]
+            case 1:
+                let index = exchanges[0].results[0].content
+                let id = index.components(separatedBy: "note_id=").dropFirst().first.map { String($0.prefix(36)) } ?? ""
+                let args = try JSONSerialization.data(withJSONObject: ["note_id": id, "title": "Overwritten", "content_md": "Overwritten by AI"])
+                calls = [ChatToolCall(id: "protected", name: "write_note", arguments: String(decoding: args, as: UTF8.self))]
+            default:
+                let answer = exchanges.last?.results.first?.failed == true ? "已保留你编辑的笔记。" : "笔记保护失败。"
+                append(answer, to: conversationID, messageID: responseID)
+                return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+            }
+            return try mockToolCalls(calls)
+        }
         switch exchanges.count {
         case 0: calls = [ChatToolCall(id: "read-toc", name: "list_chapters", arguments: "{}")]
         case 1: calls = [ChatToolCall(id: "read-one", name: "read_book_section", arguments: "{\"from_chapter\":1}"), ChatToolCall(id: "read-future", name: "read_book_section", arguments: "{\"from_chapter\":3}")]
+        case 2 where writing:
+            calls = [ChatToolCall(id: "annotation", name: "add_annotation", arguments: "{\"quote\":\"lighthouse first clue.\",\"comment\":\"Watch the lighthouse.\",\"style\":\"underline\"}"),
+                     ChatToolCall(id: "note", name: "write_note", arguments: "{\"title\":\"Lighthouse notes\",\"content_md\":\"The lighthouse is bright.\"}"),
+                     ChatToolCall(id: "summary", name: "save_plot_summary", arguments: "{\"title\":\"Plot recap\",\"content_md\":\"Arrived at the lighthouse.\"}")]
+        case 3 where writing:
+            calls = [ChatToolCall(id: "summary", name: "save_plot_summary", arguments: "{\"title\":\"Plot recap\",\"content_md\":\"Reached the lighthouse and saw its light.\"}")]
         default:
             let results = exchanges.flatMap(\.results)
             let visible = results.first { $0.call.id == "read-one" }?.content ?? ""
             let refused = results.first { $0.call.id == "read-future" }?.failed == true
-            let answer = visible.contains("lighthouse first clue.") && refused && !visible.contains("secret identity") ? "已查到第一章，并拦住未读章节。" : "工具查询结果不完整。"
+            let valid = visible.contains("lighthouse first clue.") && refused && !visible.contains("secret identity")
+            let wrote = results.filter { ReaderTools.writing.contains($0.call.name) }
+            let answer = writing ? (valid && wrote.count == 4 && wrote.allSatisfy { !$0.failed } ? "批注、笔记与梗概已保存。" : "保存结果不完整。") : (valid ? "已查到第一章，并拦住未读章节。" : "工具查询结果不完整。")
             append(answer, to: conversationID, messageID: responseID)
             return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
         }
+        return try mockToolCalls(calls)
+    }
+    private func mockToolCalls(_ calls: [ChatToolCall]) throws -> ChatToolRound {
         let native: [String: Any] = ["role": "assistant", "content": "", "tool_calls": calls.map { ["id": $0.id, "type": "function", "function": ["name": $0.name, "arguments": $0.arguments]] }]
         return ChatToolRound(text: "", calls: calls, replay: try JSONSerialization.data(withJSONObject: native))
     }

@@ -11,6 +11,7 @@ public struct Annotation: Codable, Identifiable, Hashable, Sendable {
     public var note: String
     public var style: String
     public var createdAt = Date()
+    public var authorLabel: String { (characterName ?? "我") + (generationKey?.hasPrefix("tool:") == true || characterID == nil ? "的批注" : "的段评") }
     public init(passage: SourcePassage, note: String = "", style: String = "highlight") {
         self.passage = passage; self.note = note; self.style = style
     }
@@ -28,6 +29,7 @@ public struct Bookmark: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct BookRecords: Codable, Sendable {
+    public var notes: [ReadingNote]?
     public var annotationAttempts: [String: ProactiveAttempt]?
     public var annotations: [Annotation] = []
     public var bookmarks: [Bookmark] = []
@@ -150,10 +152,12 @@ public final class LibraryStore {
     }
     public func notesMarkdown(for book: Book) throws -> String {
         let records = try records(for: book)
-        return "# \(book.title)\n\n" + records.annotations.map { annotation in
+        let annotations = records.annotations.map { annotation in
             let heading = book.chapters.first { $0.id == annotation.passage.chapter }?.title ?? ""
-            let author = annotation.characterName.map { "\n\n\($0)的段评" } ?? ""
+            let author = annotation.characterName == nil ? "" : "\n\n" + annotation.authorLabel
             return "## \(heading)\(author)\n\n> " + annotation.passage.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n\(annotation.note)\n"
         }.joined(separator: "\n")
+        let notes = (records.notes ?? []).map { "## \($0.title)\n\n\($0.authorLabel) · \($0.kind == "plot_summary" ? "剧情梗概" : "读书笔记")\n\n\($0.content)\n" }.joined(separator: "\n")
+        return "# \(book.title)\n\n" + annotations + "\n" + notes
     }
 }

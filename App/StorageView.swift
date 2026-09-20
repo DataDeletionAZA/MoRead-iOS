@@ -61,9 +61,10 @@ struct StoredBookView: View {
                     ForEach(records.bookmarks) { bookmark in Text(bookmark.label).textSelection(.enabled) }
                 }
                 Section("笔记与批注") {
+                    NavigationLink("读书笔记与梗概") { ReadingNotesView(bookID: bookID) }
                     ForEach(records.annotations) { annotation in
                         VStack(alignment: .leading, spacing: 8) {
-                            if let name = annotation.characterName { Text(name + "的段评").font(.caption).foregroundStyle(.secondary) }
+                            if annotation.characterName != nil { Text(annotation.authorLabel).font(.caption).foregroundStyle(.secondary) }
                             Text(annotation.passage.text).foregroundStyle(.secondary)
                             if !annotation.note.isEmpty { Text(annotation.note) }
                         }.textSelection(.enabled)
@@ -85,7 +86,7 @@ struct StoredBookView: View {
             }
         }.navigationTitle(book?.title ?? "阅读记录")
             .disabled(working)
-            .task(id: bookID) {
+            .task(id: model.recordsRevision) {
                 model.perform {
                     if let book, let store = model.store { records = try store.records(for: book); exported = try store.notesMarkdown(for: book) }
                 }

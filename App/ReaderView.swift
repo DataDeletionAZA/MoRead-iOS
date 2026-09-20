@@ -204,11 +204,12 @@ struct ReaderView: View {
                         .onChange(of: query) { _, value in search(value, book: book) }
                 case .notes:
                     List {
+                        NavigationLink("读书笔记与梗概") { ReadingNotesView(bookID: bookID) }
                         NavigationLink("随读段评设置") { ProactiveSettingsView() }
                         if companion.annotationBookID == bookID, let status = companion.annotationStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
                         if records.annotations.isEmpty { Text("长按正文，选择“批注”即可保存。").foregroundStyle(.secondary) }
                         ForEach(records.annotations) { annotation in
-                            VStack(alignment: .leading, spacing: 10) { if let name = annotation.characterName { Text(name + "的段评").font(.caption).foregroundStyle(.secondary) }; Text(annotation.passage.text).font(.callout); if !annotation.note.isEmpty { Text(annotation.note).foregroundStyle(.secondary) } }
+                            VStack(alignment: .leading, spacing: 10) { if annotation.characterName != nil { Text(annotation.authorLabel).font(.caption).foregroundStyle(.secondary) }; Text(annotation.passage.text).font(.callout); if !annotation.note.isEmpty { Text(annotation.note).foregroundStyle(.secondary) } }
                         }.onDelete { offsets in
                             let ids = Set(offsets.map { records.annotations[$0].id })
                             changeRecords { $0.annotations.removeAll { ids.contains($0.id) } }

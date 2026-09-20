@@ -17,7 +17,8 @@ public struct ReaderToolOutput: Sendable {
 }
 
 public enum ReaderTools {
-    public static let titles = ["find_books": "查找书籍", "get_reading_progress": "查看阅读进度", "list_chapters": "查看已读目录", "read_book_section": "读取已读章节", "grep_book": "查找原文关键词", "search_book": "按意思检索原文", "list_annotations": "查看批注", "list_notes": "查看阅读笔记", "recall_memory": "回忆过往交流"]
+    public static let titles = ["find_books": "查找书籍", "get_reading_progress": "查看阅读进度", "list_chapters": "查看已读目录", "read_book_section": "读取已读章节", "grep_book": "查找原文关键词", "search_book": "按意思检索原文", "list_annotations": "查看批注", "list_notes": "查看笔记与梗概", "recall_memory": "回忆过往交流", "add_annotation": "添加原文批注", "write_note": "保存读书笔记", "save_plot_summary": "保存剧情梗概"]
+    public static let writing = Set(["add_annotation", "write_note", "save_plot_summary"])
     public static func specs(currentBook: UUID?, memory: Bool, enabled: [String]? = nil) throws -> [ChatTool] {
         let string: [String: Any] = ["type": "string", "maxLength": 512], integer: [String: Any] = ["type": "integer", "minimum": 1]
         let definitions: [(String, String, [String: Any], [String])] = [
@@ -28,11 +29,11 @@ public enum ReaderTools {
             ("grep_book", "在已读原文中查找明确的关键词或短语。", ["query": string], ["query"]),
             ("search_book", "根据问题检索已读原文，适合寻找相关情节与依据。", ["query": string], ["query"]),
             ("list_annotations", "查看已读范围内的划线、批注与角色段评。", [:], []),
-            ("list_notes", "查看已读范围内用户写下的阅读笔记。", [:], []),
+            ("list_notes", "列出已读范围内的笔记和剧情梗概；按 note_id 分段读取全文，更新前先读旧稿。", ["kind": ["type": "string", "enum": ["all", "note", "plot_summary"]], "note_id": string, "start_char": ["type": "integer", "minimum": 0], "max_chars": ["type": "integer", "minimum": 1000, "maximum": currentBook == nil ? 6000 : 8000]], []),
             ("recall_memory", "回忆当前角色与用户过去交流中的偏好、事实与约定。", ["query": string], ["query"])
-        ]
+        ] + writingDefinitions
         return try definitions.compactMap { name, description, properties, required in
-            guard (enabled == nil || enabled!.contains(name)), (name != "recall_memory" || memory), (name != "find_books" || currentBook == nil) else { return nil }
+            guard (enabled == nil || enabled!.contains(name)), (name != "recall_memory" || memory), (name != "find_books" || currentBook == nil), (currentBook != nil || !writing.contains(name)) else { return nil }
             var properties = properties, required = required
             if !["find_books", "recall_memory"].contains(name) {
                 properties["book_id"] = ["type": "string", "description": "find_books 返回的书籍 UUID；当前书籍伴读中可省略"]
@@ -106,12 +107,14 @@ public enum ReaderTools {
                 passages += BookSearch.find(query, in: try store.chapter(info.id, in: book), bookID: book.id, scope: scope, limit: 12 - passages.count)
             }
             if passages.isEmpty { text = "已读范围内没有找到该关键词。" }
-        case "list_annotations", "list_notes":
+        case "list_notes":
+            text = try readNotes(arguments: args, book: book, records: store.records(for: book), maximum: currentBook == nil ? 6000 : 8000)
+        case "list_annotations":
             let records = try store.records(for: book)
             var entries: [String] = [], remaining = 12000
             for annotation in records.annotations {
                 try Task.checkCancellation()
-                guard call.name != "list_notes" || (annotation.characterID == nil && !annotation.note.isEmpty), annotation.passage.chapter >= 0, annotation.passage.chapter < last,
+                guard annotation.passage.chapter >= 0, annotation.passage.chapter < last,
                       annotation.sourceThrough.map({ $0 <= book.readThrough }) ?? true,
                       annotation.passage.isValid(in: try store.chapter(annotation.passage.chapter, in: book), scope: scope) else { continue }
                 let line = "第 \(annotation.passage.chapter + 1) 章 · \(annotation.characterName ?? "用户")：\(TextBoundary.prefix(annotation.note, end: 1000))\n原文：\(TextBoundary.prefix(annotation.passage.text, end: 500))"
@@ -124,7 +127,7 @@ public enum ReaderTools {
         }
         return ReaderToolOutput(text: TextBoundary.prefix(text, end: 24000), passages: passages, books: [book])
     }
-    private static func integer(_ args: [String: Any], _ key: String, fallback: Int? = nil, range: ClosedRange<Int>) throws -> Int {
+    static func integer(_ args: [String: Any], _ key: String, fallback: Int? = nil, range: ClosedRange<Int>) throws -> Int {
         if args[key] == nil, let fallback { return fallback }
         let title = ["from_chapter": "起始章节", "to_chapter": "结束章节", "start_char": "章内位置", "max_chars": "读取长度"][key] ?? "查询参数"
         guard let number = args[key] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite,

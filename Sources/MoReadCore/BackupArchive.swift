@@ -138,7 +138,9 @@ public enum BackupArchive {
                 let chapter = try library.chapter(index, in: book)
                 guard chapter.text.utf16.count == book.chapters[index].length else { throw MoReadError.invalid("备份中的章节长度不一致。") }
             }
-            _ = try library.records(for: book)
+            let records = try library.records(for: book), notes = records.notes ?? []
+            guard Set(notes.map(\.id)).count == notes.count else { throw MoReadError.invalid("备份包含重复笔记编号。") }
+            for note in notes { try note.validate() }
             if book.format == "epub", book.hasBody {
                 guard manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("original.epub").path), manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("epub-map.json").path) else { throw MoReadError.invalid("备份缺少 EPUB 正文或定位信息。") }
             }

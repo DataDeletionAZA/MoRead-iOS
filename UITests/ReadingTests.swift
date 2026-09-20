@@ -2,6 +2,40 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testToolWritesNotesSummaryAndAnnotationWithProtectedUserEdits() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-writing"]; app.launch()
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
+        func send(_ text: String) {
+            let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+            input.tap(); input.typeText(text); app.buttons["发送"].tap()
+        }
+        func openNotes() {
+            app.tabBars.buttons["书架"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "查询测试")).firstMatch.tap()
+            app.buttons["批注"].tap()
+            XCTAssertTrue(app.staticTexts["Watch the lighthouse."].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["阿翎的批注"].exists)
+            app.buttons["读书笔记与梗概"].tap()
+        }
+        openChat(); send("Please save a note, a recap, and an annotation.")
+        XCTAssertTrue(app.staticTexts["批注、笔记与梗概已保存。"].waitForExistence(timeout: 20))
+        app.navigationBars["工具查询"].buttons["返回"].tap(); openNotes()
+        let note = app.buttons["reading-note-Lighthouse notes"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "reading-note-Plot recap").count, 1)
+        app.buttons["reading-note-Plot recap"].tap()
+        XCTAssertTrue(app.staticTexts["Reached the lighthouse and saw its light."].waitForExistence(timeout: 5))
+        app.navigationBars["Plot recap"].buttons.element(boundBy: 0).tap(); note.tap(); app.buttons["编辑"].tap()
+        let editor = app.textViews["reading-note-content"]; editor.tap(); editor.typeKey("a", modifierFlags: .command); editor.typeText("My own interpretation.")
+        app.buttons["保存"].tap()
+        XCTAssertTrue(app.staticTexts["My own interpretation."].waitForExistence(timeout: 5))
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-writing"]; app.launch()
+        openChat(); send("Update my edited note.")
+        XCTAssertTrue(app.staticTexts["已保留你编辑的笔记。"].waitForExistence(timeout: 20))
+        app.navigationBars["工具查询"].buttons["返回"].tap(); openNotes(); note.tap()
+        XCTAssertTrue(app.staticTexts["My own interpretation."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Overwritten by AI"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Protected-reading-note"; shot.lifetime = .keepAlways; add(shot)
+    }
     func testToolQueriesKeepCitationsAndRefuseUnreadChapters() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }

@@ -24,7 +24,7 @@ final class ReaderToolTests: XCTestCase {
         var records = BookRecords()
         records.annotations = [.init(passage: .init(bookID: book.id, chapter: chapters[0], offset: 0, text: "灯塔"), note: "想再看看海边"), .init(passage: .init(bookID: book.id, chapter: chapters[2], offset: 0, text: "幕后真相"), note: "不能泄漏的笔记")]
         try store.saveRecords(records, for: book)
-        XCTAssertTrue(try run("list_notes").text.contains("想再看看海边")); XCTAssertFalse(try run("list_annotations").text.contains("不能泄漏"))
+        XCTAssertTrue(try run("list_annotations").text.contains("想再看看海边")); XCTAssertFalse(try run("list_annotations").text.contains("不能泄漏"))
         let original = book; book.readThrough = .init(chapter: 0, offset: 1); try store.save(book)
         XCTAssertThrowsError(try ReaderTools.execute(.init(id: "stale", name: "list_chapters", arguments: "{}"), currentBook: original.id, books: [original], store: store))
     }
