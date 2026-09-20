@@ -20,6 +20,21 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedHybrid, companion.conversations.isEmpty, let card = companion.characters.first {
+                companion.perform {
+                    var provider = AIProvider(); provider.name = "本地检索测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"
+                    companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id
+                    if let store = model.store {
+                        let visible = "At the harbor, the lighthouse beacon shone."
+                        let chapters = [Chapter(id: 0, title: "Harbor", text: "harbor boats harbor boats harbor boats."), Chapter(id: 1, title: "Garden", text: "Birds sang in the garden."), Chapter(id: 2, title: "Lighthouse", text: visible + " Future secret identity.")]
+                        var book = try store.importBook(title: "海岸与灯塔", chapters: chapters); book.readThrough = .init(chapter: 2, offset: visible.utf16.count)
+                        try store.save(book); model.load()
+                        companion.settings.vectorBooks = [book.id]; companion.saveSettings()
+                        let chat = Conversation(title: "检索测试", bookID: nil, characterID: card.id)
+                        try companion.store?.save(chat); companion.conversations = [chat]
+                    }
+                }
+            }
             if companion.simulatedTools, companion.conversations.isEmpty, let card = companion.characters.first {
                 companion.perform {
                     var provider = AIProvider(); provider.name = "本地工具测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"

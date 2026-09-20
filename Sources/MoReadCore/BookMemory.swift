@@ -4,7 +4,8 @@ import Accelerate
 
 public enum BookMemory {
     public typealias Embed = @Sendable ([String]) async throws -> [[Float]]
-    public static func chunks(bookID: UUID, chapter: Chapter, scope: ReadingScope) -> [SourcePassage] {
+    public static func chunks(bookID: UUID, chapter: Chapter, scope: ReadingScope) throws -> [SourcePassage] {
+        try Task.checkCancellation()
         let text = scope.readableText(chapter)
         var result: [SourcePassage] = [], start: Int?, end = 0, cursor = 0
         func append() {
@@ -13,6 +14,7 @@ public enum BookMemory {
             }
         }
         while let segment = SpeechText.next(in: text, from: cursor, maximumLength: 640) {
+            try Task.checkCancellation()
             if let current = start, segment.end - current > 640 || end - current >= 480 { append(); start = nil }
             if start == nil { start = segment.offset }
             end = segment.end; cursor = end
@@ -38,7 +40,7 @@ public enum BookMemory {
             try validate()
             if try !index.contains(info, through: end) {
                 let chapter = try library.chapter(info.id, in: book)
-                let passages = chunks(bookID: book.id, chapter: chapter, scope: ReadingScope(through: .init(chapter: info.id, offset: end)))
+                let passages = try chunks(bookID: book.id, chapter: chapter, scope: ReadingScope(through: .init(chapter: info.id, offset: end)))
                 var vectors: [[Float]] = []
                 for start in stride(from: 0, to: passages.count, by: 32) {
                     try Task.checkCancellation(); try validate()
@@ -54,23 +56,32 @@ public enum BookMemory {
         }
     }
     public static func retrieve(query: String, books: [Book], root: URL, fingerprint: String, embed: Embed, progress: @Sendable (String, Int, Int) async -> Void = { _, _, _ in }) async throws -> [SourcePassage] {
-        let books = books.filter { !$0.removed && $0.hasBody && $0.readThrough > ReadingPosition() }
+        try await recall(query: query, books: books, root: root, fingerprint: fingerprint, embed: embed, progress: progress).map(\.passage)
+    }
+    public static func recall(query: String, books: [Book], root: URL, fingerprint: String, buildMissingIndex: Bool = true, firstChapter: Int = 0, lastChapter: Int = Int.max, embed: Embed, progress: @Sendable (String, Int, Int) async -> Void = { _, _, _ in }) async throws -> [RetrievalCandidate] {
+        let books = books.filter { !$0.removed && $0.hasBody && $0.readThrough > ReadingPosition() && (buildMissingIndex || FileManager.default.fileExists(atPath: root.appendingPathComponent($0.id.uuidString).appendingPathComponent("vectors.sqlite").path)) }
         guard !books.isEmpty else { return [] }
-        for book in books {
+        for book in books where buildMissingIndex {
             try await index(book: book, root: root, fingerprint: fingerprint, embed: embed) { done, total in await progress(book.title, done, total) }
         }
         try Task.checkCancellation()
         let vectors = try await embed([TextBoundary.prefix(query, end: 2000)])
         guard vectors.count == 1 else { throw MoReadError.invalid("问题的向量数量无效。") }
         try Task.checkCancellation()
-        return try books.flatMap { try search(book: $0, root: root, fingerprint: fingerprint, vector: vectors[0], limit: 8) }
+        let library = try LibraryStore(root: root)
+        let results = try books.flatMap { book in
+            try BookVectorIndex(url: library.directory(book.id).appendingPathComponent("vectors.sqlite"), fingerprint: fingerprint, create: false).candidates(book: book, library: library, vector: vectors[0], limit: 60, firstChapter: firstChapter, lastChapter: lastChapter)
+        }
+        return Array(results.sorted { lhs, rhs in
+            lhs.distance == rhs.distance ? HybridRetrieval.before(lhs.passage, rhs.passage) : (lhs.distance ?? 2) < (rhs.distance ?? 2)
+        }.prefix(60))
     }
     public static func search(book: Book, root: URL, fingerprint: String, vector: [Float], limit: Int = 12) throws -> [SourcePassage] {
         guard !book.removed, book.hasBody, limit > 0 else { return [] }
         let library = try LibraryStore(root: root)
         let url = library.directory(book.id).appendingPathComponent("vectors.sqlite")
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        return try BookVectorIndex(url: url, fingerprint: fingerprint).search(book: book, library: library, vector: vector, limit: min(limit, 32))
+        return try BookVectorIndex(url: url, fingerprint: fingerprint, create: false).search(book: book, library: library, vector: vector, limit: min(limit, 32))
     }
 }
 
@@ -78,8 +89,8 @@ public enum BookMemory {
 public final class BookVectorIndex {
     private var database: OpaquePointer?
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-    public init(url: URL, fingerprint: String? = nil) throws {
-        let flags = fingerprint == nil ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+    public init(url: URL, fingerprint: String? = nil, create: Bool = true) throws {
+        let flags = fingerprint == nil || !create ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
         guard sqlite3_open_v2(url.path, &database, flags | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
             sqlite3_close(database); database = nil; throw MoReadError.invalid("无法打开向量记忆。")
         }
@@ -87,6 +98,10 @@ public final class BookVectorIndex {
         sqlite3_limit(database, SQLITE_LIMIT_LENGTH, 512 * 1024)
         do {
             guard let fingerprint else { return }
+            if !create {
+                guard try metadata("fingerprint") == fingerprint else { throw MoReadError.invalid("向量模型已变化，请重新整理这本书的向量记忆。") }
+                return
+            }
             try execute("PRAGMA journal_mode=DELETE; CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS chapters (chapter INTEGER PRIMARY KEY, revision TEXT NOT NULL, read_end INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS chunks (chapter INTEGER NOT NULL, offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, text TEXT NOT NULL, vector BLOB NOT NULL, PRIMARY KEY(chapter, offset));")
             let previous = try metadata("fingerprint")
             if previous != fingerprint {
@@ -130,15 +145,19 @@ public final class BookVectorIndex {
     }
     public func count() throws -> Int { try statement("SELECT COUNT(*) FROM chunks") { sql in _ = try step(sql); return Int(sqlite3_column_int64(sql, 0)) } }
     public func search(book: Book, library: LibraryStore, vector: [Float], limit: Int) throws -> [SourcePassage] {
+        try candidates(book: book, library: library, vector: vector, limit: limit).map(\.passage)
+    }
+    public func candidates(book: Book, library: LibraryStore, vector: [Float], limit: Int, firstChapter: Int = 0, lastChapter: Int = Int.max) throws -> [RetrievalCandidate] {
         guard limit > 0, !book.removed, book.hasBody else { return [] }
-        let limit = min(limit, 32)
+        let limit = min(limit, 120)
         let query = try EmbeddingClient.normalized(vector)
         if let dimension = try metadata("dimensions"), dimension != String(query.count) { throw MoReadError.invalid("问题与原文的向量维度不同，请重建向量记忆。") }
         struct Match { let chapter: Int; let offset: Int; let text: String; let score: Float }
         var best: [Match] = []
         // ponytail: scan vectors with native SIMD; use an ANN index when individual books exceed 50,000 chunks.
-        try statement("SELECT c.chapter,c.offset,c.end_offset,c.text,c.vector,h.revision FROM chunks c JOIN chapters h ON h.chapter=c.chapter WHERE c.chapter<? OR (c.chapter=? AND c.end_offset<=?)") { sql in
+        try statement("SELECT c.chapter,c.offset,c.end_offset,c.text,c.vector,h.revision FROM chunks c JOIN chapters h ON h.chapter=c.chapter WHERE (c.chapter<? OR (c.chapter=? AND c.end_offset<=?)) AND c.chapter>=? AND c.chapter<=?") { sql in
             sqlite3_bind_int64(sql, 1, Int64(book.readThrough.chapter)); sqlite3_bind_int64(sql, 2, Int64(book.readThrough.chapter)); sqlite3_bind_int64(sql, 3, Int64(book.readThrough.offset))
+            sqlite3_bind_int64(sql, 4, Int64(max(0, firstChapter))); sqlite3_bind_int64(sql, 5, Int64(lastChapter))
             while try step(sql) == SQLITE_ROW {
                 try Task.checkCancellation()
                 let chapter = Int(sqlite3_column_int64(sql, 0)), offset = Int(sqlite3_column_int64(sql, 1)), end = Int(sqlite3_column_int64(sql, 2))
@@ -152,14 +171,14 @@ public final class BookVectorIndex {
                 vDSP_dotpr(query, 1, values, 1, &score, vDSP_Length(query.count))
                 guard score.isFinite else { continue }
                 best.append(Match(chapter: chapter, offset: offset, text: content, score: score))
-                best.sort { $0.score > $1.score }; if best.count > limit { best.removeLast() }
+                best.sort { $0.score == $1.score ? ($0.chapter == $1.chapter ? $0.offset < $1.offset : $0.chapter < $1.chapter) : $0.score > $1.score }; if best.count > limit { best.removeLast() }
             }
         }
-        var result: [SourcePassage] = []
+        var result: [RetrievalCandidate] = []
         for match in best {
             let chapter = try library.chapter(match.chapter, in: book)
             let passage = SourcePassage(bookID: book.id, chapter: chapter, offset: match.offset, text: match.text)
-            if passage.isValid(in: chapter, scope: ReadingScope(through: book.readThrough)) { result.append(passage) }
+            if passage.isValid(in: chapter, scope: ReadingScope(through: book.readThrough)) { result.append(RetrievalCandidate(passage, distance: 1 - Double(min(1, max(-1, match.score))))) }
         }
         return result
     }

@@ -27,7 +27,7 @@ public enum ReaderTools {
             ("list_chapters", "列出已读章节号与标题，章节号从 1 开始；先核对目录再读取章节。", ["from_chapter": integer, "to_chapter": integer], []),
             ("read_book_section", "读取已读原文，章节号从 1 开始。当前章截到已读位置，长章节按返回的偏移续读。", ["from_chapter": integer, "to_chapter": integer, "start_char": ["type": "integer", "minimum": 0], "max_chars": ["type": "integer", "minimum": 1000, "maximum": currentBook == nil ? 6000 : 24000]], ["from_chapter"]),
             ("grep_book", "在已读原文中查找明确的关键词或短语。", ["query": string], ["query"]),
-            ("search_book", "根据问题检索已读原文，适合寻找相关情节与依据。", ["query": string], ["query"]),
+            ("search_book", "综合语义与关键词检索已读原文，可指定章节范围。候选不是问题前提成立的证明，也非穷举；精确字面查找请用 grep_book。", ["query": string, "from_chapter": integer, "to_chapter": integer, "top_k": ["type": "integer", "minimum": 1, "maximum": 8], "sort": ["type": "string", "enum": ["chapter", "relevance"]]], ["query"]),
             ("list_annotations", "查看已读范围内的划线、批注与角色段评。", [:], []),
             ("list_notes", "列出已读范围内的笔记和剧情梗概；按 note_id 分段读取全文，更新前先读旧稿。", ["kind": ["type": "string", "enum": ["all", "note", "plot_summary"]], "note_id": string, "start_char": ["type": "integer", "minimum": 0], "max_chars": ["type": "integer", "minimum": 1000, "maximum": currentBook == nil ? 6000 : 8000]], []),
             ("recall_memory", "回忆当前角色与用户过去交流中的偏好、事实与约定。", ["query": string], ["query"])
@@ -60,6 +60,16 @@ public enum ReaderTools {
         guard book.chapters.indices.contains(book.readThrough.chapter), book.readThrough.offset >= 0, book.readThrough.offset <= book.chapters[book.readThrough.chapter].length,
               let latest = current.first(where: { $0.id == book.id }), !latest.removed, latest.hasBody,
               latest.readThrough >= book.readThrough, latest.chapters.map(\.revision) == book.chapters.map(\.revision) else { throw MoReadError.invalid("书籍或已读范围已变化，请重新发送。") }
+    }
+    public static func searchOptions(_ args: [String: Any], book: Book) throws -> (first: Int, last: Int, topK: Int, chapterOrder: Bool) {
+        try validate(book, current: [book])
+        let last = book.readThrough.chapter + (book.readThrough.offset > 0 ? 1 : 0)
+        guard last > 0 else { throw MoReadError.invalid("还没有可检索的已读原文。") }
+        let first = try integer(args, "from_chapter", fallback: 1, range: 1...last)
+        let end = try integer(args, "to_chapter", fallback: last, range: first...book.chapters.count)
+        let topK = try integer(args, "top_k", fallback: 5, range: 1...8)
+        guard let sort = args["sort"] as? String ?? (args["sort"] == nil ? "chapter" : nil), ["chapter", "relevance"].contains(sort) else { throw MoReadError.invalid("请选择按章节或相关性排列原文。") }
+        return (first - 1, min(end, last) - 1, topK, sort == "chapter")
     }
     public static func execute(_ call: ChatToolCall, currentBook: UUID?, books: [Book], store: LibraryStore) throws -> ReaderToolOutput {
         try Task.checkCancellation()

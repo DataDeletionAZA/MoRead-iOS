@@ -38,7 +38,7 @@ extension CompanionModel {
     #endif
     func rerankContext(_ context: inout CompanionContext, query: String, selection: SourcePassage?, library: LibraryModel) async throws -> String? {
         let policy = settings.rerank ?? RerankSettings()
-        guard policy.enabled, context.passages.filter({ $0.id != selection?.id }).count >= 2 else { return nil }
+        guard policy.enabled, context.rerankPassages.filter({ $0.id != selection?.id }).count >= 2 else { return nil }
         try Task.checkCancellation(); try context.validateSources(books: library.books)
         do {
             guard var provider = settings.providers.first(where: { $0.id == policy.providerID }) else { throw MoReadError.invalid("请选择重排服务商。") }
@@ -51,7 +51,7 @@ extension CompanionModel {
             #endif
             memoryStatus = "正在比较原文与问题…"
             defer { memoryStatus = nil }
-            let ordered = try await RerankClient.reorder(query: query, passages: context.passages, pinnedID: selection?.id) { question, documents in
+            let ordered = try await RerankClient.reorder(query: query, passages: context.rerankPassages, pinnedID: selection?.id) { question, documents in
                 #if DEBUG
                 if self.simulatedRerank {
                     _ = try RerankClient.request(provider: provider, key: key, endpoint: policy.endpoint, query: question, documents: documents)
@@ -67,7 +67,13 @@ extension CompanionModel {
                   var current = settings.providers.first(where: { $0.id == policy.providerID }) else { throw CancellationError() }
             current.model = policy.model.trimmingCharacters(in: .whitespacesAndNewlines)
             guard current == provider else { throw CancellationError() }
-            context.order(ordered, books: library.books)
+            guard let root = library.store?.root else { throw CancellationError() }
+            let snapshot = context, books = library.books
+            let work = Task.detached { var value = snapshot; try value.applyRanking(ordered, books: books, store: LibraryStore(root: root)); return value }
+            let updated = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            try updated.validateSources(books: library.books); try Task.checkCancellation()
+            guard (settings.rerank ?? RerankSettings()) == policy else { throw CancellationError() }
+            context = updated
             return "已按问题的相关性排列原文。"
         } catch is CancellationError { throw CancellationError() }
         catch {

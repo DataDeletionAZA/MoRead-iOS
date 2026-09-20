@@ -54,7 +54,7 @@ final class BookMemoryTests: XCTestCase {
         let sent = await recorder.recorded()
         XCTAssertGreaterThan(sent.count, 2); XCTAssertFalse(sent.contains { $0.contains("结局") })
         for chapter in chapters {
-            let chunks = BookMemory.chunks(bookID: book.id, chapter: chapter, scope: ReadingScope(through: book.readThrough))
+            let chunks = try BookMemory.chunks(bookID: book.id, chapter: chapter, scope: ReadingScope(through: book.readThrough))
             XCTAssertFalse(chunks.isEmpty)
             XCTAssertTrue(chunks.allSatisfy { $0.text.utf16.count <= 640 && $0.isValid(in: chapter, scope: ReadingScope(through: book.readThrough)) })
         }
@@ -74,7 +74,8 @@ final class BookMemoryTests: XCTestCase {
         let prepared = try await BackupArchive.prepare(zip, beside: root)
         try BackupArchive.activate(prepared, replacing: root)
         XCTAssertEqual(try BookMemory.search(book: book, root: root, fingerprint: "m1", vector: [1, 0]).count, 1)
-        XCTAssertTrue(try BookMemory.search(book: book, root: root, fingerprint: "m2", vector: [1, 0]).isEmpty)
+        XCTAssertThrowsError(try BookMemory.search(book: book, root: root, fingerprint: "m2", vector: [1, 0]))
+        XCTAssertEqual(try BookMemory.search(book: book, root: root, fingerprint: "m1", vector: [1, 0]).count, 1)
         let cleared = try store.clearBody(book)
         XCTAssertFalse(cleared.hasBody)
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory(book.id).appendingPathComponent("vectors.sqlite").path))

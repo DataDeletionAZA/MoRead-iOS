@@ -1,5 +1,4 @@
 import Foundation
-import NaturalLanguage
 
 public struct CompanionSettings: Codable {
     public var toolsEnabled: Bool?
@@ -79,13 +78,30 @@ public struct CompanionContext: Sendable {
     public var passages: [SourcePassage]
     public var limits: [UUID: ReadingPosition]
     public var revisions: [UUID: [String]]
+    public var retrievalNotice: String?
+    var retrievalPlan: HybridRetrieval.Plan?
+    public init(text: String, passages: [SourcePassage], limits: [UUID: ReadingPosition], revisions: [UUID: [String]]) {
+        self.text = text; self.passages = passages; self.limits = limits; self.revisions = revisions
+    }
+    public var rerankPassages: [SourcePassage] { retrievalPlan?.rerankPassages ?? passages }
     public func validateSources(books: [Book]) throws {
+        if let plan = retrievalPlan { for book in plan.books { try ReaderTools.validate(book, current: books) } }
         for (id, end) in limits {
             guard let book = books.first(where: { $0.id == id }), !book.removed, book.hasBody,
                   book.readThrough >= end, revisions[id] == book.chapters.map(\.revision) else {
                 throw MoReadError.invalid("书籍内容或阅读范围已变化，请重新发送。")
             }
         }
+    }
+    public mutating func applyRanking(_ passages: [SourcePassage], books: [Book], store: LibraryStore) throws {
+        try validateSources(books: books)
+        guard let plan = retrievalPlan else { order(passages, books: books); return }
+        let selected = try HybridRetrieval.finish(plan, order: passages, store: store)
+        limits = [:]; revisions = [:]
+        for passage in selected {
+            if let book = plan.books.first(where: { $0.id == passage.bookID }) { limits[book.id] = book.readThrough; revisions[book.id] = book.chapters.map(\.revision) }
+        }
+        order(selected, books: plan.books)
     }
     public mutating func order(_ passages: [SourcePassage], books: [Book]) {
         self.passages = passages
@@ -94,58 +110,21 @@ public struct CompanionContext: Sendable {
             let title = book?.chapters.first { $0.id == passage.chapter }?.title ?? ""
             return "【来源 \(index + 1)】《\(book?.title ?? "")》\(title)\n\(passage.text)"
         }.joined(separator: "\n\n")
+        if let retrievalNotice { text = retrievalNotice + "\n\n" + text }
     }
 }
 
 public enum CompanionContextBuilder {
-    public static func build(query: String, books: [Book], currentBook: UUID?, store: LibraryStore, selection: SourcePassage? = nil, semantic: [SourcePassage] = []) throws -> CompanionContext {
-        let targets = books.filter { !$0.removed && $0.hasBody && (currentBook == nil || $0.id == currentBook) }
-        var passages: [SourcePassage] = []
-        var limits: [UUID: ReadingPosition] = [:]
-        var revisions: [UUID: [String]] = [:]
-        var budget = 12_000
-        let tokenizer = NLTokenizer(unit: .word); tokenizer.string = query
-        var words: [String] = []
-        tokenizer.enumerateTokens(in: query.startIndex..<query.endIndex) { range, _ in
-            let value = String(query[range])
-            if value.count >= 2, !words.contains(value) { words.append(value) }
-            return words.count < 12
-        }
-        func append(_ passage: SourcePassage, book: Book) {
-            guard passages.count < 24, passage.text.utf16.count <= budget, !passages.contains(where: { $0.id == passage.id }) else { return }
-            passages.append(passage); budget -= passage.text.utf16.count
-            limits[book.id] = book.readThrough; revisions[book.id] = book.chapters.map(\.revision)
-        }
-        if let selection, let book = targets.first(where: { $0.id == selection.bookID }), book.chapters.indices.contains(selection.chapter),
-           selection.isValid(in: try store.chapter(selection.chapter, in: book), scope: ReadingScope(through: book.readThrough)) { append(selection, book: book) }
-        for passage in semantic {
-            try Task.checkCancellation()
-            guard let book = targets.first(where: { $0.id == passage.bookID }), book.chapters.indices.contains(passage.chapter),
-                  passage.isValid(in: try store.chapter(passage.chapter, in: book), scope: ReadingScope(through: book.readThrough)) else { continue }
-            append(passage, book: book)
-        }
-        for book in targets {
-            try Task.checkCancellation()
-            let scope = ReadingScope(through: book.readThrough)
-            if currentBook == book.id, book.chapters.indices.contains(book.position.chapter) {
-                let chapter = try store.chapter(book.position.chapter, in: book)
-                let readable = scope.readableText(chapter)
-                let end = min(readable.utf16.count, book.position.offset + 2000)
-                let start = TextBoundary.floor(max(0, end - 4000), in: readable)
-                let safeEnd = TextBoundary.floor(end, in: readable)
-                if safeEnd > start { append(SourcePassage(bookID: book.id, chapter: chapter, offset: start, text: (readable as NSString).substring(with: NSRange(location: start, length: safeEnd - start))), book: book) }
-            }
-            for info in book.chapters where info.id <= scope.end.chapter && budget > 300 && passages.count < 24 {
-                try Task.checkCancellation()
-                let chapter = try store.chapter(info.id, in: book)
-                for word in words {
-                    for passage in BookSearch.find(word, in: chapter, bookID: book.id, scope: scope, limit: 2) { append(passage, book: book) }
-                    if passages.count >= 24 || budget <= 300 { break }
-                }
-            }
+    public static func build(query: String, books: [Book], currentBook: UUID?, store: LibraryStore, selection: SourcePassage? = nil, semantic: [SourcePassage] = [], vector: [RetrievalCandidate] = [], firstChapter: Int = 0, lastChapter: Int = Int.max, topK: Int = 8, chapterOrder: Bool = false) throws -> CompanionContext {
+        let plan = try HybridRetrieval.prepare(query: TextBoundary.prefix(query, end: 512), books: books, currentBook: currentBook, store: store, selection: selection, semantic: vector + semantic.map { RetrievalCandidate($0) }, firstChapter: max(0, firstChapter), lastChapter: lastChapter, topK: topK, chapterOrder: chapterOrder)
+        let passages = try HybridRetrieval.finish(plan, store: store)
+        var limits: [UUID: ReadingPosition] = [:], revisions: [UUID: [String]] = [:]
+        for passage in passages {
+            if let book = plan.books.first(where: { $0.id == passage.bookID }) { limits[book.id] = book.readThrough; revisions[book.id] = book.chapters.map(\.revision) }
         }
         var context = CompanionContext(text: "", passages: passages, limits: limits, revisions: revisions)
-        context.order(passages, books: targets)
+        context.retrievalPlan = plan; context.retrievalNotice = plan.notice
+        context.order(passages, books: plan.books)
         return context
     }
 }

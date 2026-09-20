@@ -2,6 +2,27 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    private func tapSettingsRow(_ title: String, in app: XCUIApplication) {
+        let row = app.buttons[title]
+        for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(row.exists && row.isHittable); row.tap()
+    }
+    func testHybridRetrievalAndVectorFailureKeepReadableEvidence() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-hybrid"]; app.launch()
+        app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "检索测试")).firstMatch.tap()
+        let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+        func send(_ text: String) { input.tap(); input.typeText(text); app.buttons["发送"].tap() }
+        let reply = app.staticTexts["混合检索结果：At the harbor, the lighthouse beacon shone."]
+        send("lighthouse harbor")
+        XCTAssertTrue(reply.waitForExistence(timeout: 15))
+        app.buttons["来源 1"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["At the harbor, the lighthouse beacon shone."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        send("lighthouse harbor fallback")
+        XCTAssertTrue(app.staticTexts["向量检索暂不可用，已使用本机关键词检索。"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.scrollViews["chat-messages"].staticTexts.matching(identifier: "混合检索结果：At the harbor, the lighthouse beacon shone.").count, 2)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Future secret")).firstMatch.exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Hybrid-retrieval-fallback"; shot.lifetime = .keepAlways; add(shot)
+    }
     func testToolWritesNotesSummaryAndAnnotationWithProtectedUserEdits() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-writing"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
@@ -25,14 +46,16 @@ final class ReadingTests: XCTestCase {
         app.buttons["reading-note-Plot recap"].tap()
         XCTAssertTrue(app.staticTexts["Reached the lighthouse and saw its light."].waitForExistence(timeout: 5))
         app.navigationBars["Plot recap"].buttons.element(boundBy: 0).tap(); note.tap(); app.buttons["编辑"].tap()
-        let editor = app.textViews["reading-note-content"]; editor.tap(); editor.typeKey("a", modifierFlags: .command); editor.typeText("My own interpretation.")
+        let editor = app.textViews["reading-note-content"]; editor.tap(); editor.typeText("My own interpretation. ")
+        let editedText = (editor.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertTrue(editedText.contains("My own interpretation."))
         app.buttons["保存"].tap()
-        XCTAssertTrue(app.staticTexts["My own interpretation."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts[editedText].waitForExistence(timeout: 5))
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-writing"]; app.launch()
         openChat(); send("Update my edited note.")
         XCTAssertTrue(app.staticTexts["已保留你编辑的笔记。"].waitForExistence(timeout: 20))
         app.navigationBars["工具查询"].buttons["返回"].tap(); openNotes(); note.tap()
-        XCTAssertTrue(app.staticTexts["My own interpretation."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts[editedText].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Overwritten by AI"].exists)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Protected-reading-note"; shot.lifetime = .keepAlways; add(shot)
     }
@@ -279,7 +302,7 @@ final class ReadingTests: XCTestCase {
     func testImportedFontLibrarySurvivesRelaunchAndDeletion() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-font"]; app.launch()
-        app.tabBars.buttons["设置"].tap(); app.buttons["字体库"].tap()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("字体库", in: app)
         let rename = app.buttons["重命名"]
         XCTAssertTrue(rename.waitForExistence(timeout: 20)); rename.tap()
         let field = app.alerts.textFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
@@ -434,7 +457,7 @@ final class ReadingTests: XCTestCase {
     func testCloudSpeechSettingsPersist() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
-        app.tabBars.buttons["设置"].tap(); app.buttons["云端声音与缓存"].tap()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
         let enabled = app.switches["cloud-speech-enabled"]
         XCTAssertTrue(enabled.waitForExistence(timeout: 10))
         enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -455,7 +478,7 @@ final class ReadingTests: XCTestCase {
         reveal(app.buttons["save-cloud-speech"]); app.buttons["save-cloud-speech"].tap()
         XCTAssertTrue(app.staticTexts["cloud-speech-saved"].waitForExistence(timeout: 10))
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
-        app.tabBars.buttons["设置"].tap(); app.buttons["云端声音与缓存"].tap()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
         XCTAssertEqual(enabled.value as? String, "1")
         reveal(model); XCTAssertEqual(model.value as? String, "speech-2.8-hd-custom")
         reveal(key)
@@ -573,7 +596,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.tabBars.buttons["设置"].tap()
-        app.buttons["存储与阅读记录"].tap()
+        tapSettingsRow("存储与阅读记录", in: app)
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         app.buttons["clear-book-body"].tap()
         app.alerts.buttons["清理正文"].tap()
@@ -581,7 +604,7 @@ final class ReadingTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing"]; app.launch()
         app.tabBars.buttons["设置"].tap()
-        app.buttons["存储与阅读记录"].tap()
+        tapSettingsRow("存储与阅读记录", in: app)
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         XCTAssertTrue(app.staticTexts["正文已清理，阅读记录保存在本机。"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "第一章 雨后")).firstMatch.exists)
@@ -595,7 +618,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15))
         app.buttons["add-sample"].tap()
         app.tabBars.buttons["设置"].tap()
-        app.buttons["整理书架"].tap()
+        tapSettingsRow("整理书架", in: app)
         app.buttons["new-shelf-group"].tap()
         app.textFields["group-name"].tap(); app.textFields["group-name"].typeText("旅行")
         app.buttons["保存"].tap()
@@ -619,7 +642,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15))
         app.buttons["add-sample"].tap()
         app.tabBars.buttons["设置"].tap()
-        app.buttons["备份与恢复"].tap()
+        tapSettingsRow("备份与恢复", in: app)
         app.buttons["create-backup"].tap()
         XCTAssertTrue(app.buttons["share-backup"].waitForExistence(timeout: 20))
         XCTAssertFalse(app.alerts["需要处理"].exists)

@@ -243,7 +243,7 @@ struct CompanionChat: View {
                             }
                     }
                 }.padding(.horizontal, 14).padding(.bottom, 20).scrollTargetLayout()
-            }.scrollPosition(id: $scrollPosition, anchor: .bottom)
+            }.accessibilityIdentifier("chat-messages").scrollPosition(id: $scrollPosition, anchor: .bottom)
                 .defaultScrollAnchor(.bottom)
             if generating { Button("停止回复", systemImage: "stop.circle") { companion.stop() }.padding(8) }
             Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
