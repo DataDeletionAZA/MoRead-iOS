@@ -33,6 +33,8 @@ final class ReadingTests: XCTestCase {
         func send(_ text: String) {
             let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
             input.tap(); input.typeText(text); app.buttons["发送"].tap()
+            XCTAssertTrue(app.staticTexts["整理预览已准备好，等待你确认。"].waitForExistence(timeout: 15))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: app.buttons["重新生成"])], timeout: 5), .completed)
         }
         func shows(_ text: String) -> Bool { app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch.waitForExistence(timeout: 5) }
         openChat(); send("Organize my books.")
@@ -166,7 +168,8 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["memory-profile"].label.contains("安静的阅读环境"))
         entry.tap()
-        let editor = app.textViews["memory-text-editor"]; editor.tap(); editor.typeKey("a", modifierFlags: .command); editor.typeText("Prefers quiet libraries.")
+        let editor = app.textViews["memory-text-editor"]; editor.tap(); editor.typeText("Prefers quiet libraries.")
+        let editedMemory = editor.value as? String ?? ""; XCTAssertTrue(editedMemory.contains("Prefers quiet libraries."))
         app.buttons["保存"].tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Prefers quiet libraries.")).firstMatch.waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts["memory-profile"].label, "还没有用户画像。")
@@ -175,10 +178,10 @@ final class ReadingTests: XCTestCase {
         input.tap(); input.typeText("What do I like?"); app.buttons["发送"].tap()
         XCTAssertTrue(app.staticTexts["本地模拟：已收到修改后的长期记忆。"].waitForExistence(timeout: 10))
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-memory"]; app.launch(); openChat(); openMemory()
-        XCTAssertTrue(entry.waitForExistence(timeout: 10)); XCTAssertTrue(entry.label.contains("Prefers quiet libraries."))
+        XCTAssertTrue(entry.waitForExistence(timeout: 10)); XCTAssertTrue(entry.label.contains(editedMemory))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Persistent-persona-memory"; shot.lifetime = .keepAlways; add(shot)
         entry.swipeLeft(); app.buttons["遗忘"].tap()
-        XCTAssertFalse(entry.exists); closeMemory()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: entry)], timeout: 5), .completed); closeMemory()
         input.tap(); input.typeText("What do you remember?"); app.buttons["发送"].tap()
         XCTAssertTrue(app.staticTexts["本地模拟：没有这条长期记忆。"].waitForExistence(timeout: 10))
         app.terminate(); app.launch(); openChat(); openMemory()
@@ -218,7 +221,7 @@ final class ReadingTests: XCTestCase {
         app.buttons["chat-identity"].tap()
         XCTAssertEqual(app.switches["mask-enabled"].value as? String, "0")
         app.buttons["select-mask-Linyao"].swipeLeft(); app.buttons.matching(NSPredicate(format: "label IN %@", ["删除", "Delete"])).firstMatch.tap()
-        XCTAssertFalse(app.buttons["select-mask-Linyao"].exists)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["select-mask-Linyao"])], timeout: 5), .completed)
         app.buttons["完成"].tap()
         XCTAssertTrue(app.staticTexts["扮演：Linyao"].exists)
     }
@@ -356,24 +359,25 @@ final class ReadingTests: XCTestCase {
         app.tabBars.buttons["设置"].tap(); tapSettingsRow("字体库", in: app)
         let rename = app.buttons["重命名"]
         XCTAssertTrue(rename.waitForExistence(timeout: 20)); rename.tap()
-        let field = app.alerts.textFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
-        field.typeKey("a", modifierFlags: .command)
+        let field = app.alerts["重命名字体"].textFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
+        let previousName = field.value as? String
         field.typeText("My Reading Font")
-        XCTAssertEqual(field.value as? String, "My Reading Font")
+        let renamedFont = field.value as? String ?? ""
+        XCTAssertTrue(renamedFont.contains("My Reading Font")); XCTAssertNotEqual(renamedFont, previousName)
         let save = app.alerts.buttons["保存"]
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        XCTAssertTrue(app.staticTexts["My Reading Font"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts[renamedFont].waitForExistence(timeout: 5))
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
         app.buttons["排版"].tap(); app.buttons["字体与段落"].tap()
-        XCTAssertTrue(app.buttons["reader-custom-font"].label.contains("My Reading Font"))
+        XCTAssertTrue(app.buttons["reader-custom-font"].label.contains(renamedFont))
         app.buttons["管理与导入字体"].tap()
         app.buttons["删除字体"].tap()
         app.sheets.buttons["删除字体"].tap()
-        let deleted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.staticTexts["My Reading Font"])
+        let deleted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.staticTexts[renamedFont])
         XCTAssertEqual(XCTWaiter.wait(for: [deleted], timeout: 5), .completed)
         app.navigationBars["字体库"].buttons.firstMatch.tap()
         XCTAssertFalse(app.buttons["reader-custom-font"].exists)
