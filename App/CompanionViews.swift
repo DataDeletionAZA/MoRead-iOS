@@ -97,6 +97,7 @@ struct CharacterEditor: View {
                     if card.avatar != nil { Button("移除头像", role: .destructive) { avatarSelection = nil; card.avatar = nil } }
                     TextField("名字", text: $card.name)
                     NavigationLink("世界书（\(card.worldBook.count) 条）") { WorldBookEditor(entries: $card.worldBook) }.accessibilityIdentifier("edit-world-book")
+                    NavigationLink("角色记忆") { PersonaMemoryView(characterID: card.id) }
                 }
                 Section("人物设定") { TextEditor(text: $card.description).frame(minHeight: 130) }
                 Section("性格") { TextEditor(text: $card.personality).frame(minHeight: 80) }
@@ -249,7 +250,7 @@ struct CompanionChat: View {
                 ToolbarItem(placement: .primaryAction) { Button("前情提要", systemImage: "text.alignleft") { showSummary = true } }
                 ToolbarItem(placement: .primaryAction) { Button("重新生成", systemImage: "arrow.clockwise") { companion.retry(conversationID, library: library) }.disabled(companion.busy || conversation?.messages.isEmpty != false) }
             }
-            .onDisappear { companion.refreshSummary(conversationID, library: library) }
+            .onDisappear { companion.refreshSummary(conversationID, library: library); companion.consolidateMemory(conversationID, library: library, onClose: true) }
             .sheet(isPresented: $showSummary) { NavigationStack { ConversationSummaryView(conversationID: conversationID).toolbar { Button("完成") { showSummary = false } } } }
             .sheet(isPresented: $showIdentity) { NavigationStack { UserMaskSettingsView().toolbar { Button("完成") { showIdentity = false } } } }
             .sheet(item: $editing) { message in

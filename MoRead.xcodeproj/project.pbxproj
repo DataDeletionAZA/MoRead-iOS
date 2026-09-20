@@ -12,9 +12,11 @@
 		116F8C245B899EE9BE56335E /* PagedTextReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */; };
 		174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C880FD0E398C652F62F267 /* VectorMemoryView.swift */; };
 		17C7F979065AF746BDCFAD4C /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D873B44D290EDDDCE5025C21 /* BackupView.swift */; };
+		1F0FE229B25D7B15718CE296 /* PersonaMemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */; };
 		23D5B1908720955DDBC039FC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = E13CDB21AB706B03ADB8D9DE /* LICENSE */; };
 		282A768FD9A6BA6A2B84D073 /* NotoSerifSC.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9CB4AB0E592A32B4110298DE /* NotoSerifSC.ttf */; };
 		2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */; };
+		29AEA22D98DF5F68D70521C5 /* PersonaMemoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */; };
 		31FD632648FF4E9182F6D30F /* sample.epub in Resources */ = {isa = PBXBuildFile; fileRef = B925A6CE73A58A5EA514FB00 /* sample.epub */; };
 		3363F5D260EF8FD6F95EC143 /* FontLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10876F211B91CB27519F3138 /* FontLibraryView.swift */; };
 		3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563B576C24E7177CF543069 /* CompanionViews.swift */; };
@@ -67,6 +69,7 @@
 		19BD21C3358729CF22FAB2EE /* ThemeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeView.swift; sourceTree = "<group>"; };
 		1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoReadApp.swift; sourceTree = "<group>"; };
 		26D7FFD20FA49397BE6BBFD0 /* THIRD_PARTY_LICENSES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = THIRD_PARTY_LICENSES.txt; sourceTree = "<group>"; };
+		37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryModel.swift; sourceTree = "<group>"; };
 		4D83A1D135AC7055CF1DB440 /* MoRead.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MoRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagedTextReader.swift; sourceTree = "<group>"; };
 		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -89,6 +92,7 @@
 		B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		B925A6CE73A58A5EA514FB00 /* sample.epub */ = {isa = PBXFileReference; path = sample.epub; sourceTree = "<group>"; };
 		B9F48B66B02BAA67D887F3A7 /* StorageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageView.swift; sourceTree = "<group>"; };
+		CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryView.swift; sourceTree = "<group>"; };
 		D873B44D290EDDDCE5025C21 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
 		E13CDB21AB706B03ADB8D9DE /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
@@ -127,6 +131,8 @@
 				B12B808B9926C791C07C1201 /* KeychainStore.swift */,
 				1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */,
 				4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */,
+				37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */,
+				CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */,
 				5868308952DB53DF46DE561A /* ProactiveCompanion.swift */,
 				86A54F6F92AE038D4FAE8616 /* ProactiveSettingsView.swift */,
 				035CD3F1A06D22ADFB39DD82 /* ReaderBackgroundView.swift */,
@@ -334,6 +340,8 @@
 				7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */,
 				EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */,
 				116F8C245B899EE9BE56335E /* PagedTextReader.swift in Sources */,
+				29AEA22D98DF5F68D70521C5 /* PersonaMemoryModel.swift in Sources */,
+				1F0FE229B25D7B15718CE296 /* PersonaMemoryView.swift in Sources */,
 				C8DA5A8022B9593A149F589F /* ProactiveCompanion.swift in Sources */,
 				9FF3734F8AA0D55A11AEE0B1 /* ProactiveSettingsView.swift in Sources */,
 				457D71997185824C45A19866 /* ReaderBackgroundView.swift in Sources */,

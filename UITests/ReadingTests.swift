@@ -2,6 +2,37 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testPersonaMemoryConsolidationEditRecallAndForgettingPersist() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-memory"]; app.launch()
+        func openChat() {
+            app.tabBars.buttons["伴读"].tap()
+            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "书店的记忆")).firstMatch.tap()
+        }
+        func openMemory() { app.buttons["前情提要"].tap(); app.buttons["角色长期记忆"].tap() }
+        func closeMemory() { app.navigationBars["角色记忆"].buttons.element(boundBy: 0).tap(); app.buttons["完成"].tap() }
+        openChat(); openMemory(); app.buttons["整理本次对话"].tap()
+        let entry = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "memory-entry-")).firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["memory-profile"].label.contains("安静的阅读环境"))
+        entry.tap()
+        let editor = app.textViews["memory-text-editor"]; editor.tap(); editor.typeKey("a", modifierFlags: .command); editor.typeText("Prefers quiet libraries.")
+        app.buttons["保存"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Prefers quiet libraries.")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["memory-profile"].label, "还没有用户画像。")
+        closeMemory()
+        let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+        input.tap(); input.typeText("What do I like?"); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["本地模拟：已收到修改后的长期记忆。"].waitForExistence(timeout: 10))
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-memory"]; app.launch(); openChat(); openMemory()
+        XCTAssertTrue(entry.waitForExistence(timeout: 10)); XCTAssertTrue(entry.label.contains("Prefers quiet libraries."))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Persistent-persona-memory"; shot.lifetime = .keepAlways; add(shot)
+        entry.swipeLeft(); app.buttons["遗忘"].tap()
+        XCTAssertFalse(entry.exists); closeMemory()
+        input.tap(); input.typeText("What do you remember?"); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["本地模拟：没有这条长期记忆。"].waitForExistence(timeout: 10))
+        app.terminate(); app.launch(); openChat(); openMemory()
+        XCTAssertFalse(entry.exists); XCTAssertEqual(app.staticTexts["memory-profile"].label, "还没有用户画像。")
+    }
     func testUserIdentitySwitchRetryAndHistorySurviveRelaunch() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-identities"]; app.launch()
         app.tabBars.buttons["设置"].tap(); app.buttons["我的身份"].tap(); app.buttons["新建身份"].tap()

@@ -36,20 +36,30 @@ public enum RollingSummary {
     public static let window = 20
     public static let minimumBatch = 6
     public static func fingerprint(_ messages: [ChatMessage], through id: UUID) -> String? {
-        guard let end = messages.firstIndex(where: { $0.id == id }) else { return nil }
-        var digest = SHA256()
-        // ponytail: hash the archived prefix to detect edits; cache digests if very long chats make this expensive.
-        for message in messages[...end] {
+        fingerprints(messages, through: [id])[id]
+    }
+    public static func fingerprints(_ messages: [ChatMessage], through ids: Set<UUID>) -> [UUID: String] {
+        guard !ids.isEmpty else { return [:] }
+        var digest = SHA256(), result: [UUID: String] = [:]
+        for message in messages {
             var fields = [message.id.uuidString, message.role, message.status, message.content]
             if let identity = message.identity { fields += ["identity", identity.maskID?.uuidString ?? "", identity.name, identity.description] }
+            if let scopes = message.bookScopes {
+                fields.append("book-scopes")
+                for scope in scopes.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+                    fields += [scope.id.uuidString, String(scope.through.chapter), String(scope.through.offset), scope.revision]
+                }
+            }
             for field in fields {
                 let bytes = Data(field.utf8)
                 var length = UInt64(bytes.count).bigEndian
                 withUnsafeBytes(of: &length) { digest.update(data: Data($0)) }
                 digest.update(data: bytes)
             }
+            if ids.contains(message.id), result[message.id] == nil { result[message.id] = digest.finalize().map { String(format: "%02x", $0) }.joined() }
+            if result.count == ids.count { break }
         }
-        return digest.finalize().map { String(format: "%02x", $0) }.joined()
+        return result
     }
     public static func plan(messages: [ChatMessage], summary: ConversationSummary?) -> SummaryWork? {
         let valid = summary.flatMap { $0.matches(messages) ? $0 : nil }

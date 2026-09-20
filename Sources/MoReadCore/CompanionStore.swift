@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 
 public struct CompanionSettings: Codable {
+    public var personaMemory: PersonaMemorySettings?
     public var userMasks: UserMaskSettings?
     public var summarySettings: SummarySettings?
     public var proactive: ProactiveSettings?

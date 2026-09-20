@@ -146,6 +146,7 @@ public enum BackupArchive {
         let companion = try CompanionStore(root: staging)
         _ = try companion.settings(); _ = try companion.characters()
         let conversations = try companion.conversations()
+        if manager.fileExists(atPath: PersonaMemoryStore.url(in: staging).path) { try PersonaMemoryStore(root: staging).validate() }
         valid = true
         return PreparedRestore(directory: staging, manifest: manifest, bookCount: books.count, conversationCount: conversations.count)
     }

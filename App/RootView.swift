@@ -20,6 +20,16 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedMemory, companion.conversations.isEmpty, let card = companion.characters.first {
+                var provider = AIProvider(); provider.name = "本地记忆测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
+                companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id
+                companion.settings.embeddingProvider = provider.id; companion.settings.embeddingModel = "fixture-vector"
+                var policy = PersonaMemorySettings(); policy.enabled = true; policy.providerID = provider.id
+                companion.settings.personaMemory = policy; companion.saveSettings()
+                var chat = Conversation(title: "书店的记忆", bookID: nil, characterID: card.id)
+                chat.messages = (0..<12).map { ChatMessage(role: $0.isMultiple(of: 2) ? "user" : "assistant", content: "第\($0)条：用户喜欢安静的书店。") }
+                companion.perform { try companion.store?.save(chat); companion.conversations = [chat] }
+            }
             if companion.simulatedIdentities, companion.settings.providers.isEmpty {
                 var provider = AIProvider(); provider.name = "本地身份测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
                 companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id; companion.saveSettings()
@@ -269,6 +279,7 @@ struct SettingsView: View {
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("随读段评") { ProactiveSettingsView() }
                     NavigationLink("对话记忆") { SummarySettingsView() }
+                    NavigationLink("长期记忆") { PersonaMemorySettingsView() }
                 }
                 Section("阅读与外观") {
                     NavigationLink("字体库") { FontLibraryView() }

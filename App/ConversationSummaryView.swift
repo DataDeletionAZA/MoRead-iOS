@@ -48,6 +48,7 @@ struct ConversationSummaryView: View {
                 if summary != nil { Button("清除提要", role: .destructive) { companion.clearSummary(conversationID) } }
             }
             NavigationLink("对话记忆设置") { SummarySettingsView() }
+            if let conversation { NavigationLink("角色长期记忆") { PersonaMemoryView(characterID: conversation.characterID, conversationID: conversationID) } }
         }.navigationTitle("前情提要")
     }
 }
