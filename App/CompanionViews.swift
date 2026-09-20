@@ -215,6 +215,7 @@ struct CompanionChat: View {
                             if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
                             else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                             if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
+                            if let notice = message.retrievalNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
                             if !message.sources.isEmpty {
                                 ScrollView(.horizontal) {
                                     HStack { ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, passage in

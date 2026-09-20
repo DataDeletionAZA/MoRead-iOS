@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 
 public struct CompanionSettings: Codable {
+    public var rerank: RerankSettings?
     public var personaMemory: PersonaMemorySettings?
     public var userMasks: UserMaskSettings?
     public var summarySettings: SummarySettings?
@@ -77,6 +78,22 @@ public struct CompanionContext: Sendable {
     public var passages: [SourcePassage]
     public var limits: [UUID: ReadingPosition]
     public var revisions: [UUID: [String]]
+    public func validateSources(books: [Book]) throws {
+        for (id, end) in limits {
+            guard let book = books.first(where: { $0.id == id }), !book.removed, book.hasBody,
+                  book.readThrough >= end, revisions[id] == book.chapters.map(\.revision) else {
+                throw MoReadError.invalid("书籍内容或阅读范围已变化，请重新发送。")
+            }
+        }
+    }
+    public mutating func order(_ passages: [SourcePassage], books: [Book]) {
+        self.passages = passages
+        text = passages.enumerated().map { index, passage in
+            let book = books.first { $0.id == passage.bookID }
+            let title = book?.chapters.first { $0.id == passage.chapter }?.title ?? ""
+            return "【来源 \(index + 1)】《\(book?.title ?? "")》\(title)\n\(passage.text)"
+        }.joined(separator: "\n\n")
+    }
 }
 
 public enum CompanionContextBuilder {
@@ -126,11 +143,8 @@ public enum CompanionContextBuilder {
                 }
             }
         }
-        let text = passages.enumerated().map { index, passage in
-            let book = targets.first { $0.id == passage.bookID }
-            let title = book?.chapters.first { $0.id == passage.chapter }?.title ?? ""
-            return "【来源 \(index + 1)】《\(book?.title ?? "")》\(title)\n\(passage.text)"
-        }.joined(separator: "\n\n")
-        return CompanionContext(text: text, passages: passages, limits: limits, revisions: revisions)
+        var context = CompanionContext(text: "", passages: passages, limits: limits, revisions: revisions)
+        context.order(passages, books: targets)
+        return context
     }
 }

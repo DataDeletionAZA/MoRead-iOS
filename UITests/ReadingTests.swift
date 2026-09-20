@@ -2,6 +2,32 @@ import XCTest
 
 final class ReadingTests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    func testRerankOrderCitationsFallbackAndSettingsPersist() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-rerank"]; app.launch()
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "寻找灯塔")).firstMatch.tap() }
+        openChat()
+        let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+        input.tap(); input.typeText("lighthouse"); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["本地排序结果：lighthouse second clue."].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["已按问题的相关性排列原文。"].exists)
+        app.buttons["来源 1"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["lighthouse second clue."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        input.tap(); input.typeText("lighthouse unavailable"); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["本地排序结果：lighthouse first clue."].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["相关性排序暂不可用，已使用原来的原文检索顺序。"].exists)
+        XCTAssertFalse(app.staticTexts["lighthouse secret identity."].exists)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-rerank"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["原文相关性排序"].tap()
+        XCTAssertEqual(app.textFields["rerank-model"].value as? String, "fixture-rerank")
+        app.switches["rerank-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(app.switches["rerank-enabled"].value as? String, "0")
+        app.terminate(); app.launch(); app.tabBars.buttons["设置"].tap(); app.buttons["原文相关性排序"].tap()
+        XCTAssertEqual(app.switches["rerank-enabled"].value as? String, "0")
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "Rerank-settings"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.navigationBars["原文相关性排序"].buttons.element(boundBy: 0).tap(); app.tabBars.buttons["伴读"].tap(); app.buttons["开启新话题"].tap()
+        input.tap(); input.typeText("lighthouse"); app.buttons["发送"].tap()
+        XCTAssertTrue(app.staticTexts["本地排序结果：lighthouse first clue."].firstMatch.waitForExistence(timeout: 10))
+    }
     func testPersonaMemoryConsolidationEditRecallAndForgettingPersist() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-memory"]; app.launch()
         func openChat() {

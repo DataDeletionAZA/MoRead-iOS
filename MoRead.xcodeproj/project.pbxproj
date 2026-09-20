@@ -20,6 +20,7 @@
 		31FD632648FF4E9182F6D30F /* sample.epub in Resources */ = {isa = PBXBuildFile; fileRef = B925A6CE73A58A5EA514FB00 /* sample.epub */; };
 		3363F5D260EF8FD6F95EC143 /* FontLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10876F211B91CB27519F3138 /* FontLibraryView.swift */; };
 		3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563B576C24E7177CF543069 /* CompanionViews.swift */; };
+		3FE4A055F33822AEEDEF6FE5 /* RerankSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11477324D774EAB870E5221 /* RerankSettingsView.swift */; };
 		43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B830F2AED127F80997D8521 /* RootView.swift */; };
 		457D71997185824C45A19866 /* ReaderBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 035CD3F1A06D22ADFB39DD82 /* ReaderBackgroundView.swift */; };
 		50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */; };
@@ -92,6 +93,7 @@
 		B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		B925A6CE73A58A5EA514FB00 /* sample.epub */ = {isa = PBXFileReference; path = sample.epub; sourceTree = "<group>"; };
 		B9F48B66B02BAA67D887F3A7 /* StorageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageView.swift; sourceTree = "<group>"; };
+		C11477324D774EAB870E5221 /* RerankSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerankSettingsView.swift; sourceTree = "<group>"; };
 		CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryView.swift; sourceTree = "<group>"; };
 		D873B44D290EDDDCE5025C21 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 				035CD3F1A06D22ADFB39DD82 /* ReaderBackgroundView.swift */,
 				7DEBDFD9464F9BE8B1B39C0D /* ReaderTypographyView.swift */,
 				FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */,
+				C11477324D774EAB870E5221 /* RerankSettingsView.swift */,
 				9B830F2AED127F80997D8521 /* RootView.swift */,
 				F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */,
 				0B2065DE60076241DE16C071 /* SpeechControls.swift */,
@@ -347,6 +350,7 @@
 				457D71997185824C45A19866 /* ReaderBackgroundView.swift in Sources */,
 				8863B1DE85FB0E330B55382C /* ReaderTypographyView.swift in Sources */,
 				C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */,
+				3FE4A055F33822AEEDEF6FE5 /* RerankSettingsView.swift in Sources */,
 				43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */,
 				0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */,
 				51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */,
