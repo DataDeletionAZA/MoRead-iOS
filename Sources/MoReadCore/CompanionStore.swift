@@ -30,6 +30,16 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
     public init(title: String, bookID: UUID?, characterID: UUID) {
         self.title = title; self.bookID = bookID; self.characterID = characterID
     }
+    public func validateOrganizationPlans() throws {
+        for message in messages {
+            for trace in message.toolTrace ?? [] {
+                if let plan = trace.organizationPlan {
+                    guard bookID == nil, trace.call.name == "propose_library_organization", trace.state == "succeeded", message.role == "assistant" else { throw MoReadError.invalid("整理方案的话题或工具记录无效。") }
+                    _ = try plan.encoded()
+                }
+            }
+        }
+    }
     public func validateSources(books: [Book]) throws {
         for (id, end) in sourceLimits {
             guard let book = books.first(where: { $0.id == id }), !book.removed,
@@ -65,9 +75,10 @@ public final class CompanionStore {
     public func conversations() throws -> [Conversation] {
         // ponytail: history loads one JSON per conversation; add a lightweight index if history opening becomes slow.
         try manager.contentsOfDirectory(at: root.appendingPathComponent("conversations"), includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "json" }.map { try decoder.decode(Conversation.self, from: Data(contentsOf: $0)) }.sorted { $0.updatedAt > $1.updatedAt }
+            .filter { $0.pathExtension == "json" }.map { let value = try decoder.decode(Conversation.self, from: Data(contentsOf: $0)); try value.validateOrganizationPlans(); return value }.sorted { $0.updatedAt > $1.updatedAt }
     }
     public func save(_ conversation: Conversation) throws {
+        try conversation.validateOrganizationPlans()
         try encoder.encode(conversation).write(to: root.appendingPathComponent("conversations/\(conversation.id.uuidString).json"), options: .atomic)
     }
     public func deleteConversation(_ id: UUID) throws { try manager.removeItem(at: root.appendingPathComponent("conversations/\(id.uuidString).json")) }

@@ -194,6 +194,7 @@ struct CompanionChat: View {
     @State private var draft = ""
     @State private var editing: ChatMessage?
     @State private var editText = ""
+    @State private var organizationPlan: LibraryOrganizationPlan?
     @State private var showSummary = false
     @State private var showIdentity = false
     @State private var source: SourcePassage?
@@ -225,6 +226,13 @@ struct CompanionChat: View {
                                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
                                     }
                                 }.font(.caption).accessibilityIdentifier("tool-trace")
+                                ForEach(traces.filter { $0.organizationPlan != nil }) { trace in
+                                    if let plan = trace.organizationPlan {
+                                        let status = library.organization.organizationDecisions?[plan.id]
+                                        Button(status == "applied" ? "查看已应用的整理方案" : status == "cancelled" ? "查看已取消的整理方案" : "查看整理方案（\(plan.changes.count) 本）", systemImage: "books.vertical") { organizationPlan = plan }
+                                            .accessibilityIdentifier("organization-plan-" + (status ?? "pending"))
+                                    }
+                                }
                             }
                             if let notice = message.retrievalNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
                             if !message.sources.isEmpty {
@@ -263,6 +271,7 @@ struct CompanionChat: View {
                 ToolbarItem(placement: .primaryAction) { Button("重新生成", systemImage: "arrow.clockwise") { companion.retry(conversationID, library: library) }.disabled(companion.busy || conversation?.messages.isEmpty != false) }
             }
             .onDisappear { companion.refreshSummary(conversationID, library: library); companion.consolidateMemory(conversationID, library: library, onClose: true) }
+            .sheet(item: $organizationPlan) { plan in NavigationStack { LibraryOrganizationPreview(conversationID: conversationID, plan: plan) } }
             .sheet(isPresented: $showSummary) { NavigationStack { ConversationSummaryView(conversationID: conversationID).toolbar { Button("完成") { showSummary = false } } } }
             .sheet(isPresented: $showIdentity) { NavigationStack { UserMaskSettingsView().toolbar { Button("完成") { showIdentity = false } } } }
             .sheet(item: $editing) { message in

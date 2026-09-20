@@ -7,7 +7,7 @@ struct CompanionToolsSettingsView: View {
         Form {
             Section {
                 Toggle("允许伴读使用工具", isOn: Binding(get: { companion.settings.toolsEnabled ?? true }, set: { companion.stop(); companion.settings.toolsEnabled = $0; companion.saveSettings() })).accessibilityIdentifier("tools-enabled")
-            } footer: { Text("伴读可查询已读资料与角色记忆，也可在当前书籍中保存批注、笔记和剧情梗概。每种工具可按角色开关。查询到的内容会发送给当前聊天服务商；最多连续进行 8 轮查询，每轮可查多项资料，可能增加 API 费用。") }
+            } footer: { Text("伴读可查询已读资料与角色记忆，也可在当前书籍中保存批注、笔记和剧情梗概。书库伴读还可准备标签和分组整理预览，由你确认后应用。每种工具可按角色开关。查询到的内容会发送给当前聊天服务商；最多连续进行 8 轮查询，每轮可查多项资料，可能增加 API 费用。") }
             Section("角色的可用工具") {
                 ForEach(companion.characters) { card in
                     NavigationLink(card.name) {

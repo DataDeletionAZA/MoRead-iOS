@@ -34,6 +34,7 @@ public struct ShelfFilter: Equatable, Sendable {
 }
 
 public struct ShelfOrganization: Codable, Equatable, Sendable {
+    public var organizationDecisions: [UUID: String]?
     public var groups: [ShelfGroup] = []
     public var collections: [ShelfCollection] = []
     public var tags: [ShelfTag] = []
@@ -43,6 +44,7 @@ public struct ShelfOrganization: Codable, Equatable, Sendable {
     public init() {}
 
     public func validate() throws {
+        guard (organizationDecisions?.count ?? 0) <= 100_000, organizationDecisions?.values.allSatisfy({ ["applied", "cancelled"].contains($0) }) ?? true else { throw MoReadError.invalid("整理方案的处理记录无效。") }
         guard groups.count <= 1024, tags.count <= 8192, collections.count <= 8192 else { throw MoReadError.invalid("书架分类数量过多。") }
         let groupIDs = Set(groups.map(\.id)), tagIDs = Set(tags.map(\.id))
         guard groupIDs.count == groups.count, tagIDs.count == tags.count, Set(collections.map(\.id)).count == collections.count,

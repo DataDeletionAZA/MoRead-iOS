@@ -44,7 +44,8 @@ struct RootView: View {
                         var book = try store.importBook(title: "查询测试", chapters: chapters)
                         book.readThrough = .init(chapter: 1, offset: chapters[1].text.utf16.count)
                         try store.save(book); model.load()
-                        let chat = Conversation(title: "工具查询", bookID: book.id, characterID: card.id)
+                        let organization = ProcessInfo.processInfo.arguments.contains("--simulate-organization")
+                        let chat = Conversation(title: "工具查询", bookID: organization ? nil : book.id, characterID: card.id)
                         try companion.store?.save(chat); companion.conversations = [chat]
                     }
                 }

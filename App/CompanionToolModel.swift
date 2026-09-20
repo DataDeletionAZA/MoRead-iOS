@@ -35,6 +35,11 @@ extension CompanionModel {
                 return result.isEmpty ? "没有找到可用的长期记忆。" : result
             }
             let args = try call.object()
+            if call.name == "propose_library_organization" {
+                guard conversation.bookID == nil, let store = library.store else { throw MoReadError.invalid("请在书库伴读中准备整理方案。") }
+                let plan = try LibraryOrganizationPlan.preview(arguments: args, books: library.books, shelf: store.organization())
+                return try plan.encoded()
+            }
             if call.name != "find_books" {
                 let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks)
                 guard accessed.contains(book.id) || accessed.count < 4 else { throw MoReadError.invalid("一轮最多查阅 4 本书，请缩小范围。") }
@@ -141,6 +146,11 @@ extension CompanionModel {
                 traces[trace].state = result.failed ? "failed" : "succeeded"
                 let preview = result.content.replacingOccurrences(of: "，source_ref=[^\\n]+", with: "", options: .regularExpression)
                 traces[trace].preview = TextBoundary.prefix(preview, end: 2000)
+                if result.call.name == "propose_library_organization", !result.failed {
+                    let plan = try LibraryOrganizationPlan.decode(result.content)
+                    traces[trace].organizationPlan = plan
+                    traces[trace].preview = "已准备 \(plan.changes.count) 本书的整理预览，等待你确认。"
+                }
             }
             memoryStatus = nil
         }
@@ -152,6 +162,21 @@ extension CompanionModel {
         _ = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: specs, exchanges: exchanges)
         try await Task.sleep(for: .milliseconds(200))
         let calls: [ChatToolCall]
+        if ProcessInfo.processInfo.arguments.contains("--simulate-organization") {
+            if exchanges.isEmpty { return try mockToolCalls([ChatToolCall(id: "catalog", name: "find_books", arguments: "{}")]) }
+            if exchanges.count == 1 {
+                let catalog = exchanges[0].results[0].content
+                let ids = catalog.components(separatedBy: "book_id=").dropFirst().map { String($0.prefix(36)) }
+                let tag = messages.last?.content.contains("Cancel") == true ? "待考虑" : "海岸故事"
+                let rows: [[String: Any]] = ids.map { ["book_id": $0, "add_tags": [tag], "group_name": "旅途书单"] }
+                let args = try JSONSerialization.data(withJSONObject: ["changes": rows])
+                return try mockToolCalls([ChatToolCall(id: "organize", name: "propose_library_organization", arguments: String(decoding: args, as: UTF8.self))])
+            }
+            let valid = exchanges.last?.results.first?.failed == false
+            let answer = valid ? "整理预览已准备好，等待你确认。" : "无法准备整理预览。"
+            append(answer, to: conversationID, messageID: responseID)
+            return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+        }
         let writing = ProcessInfo.processInfo.arguments.contains("--simulate-writing")
         if writing, messages.last?.content.contains("Update my edited note.") == true {
             switch exchanges.count {

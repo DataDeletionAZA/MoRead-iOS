@@ -1,6 +1,7 @@
 import Foundation
 
 public struct ChatToolTrace: Codable, Hashable, Sendable, Identifiable {
+    public var organizationPlan: LibraryOrganizationPlan?
     public var id = UUID()
     public let call: ChatToolCall
     public let title: String
@@ -17,12 +18,12 @@ public struct ReaderToolOutput: Sendable {
 }
 
 public enum ReaderTools {
-    public static let titles = ["find_books": "查找书籍", "get_reading_progress": "查看阅读进度", "list_chapters": "查看已读目录", "read_book_section": "读取已读章节", "grep_book": "查找原文关键词", "search_book": "按意思检索原文", "list_annotations": "查看批注", "list_notes": "查看笔记与梗概", "recall_memory": "回忆过往交流", "add_annotation": "添加原文批注", "write_note": "保存读书笔记", "save_plot_summary": "保存剧情梗概"]
+    public static let titles = ["propose_library_organization": "准备书架整理方案","find_books": "查找书籍", "get_reading_progress": "查看阅读进度", "list_chapters": "查看已读目录", "read_book_section": "读取已读章节", "grep_book": "查找原文关键词", "search_book": "按意思检索原文", "list_annotations": "查看批注", "list_notes": "查看笔记与梗概", "recall_memory": "回忆过往交流", "add_annotation": "添加原文批注", "write_note": "保存读书笔记", "save_plot_summary": "保存剧情梗概"]
     public static let writing = Set(["add_annotation", "write_note", "save_plot_summary"])
     public static func specs(currentBook: UUID?, memory: Bool, enabled: [String]? = nil) throws -> [ChatTool] {
         let string: [String: Any] = ["type": "string", "maxLength": 512], integer: [String: Any] = ["type": "integer", "minimum": 1]
         let definitions: [(String, String, [String: Any], [String])] = [
-            ("find_books", "在本机书库按书名或作者查找书籍，返回后续工具使用的 book_id。", ["query": string], []),
+            ("find_books", "在本机书库按书名或作者查找书籍，返回真实 book_id、现有分组与标签。", ["query": string], []),
             ("get_reading_progress", "查看书籍与当前阅读位置、已读边界和书签概况。", [:], []),
             ("list_chapters", "列出已读章节号与标题，章节号从 1 开始；先核对目录再读取章节。", ["from_chapter": integer, "to_chapter": integer], []),
             ("read_book_section", "读取已读原文，章节号从 1 开始。当前章截到已读位置，长章节按返回的偏移续读。", ["from_chapter": integer, "to_chapter": integer, "start_char": ["type": "integer", "minimum": 0], "max_chars": ["type": "integer", "minimum": 1000, "maximum": currentBook == nil ? 6000 : 24000]], ["from_chapter"]),
@@ -31,11 +32,11 @@ public enum ReaderTools {
             ("list_annotations", "查看已读范围内的划线、批注与角色段评。", [:], []),
             ("list_notes", "列出已读范围内的笔记和剧情梗概；按 note_id 分段读取全文，更新前先读旧稿。", ["kind": ["type": "string", "enum": ["all", "note", "plot_summary"]], "note_id": string, "start_char": ["type": "integer", "minimum": 0], "max_chars": ["type": "integer", "minimum": 1000, "maximum": currentBook == nil ? 6000 : 8000]], []),
             ("recall_memory", "回忆当前角色与用户过去交流中的偏好、事实与约定。", ["query": string], ["query"])
-        ] + writingDefinitions
+        ] + writingDefinitions + [("propose_library_organization", "先 find_books 查真实编号及标签，再准备书架标签和一级分组调整方案。每份最多20本；只生成预览，用户在界面确认后才生效，不能宣称已整理。", ["changes": ["type": "array", "minItems": 1, "maxItems": 20, "items": ["type": "object", "properties": ["book_id": string, "add_tags": ["type": "array", "maxItems": 8, "items": ["type": "string", "maxLength": 24]], "remove_tags": ["type": "array", "maxItems": 8, "items": ["type": "string", "maxLength": 24]], "group_name": ["type": "string", "maxLength": 30]], "required": ["book_id"], "additionalProperties": false]]], ["changes"])]
         return try definitions.compactMap { name, description, properties, required in
-            guard (enabled == nil || enabled!.contains(name)), (name != "recall_memory" || memory), (name != "find_books" || currentBook == nil), (currentBook != nil || !writing.contains(name)) else { return nil }
+            guard (enabled == nil || enabled!.contains(name)), (name != "recall_memory" || memory), (!["find_books", "propose_library_organization"].contains(name) || currentBook == nil), (currentBook != nil || !writing.contains(name)) else { return nil }
             var properties = properties, required = required
-            if !["find_books", "recall_memory"].contains(name) {
+            if !["find_books", "recall_memory", "propose_library_organization"].contains(name) {
                 properties["book_id"] = ["type": "string", "description": "find_books 返回的书籍 UUID；当前书籍伴读中可省略"]
                 if currentBook == nil { required.append("book_id") }
             }
@@ -77,7 +78,12 @@ public enum ReaderTools {
         if call.name == "find_books" {
             let query = try query(args, required: false)
             let found = books.filter { !$0.removed && $0.hasBody && (currentBook == nil || $0.id == currentBook) && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.author.localizedCaseInsensitiveContains(query)) }.prefix(40)
-            return ReaderToolOutput(text: found.map { "book_id=\($0.id)《\(String($0.title.prefix(200)))》作者：\(String($0.author.prefix(100)))；共 \($0.chapters.count) 章" }.joined(separator: "\n"))
+            let shelf = try store.organization()
+            return ReaderToolOutput(text: found.map { book in
+                let tags = shelf.tags.filter { (shelf.bookTags[book.id] ?? []).contains($0.id) }.map(\.name).joined(separator: "、")
+                let group = shelf.bookGroups[book.id].map { shelf.groupPath($0) } ?? "未分组"
+                return "book_id=\(book.id)《\(String(book.title.prefix(200)))》作者：\(String(book.author.prefix(100)))；共 \(book.chapters.count) 章；分组：\(group)；标签：\(tags.isEmpty ? "无" : tags)"
+            }.joined(separator: "\n"))
         }
         let book = try book(arguments: args, currentBook: currentBook, books: books)
         try validate(book, current: [try store.book(book.id)])

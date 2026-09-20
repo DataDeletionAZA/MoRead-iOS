@@ -7,6 +7,37 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testLibraryOrganizationPreviewConfirmationCancellationAndRelaunch() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-organization"]; app.launch()
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
+        func send(_ text: String) {
+            let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+            input.tap(); input.typeText(text); app.buttons["发送"].tap()
+        }
+        func shows(_ text: String) -> Bool { app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch.waitForExistence(timeout: 5) }
+        openChat(); send("Organize my books.")
+        let pending = app.buttons["organization-plan-pending"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 15)); pending.tap()
+        XCTAssertTrue(shows("海岸故事")); XCTAssertTrue(shows("旅途书单"))
+        let preview = XCTAttachment(screenshot: app.screenshot()); preview.name = "Library-organization-preview"; preview.lifetime = .keepAlways; add(preview)
+        app.buttons["完成"].tap(); app.buttons["返回"].tap(); app.tabBars.buttons["书架"].tap()
+        XCTAssertFalse(app.buttons["旅途书单"].exists)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-organization"]; app.launch()
+        openChat(); pending.tap(); app.buttons["apply-organization"].tap()
+        XCTAssertTrue(app.staticTexts["已应用到书架"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["apply-organization"].exists)
+        app.buttons["完成"].tap(); app.buttons["返回"].tap(); app.tabBars.buttons["书架"].tap()
+        XCTAssertTrue(app.buttons["旅途书单"].waitForExistence(timeout: 5)); app.buttons["旅途书单"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "查询测试")).firstMatch.exists)
+        app.terminate(); app.launch(); openChat()
+        XCTAssertTrue(app.buttons["organization-plan-applied"].exists)
+        send("Cancel this second proposal."); XCTAssertTrue(pending.waitForExistence(timeout: 15)); pending.tap()
+        XCTAssertTrue(shows("待考虑")); app.buttons["cancel-organization"].tap()
+        XCTAssertTrue(app.staticTexts["已取消，书架未改变"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); openChat()
+        XCTAssertTrue(app.buttons["organization-plan-cancelled"].exists)
+        app.buttons["organization-plan-cancelled"].tap(); XCTAssertFalse(app.buttons["apply-organization"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Library-organization-cancelled"; shot.lifetime = .keepAlways; add(shot)
+    }
     func testHybridRetrievalAndVectorFailureKeepReadableEvidence() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-hybrid"]; app.launch()
         app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "检索测试")).firstMatch.tap()
