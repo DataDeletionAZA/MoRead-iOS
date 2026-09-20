@@ -28,6 +28,7 @@
 		50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */; };
 		51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2065DE60076241DE16C071 /* SpeechControls.swift */; };
 		52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */; };
+		5D70A84D46807CB252198B38 /* WebSearchSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */; };
 		6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */; };
 		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
 		7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12B808B9926C791C07C1201 /* KeychainStore.swift */; };
@@ -76,6 +77,7 @@
 		1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationPreview.swift; sourceTree = "<group>"; };
 		1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoReadApp.swift; sourceTree = "<group>"; };
 		26D7FFD20FA49397BE6BBFD0 /* THIRD_PARTY_LICENSES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = THIRD_PARTY_LICENSES.txt; sourceTree = "<group>"; };
+		323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchSettingsView.swift; sourceTree = "<group>"; };
 		37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryModel.swift; sourceTree = "<group>"; };
 		4D83A1D135AC7055CF1DB440 /* MoRead.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MoRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagedTextReader.swift; sourceTree = "<group>"; };
@@ -165,6 +167,7 @@
 				19BD21C3358729CF22FAB2EE /* ThemeView.swift */,
 				EF601B6CB703407F00D933F4 /* UserMaskView.swift */,
 				84C880FD0E398C652F62F267 /* VectorMemoryView.swift */,
+				323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */,
 				6BB9A7F794DA1BB7C6E13AE1 /* WorldBookEditor.swift */,
 				C896CA2E37370968F1E2418B /* Fonts */,
 				EBF244FCCA8336B34A96B8A1 /* Resources */,
@@ -380,6 +383,7 @@
 				BCDF913B40D55473023F0D35 /* ThemeView.swift in Sources */,
 				9468C4DD3A460A45139DFA7E /* UserMaskView.swift in Sources */,
 				174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */,
+				5D70A84D46807CB252198B38 /* WebSearchSettingsView.swift in Sources */,
 				DCEBAAED542218D931A97965 /* WorldBookEditor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

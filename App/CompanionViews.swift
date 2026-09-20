@@ -224,9 +224,12 @@ struct CompanionChat: View {
                                         VStack(alignment: .leading, spacing: 4) {
                                             Label(trace.title + " · " + (trace.state == "succeeded" ? "完成" : trace.state == "failed" ? "未完成" : trace.state == "interrupted" ? "已停止" : "进行中"), systemImage: trace.state == "succeeded" ? "checkmark.circle" : "magnifyingglass")
                                             if !trace.preview.isEmpty { Text(trace.preview).font(.caption).textSelection(.enabled) }
+                                            ForEach(trace.webSources ?? [], id: \.url) { source in
+                                                if let url = try? WebSearchClient.webURL(source.url) { Link(source.title, destination: url).accessibilityIdentifier("web-source-" + source.url) }
+                                            }
                                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
                                     }
-                                }.font(.caption).accessibilityIdentifier("tool-trace")
+                                }.font(.caption)
                                 ForEach(traces.filter { $0.organizationPlan != nil }) { trace in
                                     if let plan = trace.organizationPlan {
                                         let status = library.organization.organizationDecisions?[plan.id]

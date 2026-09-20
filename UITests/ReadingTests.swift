@@ -7,6 +7,38 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testWebSearchOptInSourcesFailuresAndSettingsPersist() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-web"]; app.launch()
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
+        func send(_ text: String) { let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch; input.tap(); input.typeText(text); app.buttons["发送"].tap() }
+        openChat(); send("Tell me about lighthouses.")
+        XCTAssertTrue(app.staticTexts["联网已关闭，本轮未请求网页。"].waitForExistence(timeout: 15)); XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "web-source-https://example.invalid/lighthouse").firstMatch.exists)
+        app.buttons["返回"].tap(); app.tabBars.buttons["设置"].tap(); tapSettingsRow("联网搜索", in: app)
+        app.switches["web-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["web-provider"].tap(); app.buttons["Tavily"].tap()
+        for _ in 0..<4 { if app.switches["web-advanced-search"].isHittable { break }; app.swipeUp() }
+        app.switches["web-advanced-search"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-web"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("联网搜索", in: app)
+        XCTAssertEqual(app.switches["web-enabled"].value as? String, "1")
+        XCTAssertEqual(app.textFields["web-search-endpoint"].value as? String, "https://api.tavily.com/search")
+        for _ in 0..<4 { if app.switches["web-advanced-search"].isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(app.switches["web-advanced-search"].value as? String, "1")
+        app.navigationBars["联网搜索"].buttons.element(boundBy: 0).tap(); openChat(); send("Find lighthouse history.")
+        XCTAssertTrue(app.staticTexts["已核对网页资料，并保留来源链接。"].waitForExistence(timeout: 15))
+        let trace = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "查询过程（2 步）")).firstMatch
+        trace.tap(); XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "web-source-https://example.invalid/lighthouse").firstMatch.waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Web-search-sources"; shot.lifetime = .keepAlways; add(shot)
+        app.terminate(); app.launch(); openChat(); trace.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "web-source-https://example.invalid/lighthouse").firstMatch.waitForExistence(timeout: 5))
+        send("Search unavailable."); XCTAssertTrue(app.staticTexts["搜索暂不可用，未编造网页内容。"].waitForExistence(timeout: 15))
+        app.buttons["返回"].tap(); app.tabBars.buttons["设置"].tap(); tapSettingsRow("联网搜索", in: app)
+        app.switches["web-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.terminate(); app.launch(); app.tabBars.buttons["设置"].tap(); tapSettingsRow("联网搜索", in: app)
+        XCTAssertEqual(app.switches["web-enabled"].value as? String, "0")
+        app.navigationBars["联网搜索"].buttons.element(boundBy: 0).tap(); openChat(); send("Please search again.")
+        XCTAssertTrue(app.staticTexts["联网已关闭，这次也未请求网页。"].waitForExistence(timeout: 15))
+    }
     func testGlobalFocusOnDemandSourcesAndRetryUseOriginalBooks() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-scope"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "多书范围")).firstMatch.tap() }

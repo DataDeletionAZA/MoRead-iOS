@@ -9,7 +9,8 @@ extension CompanionModel {
         guard let conversation = conversations.first(where: { $0.id == conversationID }) else { throw CancellationError() }
         let memory = settings.personaMemory ?? PersonaMemorySettings()
         let enabled = settings.toolsEnabled ?? true
-        let specs = enabled ? try ReaderTools.specs(currentBook: conversation.bookID, memory: memory.enabled && !memory.disabledCharacters.contains(card.id), enabled: card.enabledTools) : []
+        let web = settings.webSearch ?? WebSearchSettings()
+        let specs = enabled ? try ReaderTools.specs(currentBook: conversation.bookID, memory: memory.enabled && !memory.disabledCharacters.contains(card.id), webSearch: web.enabled, enabled: card.enabledTools) : []
         if specs.isEmpty {
             try await ChatClient.stream(provider: provider, key: key, messages: messages) { delta in await self.append(delta, to: conversationID, messageID: responseID) }
             return
@@ -30,6 +31,7 @@ extension CompanionModel {
             }
         }, execute: { call in
             guard let root = library.store?.root, let latest = self.conversations.first(where: { $0.id == conversationID }) else { throw CancellationError() }
+            if WebSearchClient.tools.contains(call.name) { return try await self.runWebTool(call, policy: web) }
             if call.name == "recall_memory" {
                 let result = try await self.recallPersonaMemory(query: ReaderTools.query(call.object()), conversation: latest, identity: latest.messages.last?.identity ?? self.settings.currentIdentity, library: library)
                 return result.isEmpty ? "没有找到可用的长期记忆。" : result
@@ -102,7 +104,7 @@ extension CompanionModel {
             for book in output.books { try ReaderTools.validate(book, current: library.books) }
             return try self.saveToolSources(output, conversationID: conversationID, responseID: responseID)
         }, validate: {
-            guard !library.maintenance, (self.settings.toolsEnabled ?? true) == enabled, (self.settings.personaMemory ?? PersonaMemorySettings()) == memory,
+            guard !library.maintenance, (self.settings.webSearch ?? WebSearchSettings()) == web, (self.settings.toolsEnabled ?? true) == enabled, (self.settings.personaMemory ?? PersonaMemorySettings()) == memory,
                   self.settings.providers.contains(provider), self.characters.first(where: { $0.id == card.id })?.enabledTools == card.enabledTools,
                   let latest = self.conversations.first(where: { $0.id == conversationID }) else { throw CancellationError() }
             try latest.validateSources(books: books)
@@ -146,6 +148,11 @@ extension CompanionModel {
                 traces[trace].state = result.failed ? "failed" : "succeeded"
                 let preview = result.content.replacingOccurrences(of: "，source_ref=[^\\n]+", with: "", options: .regularExpression)
                 traces[trace].preview = TextBoundary.prefix(preview, end: 2000)
+                if WebSearchClient.tools.contains(result.call.name), !result.failed {
+                    let web = try WebSearchResult.decode(result.content)
+                    traces[trace].webSources = web.pages.map(\.source)
+                    traces[trace].preview = TextBoundary.prefix(web.preview, end: 2000)
+                }
                 if result.call.name == "propose_library_organization", !result.failed {
                     let plan = try LibraryOrganizationPlan.decode(result.content)
                     traces[trace].organizationPlan = plan
@@ -162,6 +169,22 @@ extension CompanionModel {
         _ = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: specs, exchanges: exchanges)
         try await Task.sleep(for: .milliseconds(200))
         let calls: [ChatToolCall]
+        if ProcessInfo.processInfo.arguments.contains("--simulate-web") {
+            if !specs.contains(where: { $0.name == "web_search" }) {
+                let answer = messages.last?.content.contains("again") == true ? "联网已关闭，这次也未请求网页。" : "联网已关闭，本轮未请求网页。"; append(answer, to: conversationID, messageID: responseID)
+                return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+            }
+            if exchanges.isEmpty {
+                let query = messages.last?.content.contains("unavailable") == true ? "unavailable" : "lighthouse history"
+                return try mockToolCalls([.init(id: "web-search", name: "web_search", arguments: "{\"query\":\"\(query)\",\"limit\":3}")])
+            }
+            if exchanges.count == 1, exchanges[0].results[0].failed == false {
+                return try mockToolCalls([.init(id: "web-page", name: "web_scrape", arguments: "{\"url\":\"https://example.invalid/lighthouse\"}")])
+            }
+            let answer = exchanges.last?.results.first?.failed == true ? "搜索暂不可用，未编造网页内容。" : "已核对网页资料，并保留来源链接。"
+            append(answer, to: conversationID, messageID: responseID)
+            return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+        }
         if ProcessInfo.processInfo.arguments.contains("--simulate-scope") {
             let conversation = conversations.first { $0.id == conversationID }
             if messages.last?.content.contains("Just chat") == true {

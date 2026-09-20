@@ -339,6 +339,7 @@ struct SettingsView: View {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("原文相关性排序") { RerankSettingsView() }
+                    NavigationLink("联网搜索") { WebSearchSettingsView() }
                     NavigationLink("伴读工具") { CompanionToolsSettingsView() }
                     NavigationLink("随读段评") { ProactiveSettingsView() }
                     NavigationLink("对话记忆") { SummarySettingsView() }

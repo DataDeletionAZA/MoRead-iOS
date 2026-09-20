@@ -2,6 +2,7 @@ import Foundation
 
 public struct CompanionSettings: Codable {
     public var toolsEnabled: Bool?
+    public var webSearch: WebSearchSettings?
     public var rerank: RerankSettings?
     public var personaMemory: PersonaMemorySettings?
     public var userMasks: UserMaskSettings?
@@ -35,6 +36,10 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
         try validateFocus()
         for message in messages {
             for trace in message.toolTrace ?? [] {
+                if let sources = trace.webSources {
+                    guard WebSearchClient.tools.contains(trace.call.name), trace.state == "succeeded", message.role == "assistant", sources.count <= 8, Set(sources.map(\.url)).count == sources.count else { throw MoReadError.invalid("网页来源记录无效。") }
+                    for source in sources { try source.validate() }
+                }
                 if let plan = trace.organizationPlan {
                     guard bookID == nil, trace.call.name == "propose_library_organization", trace.state == "succeeded", message.role == "assistant" else { throw MoReadError.invalid("整理方案的话题或工具记录无效。") }
                     _ = try plan.encoded()
