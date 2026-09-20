@@ -57,7 +57,7 @@ final class ReadingTests: XCTestCase {
         app.buttons["对话记忆设置"].tap()
         XCTAssertTrue(app.buttons["summary-provider"].label.contains("本地提要测试"))
         app.switches["summary-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        app.buttons["BackButton"].tap()
+        app.navigationBars["对话记忆"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["清除提要"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["现在整理"].isEnabled)
         app.buttons["清除提要"].tap(); XCTAssertFalse(summary.exists)
