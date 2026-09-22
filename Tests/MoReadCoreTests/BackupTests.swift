@@ -19,7 +19,9 @@ final class BackupTests: XCTestCase {
         records.recordReading(from: Date(timeIntervalSince1970: 1_789_780_800), to: Date(timeIntervalSince1970: 1_789_784_400), timeZone: TimeZone(secondsFromGMT: 0)!)
         try store.saveRecords(records, for: book)
         let companion = try CompanionStore(root: root)
-        let conversation = Conversation(title: "话题", bookID: book.id, characterID: UUID())
+        var conversation = Conversation(title: "话题", bookID: book.id, characterID: UUID())
+        conversation.messages = [.init(role: "user", content: "聊聊灯塔"), .init(role: "assistant", content: "灯塔在海边。")]
+        try conversation.associateTurnBooks([])
         try companion.save(conversation)
         let recordsURL = store.directory(book.id).appendingPathComponent("records.json")
         let recordData = try Data(contentsOf: recordsURL)
@@ -46,6 +48,7 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(try store.records(for: cleared).bookmarks, records.bookmarks)
         XCTAssertEqual(try store.records(for: cleared).readingSeconds, records.readingSeconds)
         XCTAssertEqual(try store.records(for: cleared).readingHours, records.readingHours)
+        XCTAssertEqual(try CompanionStore(root: root).conversations(), [conversation])
     }
     func testVerifiedBackupRestoresAtomicallyAndKeepsPreviousLibrary() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

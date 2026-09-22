@@ -28,6 +28,7 @@ struct CompanionHome: View {
                         if let id = companion.newConversation(book: nil) { chat = ChatDestination(id: id) }
                     }
                     NavigationLink("我的身份：\(companion.settings.currentIdentity.label)") { UserMaskSettingsView() }
+                    NavigationLink { CompanionStatisticsView() } label: { Label("陪伴足迹", systemImage: "chart.dots.scatter") }
                 }
                 Section("最近的对话") {
                     ForEach(companion.conversations.sorted { $0.updatedAt > $1.updatedAt }) { conversation in

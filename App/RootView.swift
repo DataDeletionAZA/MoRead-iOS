@@ -20,6 +20,35 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-companion-statistics"), model.books.isEmpty, companion.conversations.isEmpty, let card = companion.characters.first {
+                companion.perform {
+                    guard let store = model.store else { return }
+                    let calendar = ReadingCalendar.calendar(), today = calendar.startOfDay(for: Date())
+                    func date(_ daysAgo: Int) -> Date { calendar.date(byAdding: .day, value: -daysAgo, to: today)! }
+                    func pair(_ daysAgo: Int, books: [UUID]) -> [ChatMessage] {
+                        var user = ChatMessage(role: "user", content: "一起读书"), reply = ChatMessage(role: "assistant", content: "好呀")
+                        user.createdAt = date(daysAgo); reply.createdAt = date(daysAgo).addingTimeInterval(10)
+                        user.sourceBookIDs = books; reply.sourceBookIDs = books
+                        return [user, reply]
+                    }
+                    let first = try store.importBook(title: "月下书店", chapters: [.init(id: 0, title: "开篇", text: "夜色中的书店，亮着一盏灯。")])
+                    let second = try store.importBook(title: "山间来信", chapters: [.init(id: 0, title: "开篇", text: "山间的清晨，传来鸟鸣。")])
+                    _ = try model.modifyRecords(for: first) { records in
+                        records.recordReading(from: today, to: today.addingTimeInterval(3600))
+                        records.recordReading(from: date(45), to: date(45).addingTimeInterval(7200))
+                    }
+                    _ = try model.modifyRecords(for: second) { $0.recordReading(from: today, to: today.addingTimeInterval(1800)) }
+                    var bookChat = Conversation(title: "书店共读", bookID: first.id, characterID: card.id)
+                    bookChat.messages = pair(45, books: [first.id]) + pair(15, books: [first.id]) + pair(0, books: [first.id])
+                    for index in bookChat.messages.indices { bookChat.messages[index].originalConversationID = bookChat.id }
+                    var branch = bookChat; branch.id = UUID(); branch.title = "书店分支"; branch.messages = Array(bookChat.messages.prefix(2))
+                    var libraryChat = Conversation(title: "书库闲聊", bookID: nil, characterID: card.id)
+                    libraryChat.messages = pair(8, books: [second.id]) + pair(0, books: [])
+                    companion.conversations = [bookChat, branch, libraryChat]
+                    for chat in companion.conversations { try companion.store?.save(chat) }
+                    model.load()
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-statistics"), model.books.isEmpty {
                 model.perform {
                     guard let store = model.store else { return }

@@ -56,6 +56,7 @@
 		BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08C16806605250221F9CB65 /* CompanionModel.swift */; };
 		BEF2716A50044F7320F6FEF9 /* readium-BSD-3-Clause.txt in Resources */ = {isa = PBXBuildFile; fileRef = A9B96A8349156328D108EE1E /* readium-BSD-3-Clause.txt */; };
 		C0E75704636F767B384B6757 /* THIRD_PARTY_LICENSES.txt in Resources */ = {isa = PBXBuildFile; fileRef = 26D7FFD20FA49397BE6BBFD0 /* THIRD_PARTY_LICENSES.txt */; };
+		C49034EA8BDEFA8FD1019066 /* CompanionStatisticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4842A879EBE76B44B2C9BF9A /* CompanionStatisticsView.swift */; };
 		C8DA5A8022B9593A149F589F /* ProactiveCompanion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5868308952DB53DF46DE561A /* ProactiveCompanion.swift */; };
 		C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */; };
 		CA7EB234670DC312ED289A17 /* ModelAssignmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12ACB5E65FF1D1A3EF772D3A /* ModelAssignmentsView.swift */; };
@@ -98,6 +99,7 @@
 		323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchSettingsView.swift; sourceTree = "<group>"; };
 		37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryModel.swift; sourceTree = "<group>"; };
 		3F6C6B247B6CA03880290F94 /* Cover.epub */ = {isa = PBXFileReference; path = Cover.epub; sourceTree = "<group>"; };
+		4842A879EBE76B44B2C9BF9A /* CompanionStatisticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionStatisticsView.swift; sourceTree = "<group>"; };
 		4D83A1D135AC7055CF1DB440 /* MoRead.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MoRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagedTextReader.swift; sourceTree = "<group>"; };
 		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 				21B3EBE02AAB287C290C3540 /* ChapterKnowledgeView.swift */,
 				E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */,
 				E08C16806605250221F9CB65 /* CompanionModel.swift */,
+				4842A879EBE76B44B2C9BF9A /* CompanionStatisticsView.swift */,
 				F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */,
 				527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */,
 				7563B576C24E7177CF543069 /* CompanionViews.swift */,
@@ -420,6 +423,7 @@
 				F5140496803D666A63A2FBFC /* ChapterKnowledgeView.swift in Sources */,
 				52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */,
 				BD4C582EAC10E101DB0CB6B5 /* CompanionModel.swift in Sources */,
+				C49034EA8BDEFA8FD1019066 /* CompanionStatisticsView.swift in Sources */,
 				6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */,
 				49DC7E6FF60B2348E8F97793 /* CompanionToolsSettingsView.swift in Sources */,
 				3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */,

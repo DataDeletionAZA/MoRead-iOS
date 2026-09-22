@@ -1,6 +1,39 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testCompanionStatisticsScopesPeriodsBranchDeduplicationDeletionAndRestart() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-companion-statistics"]; app.launch()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "月下书店")).firstMatch.waitForExistence(timeout: 15))
+        func openStats() { app.tabBars.buttons["伴读"].tap(); app.buttons["陪伴足迹"].tap() }
+        func value(_ name: String, _ text: String) {
+            let row = app.descendants(matching: .any).matching(identifier: "companion-stats-" + name).firstMatch
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", text), object: row)], timeout: 10), .completed, name)
+        }
+        func period(_ title: String) { app.segmentedControls["companion-stats-period"].buttons[title].tap() }
+        func scope(_ title: String) { app.segmentedControls["companion-stats-scope"].buttons[title].tap() }
+        openStats()
+        value("days", "46"); value("books", "2 本书"); value("reading", "3 小时 30 分钟"); value("words", "30 字")
+        let overview = XCTAttachment(screenshot: app.screenshot()); overview.name = "Companion-statistics-all"; overview.lifetime = .keepAlways; add(overview)
+        period("近 7 天"); value("books", "1 本书"); value("reading", "1 小时 0 分钟"); value("words", "12 字"); value("days", "46")
+        value("rounds", "2 轮"); value("active", "1 天"); value("conversations", "2 个")
+        period("近 30 天"); value("books", "2 本书"); value("reading", "1 小时 30 分钟"); value("words", "24 字")
+        scope("书库伴读"); value("days", "9"); value("books", "1 本书"); value("words", "12 字")
+        period("近 7 天"); value("books", "0 本书"); value("reading", "0 分钟"); value("words", "6 字"); value("rounds", "1 轮")
+        scope("书内伴读"); period("全部"); value("books", "1 本书"); value("words", "18 字"); value("reading", "3 小时 0 分钟")
+        app.buttons["统计说明"].tap(); XCTAssertTrue(app.alerts["统计说明"].waitForExistence(timeout: 5)); app.buttons["知道了"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); openStats()
+        value("books", "2 本书"); value("words", "30 字")
+        app.navigationBars["陪伴足迹"].buttons.element(boundBy: 0).tap()
+        let chat = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "书库闲聊")).firstMatch
+        XCTAssertTrue(chat.waitForExistence(timeout: 5)); chat.swipeLeft(); app.buttons["删除"].tap()
+        app.buttons["陪伴足迹"].tap(); scope("书库伴读")
+        value("books", "0 本书"); value("words", "0 字")
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["这个范围还没有完整的交流记录。"].exists)
+        let empty = XCTAttachment(screenshot: app.screenshot()); empty.name = "Companion-statistics-empty"; empty.lifetime = .keepAlways; add(empty)
+    }
+
     func testStatisticsPeriodsCalendarWidgetsAndRestart() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-statistics"]; app.launch()
@@ -721,7 +754,7 @@ final class ReadingTests: XCTestCase {
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-scope"]; app.launch(); openChat()
         app.buttons["重点书籍"].tap(); XCTAssertEqual(app.switches["focus-book-森林"].value as? String, "1"); app.buttons["保存"].tap()
         send("Read both books.")
-        let reply = app.staticTexts["重点：森林；已核对两本书的已读原文。"]
+        let reply = app.scrollViews["chat-messages"].staticTexts.matching(identifier: "重点：森林；已核对两本书的已读原文。").firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 15))
         app.buttons["来源 1"].tap(); XCTAssertTrue(app.staticTexts["Forest visible."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
         app.buttons["来源 2"].tap(); XCTAssertTrue(app.staticTexts["Harbor."].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
@@ -729,6 +762,17 @@ final class ReadingTests: XCTestCase {
         app.buttons["重新生成"].tap(); XCTAssertTrue(reply.waitForExistence(timeout: 15))
         app.buttons["重点书籍"].tap(); XCTAssertEqual(app.switches["focus-book-森林"].value as? String, "1"); XCTAssertEqual(app.switches["focus-book-海岸"].value as? String, "0")
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Per-book-reading-scopes"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["保存"].tap()
+        reply.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["从此处分支"].waitForExistence(timeout: 5)); app.buttons["从此处分支"].tap()
+        app.buttons["返回"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "多书范围 · 分支")).firstMatch.waitForExistence(timeout: 5))
+        app.buttons["陪伴足迹"].tap()
+        app.segmentedControls["companion-stats-period"].buttons["近 7 天"].tap()
+        for (name, expected) in [("books", "2 本书"), ("rounds", "2 轮"), ("conversations", "1 个")] {
+            let row = app.descendants(matching: .any).matching(identifier: "companion-stats-" + name).firstMatch
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", expected), object: row)], timeout: 10), .completed, name)
+        }
     }
     func testLibraryOrganizationPreviewConfirmationCancellationAndRelaunch() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-organization"]; app.launch()

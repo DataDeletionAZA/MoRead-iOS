@@ -24,6 +24,8 @@ public struct AIProvider: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
+    public var originalConversationID: UUID?
+    public var sourceBookIDs: [UUID]?
     public var focusedBookIDs: [UUID]?
     public var toolTrace: [ChatToolTrace]?
     public var retrievalNotice: String?

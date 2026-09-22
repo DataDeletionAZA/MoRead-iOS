@@ -95,6 +95,7 @@ extension CompanionModel {
                     updated.sourceRevisions[scope.id] = book.chapters.map(\.revision)
                 }
                 try updated.validateLibraryLimit(); try updated.updateTurnScopes()
+                try updated.associateTurnBooks(origins.flatMap(\.books).map(\.id))
                 guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
                 try store.save(updated); conversations[index] = updated
             }

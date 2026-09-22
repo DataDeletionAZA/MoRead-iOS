@@ -50,6 +50,7 @@ extension CompanionModel {
                 guard accessed.contains(book.id) || accessed.count < 4 else { throw MoReadError.invalid("一轮最多查阅 4 本书，请缩小范围。") }
                 guard conversation.bookID != nil || latest.sourceLimits[book.id] != nil || latest.sourceLimits.count < 32 else { throw MoReadError.invalid("本话题已涉及 32 本书，请新建话题。") }
                 try ReaderTools.validate(book, current: library.books); accessed.insert(book.id)
+                _ = try self.saveToolSources(.init(text: "", passages: [], books: [book]), conversationID: conversationID, responseID: responseID)
             }
             var output: ReaderToolOutput
             if call.name == "generate_illustration" {
@@ -152,6 +153,7 @@ extension CompanionModel {
             conversation.sourceRevisions[book.id] = book.chapters.map(\.revision)
         }
         conversation.messages[message].sources = passages
+        try conversation.associateTurnBooks(output.books.map(\.id))
         try conversation.validateLibraryLimit()
         try conversation.updateTurnScopes()
         guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }

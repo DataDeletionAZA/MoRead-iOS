@@ -8,6 +8,18 @@ extension Conversation {
         for ids in [focusedBookIDs] + messages.map(\.focusedBookIDs) {
             if let ids, ids.count > 4 || Set(ids).count != ids.count { throw MoReadError.invalid("最多选择 4 本不同的重点书籍。") }
         }
+        for message in messages {
+            if let ids = message.sourceBookIDs, ids.count > 32 || Set(ids).count != ids.count { throw MoReadError.invalid("消息关联的书籍记录无效。") }
+        }
+    }
+    public mutating func associateTurnBooks(_ ids: [UUID]) throws {
+        guard let last = messages.indices.last, messages[last].role == "assistant", last > 0, messages[last - 1].role == "user" else { return }
+        let known = messages[last - 1].sourceBookIDs ?? bookID.map { [$0] } ?? messages[last - 1].focusedBookIDs ?? []
+        let all = Set(known).union(ids).sorted { $0.uuidString < $1.uuidString }
+        guard all.count <= 32 else { throw MoReadError.invalid("本轮关联的书籍过多，请开启新话题。") }
+        messages[last - 1].sourceBookIDs = all; messages[last].sourceBookIDs = all
+        if messages[last - 1].originalConversationID == nil { messages[last - 1].originalConversationID = id }
+        if messages[last].originalConversationID == nil { messages[last].originalConversationID = id }
     }
     public func validateLibraryLimit() throws {
         if bookID == nil && sourceLimits.count > 32 { throw MoReadError.invalid("本话题已涉及超过 32 本书，请新建话题。") }
