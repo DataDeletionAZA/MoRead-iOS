@@ -71,6 +71,7 @@ final class EPUBService {
 
 struct EPUBReader: UIViewControllerRepresentable {
     let book: Book
+    let initialPassage: SourcePassage?
     let fontSize: Double
     let lineSpacing: Double
     let typography: ReaderTypography
@@ -83,7 +84,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(book: book, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection)
+        EPUBHostController(book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
@@ -96,6 +97,7 @@ struct EPUBReader: UIViewControllerRepresentable {
 @MainActor
 final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let bookID: UUID
+    private let initialPassage: SourcePassage?
     private let model: LibraryModel
     private let onToggleControls: () -> Void
     private let onLocation: (Data) -> Void
@@ -112,8 +114,9 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
 
-    init(book: Book, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
+    init(book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
+        self.initialPassage = initialPassage
         self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection
         super.init(nibName: nil, bundle: nil)
     }
@@ -132,7 +135,13 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 let publication = try await EPUBService.shared.open(directory.appendingPathComponent("original.epub"))
                 try Task.checkCancellation()
                 anchors = try JSONDecoder().decode([EPUBAnchor].self, from: Data(contentsOf: directory.appendingPathComponent("epub-map.json")))
-                let locator = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) }
+                let locator: Locator?
+                if let passage = initialPassage {
+                    guard let current = model.books.first(where: { $0.id == bookID }), !current.removed,
+                          passage.bookID == bookID, passage.isValid(in: try store.chapter(passage.chapter, in: current), scope: ReadingScope(through: current.readThrough)),
+                          let exact = self.locator(for: passage, publication: publication) else { throw MoReadError.invalid("原文或已读范围已经变化，请重新打开。") }
+                    locator = exact
+                } else { locator = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) } }
                 var templates = HTMLDecorationTemplate.defaultTemplates()
                 templates["wave"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-wave'/>", stylesheet: """
                 .moread-wave { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%23d67b16' stroke-width='1.3'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom; }
@@ -199,16 +208,18 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         }
         navigator?.apply(decorations: decorations, in: "annotations")
     }
-    private func locator(for passage: SourcePassage) -> Locator? {
+    private func locator(for passage: SourcePassage, publication: Publication? = nil) -> Locator? {
         guard let book = model.books.first(where: { $0.id == bookID }), passage.bookID == bookID,
               let chapter = try? model.store?.chapter(passage.chapter, in: book), passage.isValid(in: chapter, scope: .wholeBook),
-              let reader = navigator, reader.publication.readingOrder.indices.contains(passage.chapter) else { return nil }
-        if let data = passage.epubLocator, let exact = try? Locator(json: JSONSerialization.jsonObject(with: data)) { return exact }
+              let publication = publication ?? navigator?.publication, publication.readingOrder.indices.contains(passage.chapter) else { return nil }
+        let href = publication.readingOrder[passage.chapter].url()
+        if let data = passage.epubLocator, let exact = try? Locator(json: JSONSerialization.jsonObject(with: data)),
+           exact.href.string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] { return exact }
         let end = passage.offset + passage.text.utf16.count
         let start = TextBoundary.floor(max(0, passage.offset - 80), in: chapter.text)
         let after = TextBoundary.floor(min(chapter.text.utf16.count, end + 80), in: chapter.text)
         let source = chapter.text as NSString
-        return Locator(href: reader.publication.readingOrder[passage.chapter].url(), mediaType: .xhtml,
+        return Locator(href: href, mediaType: .xhtml,
                        text: .init(after: source.substring(with: NSRange(location: end, length: after - end)), before: source.substring(with: NSRange(location: start, length: passage.offset - start)), highlight: passage.text))
     }
     func setSpeechLocation(_ value: SpeechLocation?) {

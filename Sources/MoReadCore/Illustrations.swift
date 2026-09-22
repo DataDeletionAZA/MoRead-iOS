@@ -2,6 +2,7 @@ import Foundation
 
 public struct BookIllustration: Codable, Identifiable, Hashable, Sendable {
     public var anchor: ReadingPosition?
+    public var anchorRevision: String?
     public var characterID: UUID?
     public var characterName: String?
     public var originalPrompt: String?
@@ -18,6 +19,9 @@ public struct BookIllustration: Codable, Identifiable, Hashable, Sendable {
     public var createdAt = Date()
     public func visible(in book: Book) -> Bool {
         guard book.id == bookID, sourceThrough <= book.readThrough else { return false }
+        if let anchor, let anchorRevision {
+            guard book.chapters.indices.contains(anchor.chapter), book.chapters[anchor.chapter].revision == anchorRevision else { return false }
+        }
         guard let source else { return true }
         return book.chapters.indices.contains(source.chapter) && book.chapters[source.chapter].revision == source.revision && ReadingScope(through: book.readThrough).allows(chapter: source.chapter, range: NSRange(location: source.offset, length: source.text.utf16.count))
     }
@@ -27,6 +31,7 @@ public struct BookIllustration: Codable, Identifiable, Hashable, Sendable {
               (1...8192).contains(width), (1...8192).contains(height), width * height <= 32_000_000,
               (originalPrompt?.utf16.count ?? 0) <= ImageGenerationClient.maximumPromptLength, category.count <= 40, sourceThrough.chapter >= 0, sourceThrough.offset >= 0 else { throw MoReadError.invalid("插图记录无效。") }
         if let anchor { guard anchor.chapter >= 0, anchor.offset >= 0, anchor <= sourceThrough else { throw MoReadError.invalid("插图位置超出已读范围。") } }
+        if let anchorRevision { guard anchor != nil, anchorRevision.count == 64, anchorRevision.allSatisfy({ $0.isHexDigit }) else { throw MoReadError.invalid("插图原文版本无效。") } }
         guard (characterName?.utf16.count ?? 0) <= 512 else { throw MoReadError.invalid("插图作者名称过长。") }
         if let source {
             guard source.bookID == bookID, source.text.utf16.count <= 24_000, !source.text.isEmpty,
@@ -68,8 +73,12 @@ extension LibraryStore {
         }
         guard try illustrations(for: bookID).count < 10_000 else { throw MoReadError.invalid("这本书的插图已达到 10000 张。") }
         let info = try ImageGenerationClient.imageProperties(data)
-        if let anchor { guard book.chapters.indices.contains(anchor.chapter), anchor.offset >= 0, anchor.offset <= book.chapters[anchor.chapter].length else { throw MoReadError.invalid("插图位置无效。") } }
-        let item = BookIllustration(anchor: anchor, characterID: characterID, characterName: characterName, originalPrompt: originalPrompt, bookID: bookID, prompt: prompt, model: model, source: source, sourceThrough: through, fileExtension: info.extension, width: info.width, height: info.height)
+        let anchor = source.map { ReadingPosition(chapter: $0.chapter, offset: $0.offset) } ?? anchor
+        if let anchor {
+            guard book.chapters.indices.contains(anchor.chapter), anchor.offset >= 0, anchor.offset <= book.chapters[anchor.chapter].length,
+                  TextBoundary.floor(anchor.offset, in: try chapter(anchor.chapter, in: book).text) == anchor.offset else { throw MoReadError.invalid("插图位置无效。") }
+        }
+        let item = BookIllustration(anchor: anchor, anchorRevision: anchor.map { book.chapters[$0.chapter].revision }, characterID: characterID, characterName: characterName, originalPrompt: originalPrompt, bookID: bookID, prompt: prompt, model: model, source: source, sourceThrough: through, fileExtension: info.extension, width: info.width, height: info.height)
         try item.validate()
         let root = illustrationsDirectory(bookID), manager = FileManager.default
         let staging = root.appendingPathComponent(".pending-" + item.id.uuidString, isDirectory: true)
@@ -79,6 +88,23 @@ extension LibraryStore {
         try JSONEncoder().encode(item).write(to: staging.appendingPathComponent("record.json"), options: .atomic)
         try manager.moveItem(at: staging, to: root.appendingPathComponent(item.id.uuidString))
         return item
+    }
+    public func locateIllustration(_ item: BookIllustration) throws -> SourcePassage {
+        let book = try book(item.bookID)
+        guard !book.removed, book.hasBody,
+              let saved = try illustrations(for: book.id).first(where: { $0.id == item.id }), saved.visible(in: book) else { throw MoReadError.invalid("插图或原文当前不可用。") }
+        let scope = ReadingScope(through: min(saved.sourceThrough, book.readThrough))
+        if let source = saved.source {
+            guard source.isValid(in: try chapter(source.chapter, in: book), scope: scope) else { throw MoReadError.invalid("插图原文已经变化。") }
+            return source
+        }
+        guard let anchor = saved.anchor, let revision = saved.anchorRevision else { throw MoReadError.invalid("这张插图没有可定位的原文。") }
+        let chapter = try chapter(anchor.chapter, in: book), text = scope.readableText(chapter)
+        guard chapter.revision == revision, !text.isEmpty, anchor.offset <= text.utf16.count,
+              TextBoundary.floor(anchor.offset, in: text) == anchor.offset else { throw MoReadError.invalid("插图原文或已读范围已经变化。") }
+        let start = TextBoundary.floor(min(anchor.offset, text.utf16.count - 1), in: text)
+        let end = TextBoundary.floor(min(text.utf16.count, start + 180), in: text)
+        return SourcePassage(bookID: book.id, chapter: chapter, offset: start, text: (text as NSString).substring(with: NSRange(location: start, length: end - start)))
     }
     public func categorizeIllustration(_ item: BookIllustration, category: String) throws {
         guard var saved = try illustrations(for: item.bookID).first(where: { $0.id == item.id }) else { throw MoReadError.invalid("插图已被移除。") }

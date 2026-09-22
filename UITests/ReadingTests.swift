@@ -1,6 +1,50 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testIllustrationsOpenTheirSourceInTextAndEPUB() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-illustration-locations"]
+        app.launch()
+        func frontButton(_ name: String) -> XCUIElement {
+            let matches = app.buttons.matching(identifier: name)
+            return matches.allElementsBoundByIndex.first(where: { $0.isHittable }) ?? matches.firstMatch
+        }
+        func tap(_ name: String) {
+            var button = frontButton(name)
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp(); button = frontButton(name) }
+            XCTAssertTrue(button.exists && button.isHittable, name); button.tap()
+        }
+        func open(_ epub: Bool) {
+            let books = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店"))
+            let book = books.matching(NSPredicate(format: epub ? "label CONTAINS %@" : "NOT (label CONTAINS %@)", "EPUB")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
+            if epub { XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20)) }
+            else { XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10)) }
+            tap("目录"); tap("插图廊")
+            let picture = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "illustration-row-")).firstMatch
+            XCTAssertTrue(picture.waitForExistence(timeout: 10)); picture.tap(); tap("illustration-read-source")
+        }
+        open(false)
+        XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 10))
+        let selectedText = app.textViews.matching(identifier: "reader-text").matching(NSPredicate(format: "value CONTAINS %@", "一封没有署名的信")).firstMatch
+        XCTAssertTrue(selectedText.exists && selectedText.isHittable)
+        tap("排版"); tap("reader-page-mode"); tap("滑动翻页"); tap("完成")
+        XCTAssertTrue(app.buttons["reader-next-page"].waitForExistence(timeout: 10))
+        XCTAssertTrue(selectedText.exists && selectedText.isHittable)
+        app.navigationBars["第二章 来信"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["插图"].waitForExistence(timeout: 5)); tap("illustration-read-source")
+        XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 10))
+        let textShot = XCTAttachment(screenshot: app.screenshot()); textShot.name = "Illustration-text-source"; textShot.lifetime = .keepAlways; add(textShot)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        open(true)
+        let source = app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "一封没有署名的信")).firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 20)); XCTAssertTrue(source.isHittable)
+        let epubShot = XCTAttachment(screenshot: app.screenshot()); epubShot.name = "Illustration-epub-source"; epubShot.lifetime = .keepAlways; add(epubShot)
+        app.terminate(); app.launch()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap(); XCTAssertTrue(source.waitForExistence(timeout: 20))
+    }
     func testChatIllustrationsSaveRestoreRefuseFutureFailAndStop() {
         executionTimeAllowance = 300
         let app = XCUIApplication()
@@ -29,7 +73,10 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(pictures.firstMatch.waitForExistence(timeout: 5)); pictures.firstMatch.tap()
         XCTAssertTrue(app.images["illustration-detail-image"].waitForExistence(timeout: 5))
         for _ in 0..<6 { if app.staticTexts["lighthouse first clue."].exists { break }; app.swipeUp() }
-        XCTAssertTrue(app.staticTexts["lighthouse first clue."].exists); tap("完成")
+        XCTAssertTrue(app.staticTexts["lighthouse first clue."].exists); tap("illustration-read-source")
+        XCTAssertTrue(app.navigationBars["First"].waitForExistence(timeout: 10))
+        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("lighthouse first clue."))
+        app.navigationBars["First"].buttons.element(boundBy: 0).tap(); tap("完成")
         app.terminate(); launch(); openChat()
         XCTAssertTrue(pictures.firstMatch.waitForExistence(timeout: 5)); XCTAssertEqual(pictures.count, 1)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Chat-illustration"; shot.lifetime = .keepAlways; add(shot)

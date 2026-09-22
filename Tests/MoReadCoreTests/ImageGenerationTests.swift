@@ -5,6 +5,39 @@ import ReadiumZIPFoundation
 @testable import MoReadCore
 
 final class ImageGenerationTests: XCTestCase {
+    func testIllustrationSourceLocationValidatesSavedImageRevisionAndReadBoundary() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try LibraryStore(root: root), chapter = Chapter(id: 0, title: "海边", text: "灯🌙塔。未读秘密。")
+        var book = try store.importBook(title: "灯塔", chapters: [chapter]); book.readThrough = .init(offset: 5); try store.save(book)
+        var source = SourcePassage(bookID: book.id, chapter: chapter, offset: 0, text: "灯🌙塔。")
+        source.epubLocator = Data("locator".utf8)
+        let image = try store.saveIllustration(data: picture(), bookID: book.id, prompt: "scene", model: "fixture", source: source, through: book.readThrough)
+        XCTAssertEqual(image.anchor, .init(offset: 0)); XCTAssertEqual(image.anchorRevision, chapter.revision)
+        XCTAssertEqual(try store.locateIllustration(image), source)
+        let anchored = try store.saveIllustration(data: picture(), bookID: book.id, prompt: "scene", model: "fixture", through: book.readThrough, anchor: .init(offset: 1))
+        XCTAssertEqual(try store.locateIllustration(anchored).text, "🌙塔。")
+        let end = try store.saveIllustration(data: picture(), bookID: book.id, prompt: "scene", model: "fixture", through: book.readThrough, anchor: book.readThrough)
+        XCTAssertEqual(try store.locateIllustration(end).text, "。")
+        XCTAssertThrowsError(try store.saveIllustration(data: picture(), bookID: book.id, prompt: "scene", model: "fixture", through: book.readThrough, anchor: .init(offset: 2)))
+        let unanchored = try store.saveIllustration(data: picture(), bookID: book.id, prompt: "scene", model: "fixture", through: book.readThrough)
+        XCTAssertThrowsError(try store.locateIllustration(unanchored))
+        var forged = image; forged.id = UUID(); XCTAssertThrowsError(try store.locateIllustration(forged))
+        forged = anchored; forged.anchor = .init(offset: 8)
+        XCTAssertEqual(try store.locateIllustration(forged).text, "🌙塔。")
+        var updated = book; updated.readThrough.offset = 4; try store.save(updated)
+        XCTAssertThrowsError(try store.locateIllustration(image)); XCTAssertThrowsError(try store.locateIllustration(anchored))
+        updated = book; updated.chapters[0].revision = String(repeating: "a", count: 64); try store.save(updated)
+        XCTAssertFalse(anchored.visible(in: updated)); XCTAssertThrowsError(try store.locateIllustration(anchored))
+        updated = book; updated.readThrough.offset = chapter.text.utf16.count; try store.save(updated)
+        XCTAssertEqual(try store.locateIllustration(anchored).text, "🌙塔。")
+        let oldData = try JSONSerialization.jsonObject(with: JSONEncoder().encode(image)) as! [String: Any]
+        var legacy = oldData; legacy.removeValue(forKey: "anchorRevision")
+        let old = try JSONDecoder().decode(BookIllustration.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(old.anchorRevision); XCTAssertEqual(try store.locateIllustration(old), source)
+        try store.deleteIllustration(image); XCTAssertThrowsError(try store.locateIllustration(image))
+        book = try store.clearBody(book); XCTAssertTrue(anchored.visible(in: book)); XCTAssertThrowsError(try store.locateIllustration(anchored))
+    }
     func testIllustrationToolScopeReferencesAndBackup() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -47,6 +80,7 @@ final class ImageGenerationTests: XCTestCase {
         XCTAssertEqual(try companion.conversations().first?.messages.first?.toolTrace?.first?.illustration, reference)
         let restored = try XCTUnwrap(store.illustrations(for: book.id).first)
         XCTAssertEqual(restored.anchor, anchored.anchor); XCTAssertEqual(restored.characterID, character); XCTAssertEqual(restored.characterName, "伙伴")
+        XCTAssertEqual(restored.anchorRevision, chapter.revision); XCTAssertEqual(try store.locateIllustration(restored), source)
         XCTAssertEqual(try store.illustrationData(restored), try picture())
     }
     func testImageModelAssignmentStandalonePriorityAndCredentialSelection() throws {

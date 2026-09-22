@@ -20,6 +20,23 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-illustration-locations"), model.books.isEmpty {
+                model.addSample()
+                if let url = Bundle.main.url(forResource: "sample", withExtension: "epub") { await model.importFile(url) }
+                model.perform {
+                    guard let store = model.store, let image = ReaderImage.coverFixture().pngData() else { return }
+                    for var book in model.books {
+                        let chapter = try store.chapter(1, in: book)
+                        book.readThrough = .init(chapter: 1, offset: chapter.text.utf16.count); try store.save(book)
+                        let body = chapter.text as NSString, quote = "一封没有署名的信"
+                        let offset = body.range(of: quote).location
+                        guard offset != NSNotFound else { throw MoReadError.invalid("示例书缺少插图选段。") }
+                        let source = SourcePassage(bookID: book.id, chapter: chapter, offset: offset, text: quote)
+                        _ = try store.saveIllustration(data: image, bookID: book.id, prompt: "A letter at the door", model: "fixture", source: source, through: book.readThrough)
+                    }
+                    model.load()
+                }
+            }
             if companion.simulatedModelRoles, companion.settings.providers.isEmpty {
                 var chat = AIProvider(); chat.name = "主对话测试"; chat.model = "chat-fixture"; chat.baseURL = "https://example.invalid/v1"
                 var batch = AIProvider(); batch.name = "批量测试"; batch.model = "batch-fixture"; batch.baseURL = "https://example.invalid/v1"

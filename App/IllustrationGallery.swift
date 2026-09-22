@@ -92,6 +92,7 @@ struct IllustrationDetail: View {
     @State private var status: String?
     @State private var deleting = false
     @State private var saving = false
+    @State private var readingSource: SourcePassage?
     @FocusState private var editingCategory: Bool
     private var available: Bool { library.books.first(where: { $0.id == item.bookID }).map { item.visible(in: $0) } == true }
     var body: some View {
@@ -102,6 +103,13 @@ struct IllustrationDetail: View {
                 if let name = item.characterName { Text("由\(name)生成").font(.caption).foregroundStyle(.secondary) }
                 if let original = item.originalPrompt, original != item.prompt { Section("绘图提示词") { Text(item.prompt).textSelection(.enabled) } }
                 if let source = item.source { Section("原文") { Text(source.text).textSelection(.enabled) } }
+                if item.source != nil || (item.anchor != nil && item.anchorRevision != nil),
+                   let book = library.books.first(where: { $0.id == item.bookID }), !book.removed, book.hasBody {
+                    Button("阅读原文", systemImage: "book") {
+                        do { library.flush(); readingSource = try library.store?.locateIllustration(item) }
+                        catch { status = error.localizedDescription }
+                    }.accessibilityIdentifier("illustration-read-source")
+                }
                 Section("分类") {
                     TextField("分类名称", text: $category).focused($editingCategory).submitLabel(.done).onSubmit { editingCategory = false }.accessibilityIdentifier("illustration-category")
                     Button("保存分类") {
@@ -126,6 +134,7 @@ struct IllustrationDetail: View {
             } else { Text("这张插图的原文或已读范围已经变化。").foregroundStyle(.secondary) }
             if let status { Text(status).font(.caption).accessibilityIdentifier("illustration-detail-status") }
         }.navigationTitle("插图").scrollDismissesKeyboard(.interactively).disabled(saving || library.maintenance)
+            .navigationDestination(item: $readingSource) { passage in ReaderView(bookID: passage.bookID, initialPassage: passage) }
             .task(id: item.id) {
                 guard available, let store = library.store else { return }
                 do {

@@ -4,6 +4,7 @@ import MoReadCore
 
 struct ReaderView: View {
     let bookID: UUID
+    var initialPassage: SourcePassage? = nil
     @EnvironmentObject private var model: LibraryModel
     @EnvironmentObject private var companion: CompanionModel
     @EnvironmentObject private var speech: SpeechPlayer
@@ -30,6 +31,9 @@ struct ReaderView: View {
     @State private var readingStarted: Date?
     @State private var chat: ChatDestination?
     @State private var chatSelection: SourcePassage?
+    @State private var opened = false
+    @State private var initialSourceError: String?
+    @State private var didLocateEPUB = false
     private var book: Book? { model.books.first { $0.id == bookID && !$0.removed } }
     private var completedChapter: Int? {
         guard let book else { return nil }
@@ -41,10 +45,13 @@ struct ReaderView: View {
 
     var body: some View {
         Group {
-            if let book {
+            if let initialSourceError {
+                ContentUnavailableView("无法打开原文", systemImage: "book.closed", description: Text(initialSourceError))
+            } else if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(book: book, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                        EPUBReader(book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                            didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
                         }, onSelection: { passage in selection = passage; note = "" }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
                     } else if let chapter {
@@ -89,8 +96,17 @@ struct ReaderView: View {
                     }
                     .task(id: bookID) {
                         model.perform { if let value = try model.store?.records(for: book) { records = value } }
-                        if book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
-                        readingStarted = Date()
+                        if !opened {
+                            opened = true
+                            do {
+                                if let initialPassage {
+                                    guard initialPassage.bookID == bookID, let source = try model.store?.chapter(initialPassage.chapter, in: book),
+                                          initialPassage.isValid(in: source, scope: ReadingScope(through: book.readThrough)) else { throw MoReadError.invalid("原文或已读范围已经变化，请返回插图重新打开。") }
+                                    if book.format == "txt" { loadChapter(initialPassage.chapter, offset: initialPassage.offset) }
+                                } else if book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
+                            } catch { initialSourceError = error.localizedDescription; return }
+                        }
+                        refreshReadingTime()
                         companion.setAnnotationReader(bookID, library: model)
                     }
                     .sheet(item: $sheet) { kind in readerSheet(kind, book: book) }
