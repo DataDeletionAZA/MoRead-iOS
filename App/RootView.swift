@@ -97,7 +97,7 @@ struct RootView: View {
                 chat.messages = (0..<12).map { ChatMessage(role: $0.isMultiple(of: 2) ? "user" : "assistant", content: "第\($0)条：用户喜欢安静的书店。") }
                 companion.perform { try companion.store?.save(chat); companion.conversations = [chat] }
             }
-            if companion.simulatedIdentities, companion.settings.providers.isEmpty {
+            if companion.simulatedIdentities || companion.simulatedSuggestions, companion.settings.providers.isEmpty {
                 var provider = AIProvider(); provider.name = "本地身份测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid"
                 companion.settings.providers = [provider]; companion.settings.selectedProvider = provider.id; companion.saveSettings()
             }
@@ -362,6 +362,7 @@ struct SettingsView: View {
                     NavigationLink("我的身份") { UserMaskSettingsView() }
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("模型分工") { ModelAssignmentsView() }
+                    NavigationLink("建议回复") { ReplySuggestionSettingsView() }
                     NavigationLink("全局提示词预设") { GlobalPromptView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("原文相关性排序") { RerankSettingsView() }

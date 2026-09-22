@@ -1,6 +1,8 @@
 import Foundation
 
 public struct CompanionSettings: Codable {
+    public var suggestionRepliesEnabled: Bool?
+    public var suggestionProvider: UUID?
     public var batchProvider: UUID?
     public var coverQueryProvider: UUID?
     public var globalPrompts: [GlobalPromptPreset]?

@@ -9,12 +9,12 @@ final class ModelAssignmentsTests: XCTestCase {
         var batch = AIProvider(); batch.model = "batch"
         var custom = AIProvider(); custom.model = "custom"
         settings.providers = [chat, batch, custom]; settings.selectedProvider = chat.id
-        for task in [ModelTask.chat, .knowledge, .annotation, .coverQuery] { XCTAssertEqual(settings.resolvedProvider(for: task), chat) }
+        for task in [ModelTask.chat, .knowledge, .annotation, .coverQuery, .suggestion] { XCTAssertEqual(settings.resolvedProvider(for: task), chat) }
         for task in [ModelTask.batch, .summary, .memory] { XCTAssertNil(settings.resolvedProvider(for: task)) }
         try settings.assignProvider(batch.id, to: .batch)
         XCTAssertEqual(settings.resolvedProvider(for: .chat), chat)
         for task in ModelTask.allCases where task != .chat { XCTAssertEqual(settings.resolvedProvider(for: task), batch) }
-        let tasks: [ModelTask] = [.knowledge, .summary, .memory, .annotation, .coverQuery]
+        let tasks: [ModelTask] = [.knowledge, .summary, .memory, .annotation, .coverQuery, .suggestion]
         for task in tasks { try settings.assignProvider(custom.id, to: task) }
         try settings.assignProvider(chat.id, to: .batch)
         for task in tasks { XCTAssertEqual(settings.resolvedProvider(for: task), custom) }
@@ -29,7 +29,7 @@ final class ModelAssignmentsTests: XCTestCase {
         settings.batchProvider = custom.id
         for task in ModelTask.allCases where task != .chat { XCTAssertNil(settings.resolvedProvider(for: task)) }
         try settings.assignProvider(nil, to: .batch)
-        for task in [ModelTask.knowledge, .annotation, .coverQuery] { XCTAssertEqual(settings.resolvedProvider(for: task), batch) }
+        for task in [ModelTask.knowledge, .annotation, .coverQuery, .suggestion] { XCTAssertEqual(settings.resolvedProvider(for: task), batch) }
         for task in [ModelTask.summary, .memory] { XCTAssertNil(settings.resolvedProvider(for: task)) }
     }
 
@@ -43,6 +43,7 @@ final class ModelAssignmentsTests: XCTestCase {
         var memory = PersonaMemorySettings(); memory.crossBook = true; memory.disabledCharacters = [UUID()]; settings.personaMemory = memory
         var annotation = ProactiveSettings(); annotation.enabled = false; annotation.maximumPerChapter = 4; annotation.dailyMaximum = 15; settings.proactive = annotation
         settings.embeddingModel = "separate-vector-model"
+        settings.suggestionRepliesEnabled = false
         for task in ModelTask.allCases { try settings.assignProvider(provider.id, to: task) }
         XCTAssertFalse(settings.summarySettings!.enabled); XCTAssertFalse(settings.personaMemory!.enabled); XCTAssertFalse(settings.proactive!.enabled)
         XCTAssertEqual(settings.personaMemory!.disabledCharacters, memory.disabledCharacters)
@@ -55,6 +56,7 @@ final class ModelAssignmentsTests: XCTestCase {
         try BackupArchive.activate(prepared, replacing: root)
         let restored = try CompanionStore(root: root).settings()
         XCTAssertEqual(restored.summarySettings, settings.summarySettings); XCTAssertEqual(restored.personaMemory, settings.personaMemory); XCTAssertEqual(restored.proactive, settings.proactive)
+        XCTAssertEqual(restored.suggestionRepliesEnabled, false)
         for task in ModelTask.allCases {
             XCTAssertEqual(restored.assignedProvider(for: task), provider.id); XCTAssertEqual(restored.resolvedProvider(for: task), provider)
             let request = try ChatRequest.make(provider: XCTUnwrap(restored.resolvedProvider(for: task)), key: "fixture", messages: [.init(role: "user", content: "check")])

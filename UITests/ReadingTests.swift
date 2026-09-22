@@ -7,6 +7,44 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testReplySuggestionsSendPreserveDraftDismissCancelAndSettingsPersist() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        func launch(_ reset: Bool = false) { app.launchArguments = ["--ui-testing", "--simulate-suggestions", "--simulate-model-roles"] + (reset ? ["--reset-test-library"] : []); app.launch() }
+        func newChat() { app.tabBars.buttons["伴读"].tap(); app.buttons["开启新话题"].tap() }
+        let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+        let first = app.buttons["reply-suggestion-0"], model = app.buttons["reply-suggestion-1"]
+        func send(_ text: String) { input.tap(); input.typeText(text); app.buttons["发送"].tap(); XCTAssertTrue(app.staticTexts["本地伴读：" + text].waitForExistence(timeout: 10)) }
+        func settings() { app.tabBars.buttons["设置"].tap(); if !app.navigationBars["建议回复"].exists { tapSettingsRow("建议回复", in: app) } }
+        func toggle() { app.switches["suggestions-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
+        func absent(_ seconds: TimeInterval = 2) {
+            let unexpected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: first); unexpected.isInverted = true
+            XCTAssertEqual(XCTWaiter.wait(for: [unexpected], timeout: seconds), .completed)
+        }
+        launch(true); newChat(); send("Hello.")
+        XCTAssertTrue(first.waitForExistence(timeout: 10)); XCTAssertEqual(model.label, "聊聊 chat-fixture")
+        input.tap(); input.typeText("My draft")
+        first.tap(); XCTAssertTrue(app.staticTexts["本地伴读：想听你接着说"].waitForExistence(timeout: 10))
+        XCTAssertEqual(input.value as? String, "My draft")
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Reply-suggestions"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["dismiss-suggestions"].tap(); absent()
+        app.buttons["返回"].tap(); settings()
+        XCTAssertEqual(app.switches["suggestions-enabled"].value as? String, "1")
+        app.buttons["model-role-suggestion"].tap(); app.buttons["批量测试 · batch-fixture"].tap()
+        toggle(); XCTAssertEqual(app.switches["suggestions-enabled"].value as? String, "0")
+        app.terminate(); launch(); settings()
+        XCTAssertEqual(app.switches["suggestions-enabled"].value as? String, "0")
+        XCTAssertTrue(app.staticTexts["model-effective-suggestion"].label.contains("batch-fixture"))
+        newChat(); send("Disabled."); absent()
+        app.buttons["返回"].tap(); settings(); toggle(); newChat(); send("Enabled.")
+        XCTAssertTrue(first.waitForExistence(timeout: 10)); XCTAssertEqual(model.label, "聊聊 batch-fixture")
+        app.buttons["返回"].tap(); newChat(); send("slow")
+        app.buttons["返回"].tap(); newChat(); absent(6)
+        send("fail"); absent(); XCTAssertFalse(app.alerts["需要处理"].exists)
+        app.buttons["返回"].tap(); newChat(); send("Recovered.")
+        XCTAssertTrue(first.waitForExistence(timeout: 10)); XCTAssertEqual(model.label, "聊聊 batch-fixture")
+    }
     func testModelAssignmentsRouteKnowledgePreserveChatAndCancelChangedJobs() {
         executionTimeAllowance = 300
         let app = XCUIApplication()
@@ -106,8 +144,10 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(reply("自然表达、沉浸式角色扮演", "简洁回答、Ending").waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Keep my words."].exists)
         app.buttons["返回"].tap(); settings(); toggle("简洁回答")
-        let edit = app.buttons["preset-edit-Ending"]; reveal(edit); edit.swipeLeft()
-        app.buttons.matching(NSPredicate(format: "label IN %@", ["删除", "Delete"])).firstMatch.tap()
+        let edit = app.buttons["preset-edit-Ending"]; reveal(edit)
+        app.cells.containing(.button, identifier: "preset-edit-Ending").firstMatch.swipeLeft()
+        let delete = app.buttons.matching(NSPredicate(format: "label IN %@", ["删除", "Delete"])).firstMatch
+        if delete.waitForExistence(timeout: 2) { delete.tap() }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: edit)], timeout: 5), .completed)
         openChat(); app.buttons["重新生成"].tap()
         XCTAssertTrue(reply("自然表达、沉浸式角色扮演", "无").waitForExistence(timeout: 15))

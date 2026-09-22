@@ -4,6 +4,10 @@ import MoReadCore
 
 @MainActor
 final class CompanionModel: ObservableObject {
+    @Published var suggestedReplies: SuggestedReplies?
+    var suggestionChatID: UUID?
+    var suggestionRequestID: UUID?
+    var suggestionTask: Task<Void, Never>?
     @Published var knowledgeStates: [KnowledgeJobKey: String] = [:]
     var knowledgeTasks: [KnowledgeJobKey: Task<Void, Never>] = [:]
     @Published var settings = CompanionSettings()
@@ -31,6 +35,7 @@ final class CompanionModel: ObservableObject {
 
     init() { load() }
     func load() {
+        dismissSuggestions(); suggestionChatID = nil
         knowledgeStates.removeAll()
         do {
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -71,8 +76,9 @@ final class CompanionModel: ObservableObject {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
         perform { try store?.save(conversation) }
     }
-    func stop() { task?.cancel(); stopAnnotations() }
+    func stop() { task?.cancel(); stopAnnotations(); dismissSuggestions() }
     func stopAndWait() async {
+        let suggestions = suggestionTask; dismissSuggestions()
         let knowledge = Array(knowledgeTasks.values)
         for job in knowledge { job.cancel() }
         task?.cancel(); annotationTask?.cancel(); summaryTask?.cancel(); personaMemoryTask?.cancel()
@@ -80,6 +86,7 @@ final class CompanionModel: ObservableObject {
         if let annotationTask { await annotationTask.value }
         if let summaryTask { await summaryTask.value }
         if let personaMemoryTask { await personaMemoryTask.value }
+        await suggestions?.value
         for job in knowledge { await job.value }
     }
     func embeddingConnection() throws -> (AIProvider, String, String) {
@@ -127,13 +134,14 @@ final class CompanionModel: ObservableObject {
               let provider = settings.resolvedProvider(for: .chat),
               let card = characters.first(where: { $0.id == conversations[index].characterID }),
               let root = library.store?.root else { error = "请先在设置中添加 AI 服务商并选择模型。"; return }
+        dismissSuggestions()
         do {
             try conversations[index].validateUserText(text)
             let presets = settings.resolvedGlobalPrompts
             try GlobalPromptPreset.validate(presets)
             let key: String
             #if DEBUG
-            key = (simulatedIdentities || simulatedMemory || simulatedRerank || simulatedTools || simulatedHybrid) ? "local-test" : try KeychainStore.read(provider.id)
+            key = (simulatedIdentities || simulatedMemory || simulatedRerank || simulatedTools || simulatedHybrid || simulatedSuggestions) ? "local-test" : try KeychainStore.read(provider.id)
             #else
             key = try KeychainStore.read(provider.id)
             #endif
@@ -217,6 +225,7 @@ final class CompanionModel: ObservableObject {
                     self.finish(id, messageID: responseID, status: "complete")
                     self.refreshSummary(id, library: library)
                     self.consolidateMemory(id, library: library)
+                    self.refreshSuggestions(id, library: library)
                 } catch is CancellationError { self.finish(id, messageID: responseID, status: "interrupted") }
                 catch {
                     self.finish(id, messageID: responseID, status: "interrupted")
@@ -241,6 +250,12 @@ final class CompanionModel: ObservableObject {
     #endif
     private func streamReply(provider: AIProvider, key: String, messages: [ChatMessage], conversationID: UUID, responseID: UUID, library: LibraryModel, books: [Book], card: CharacterCard) async throws {
         #if DEBUG
+        if simulatedSuggestions {
+            _ = try ChatRequest.make(provider: provider, key: key, messages: messages)
+            try await Task.sleep(for: .milliseconds(250))
+            append("本地伴读：" + (messages.last { $0.role == "user" }?.content.components(separatedBy: "\n").last ?? ""), to: conversationID, messageID: responseID)
+            return
+        }
         if simulatedHybrid {
             let source = conversations.first { $0.id == conversationID }?.messages.last?.sources.first?.text ?? "无原文"
             append("混合检索结果：" + source, to: conversationID, messageID: responseID)
@@ -293,6 +308,7 @@ final class CompanionModel: ObservableObject {
     }
     func edit(_ id: UUID, messageID: UUID, text: String) {
         guard task == nil, let index = conversations.firstIndex(where: { $0.id == id }), let message = conversations[index].messages.firstIndex(where: { $0.id == messageID }) else { return }
+        if suggestionChatID == id { dismissSuggestions() }
         perform {
             var copy = conversations[index]
             if copy.messages[message].role == "user" { try copy.validateUserText(text) }
@@ -311,6 +327,7 @@ final class CompanionModel: ObservableObject {
     }
     func delete(_ id: UUID) {
         guard activeConversation != id else { return }
+        if suggestionChatID == id { dismissSuggestions() }
         stopSummary(for: id)
         personaMemoryTask?.cancel()
         perform { try store?.deleteConversation(id); conversations.removeAll { $0.id == id } }
