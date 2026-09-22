@@ -98,7 +98,11 @@
 
 ## 开发
 
+AI 服务商、绘图、联网搜索及云端声音设置在后台读取系统钥匙串，读取期间可以返回或取消。密钥输入及会写入密钥的保存按钮等待读取完成，云端声音读取失败时不会把未读取的密钥作为空值保存。系统查询可能阻塞调用线程，参见 [Apple 钥匙串性能说明](https://developer.apple.com/documentation/security/secitemcopymatching%28_%3A_%3A%29)。
+
 双击 `MoRead.xcodeproj`，在 Xcode 中打开工程并等待组件下载完成。顶部选择 `MoRead` 和一个 iPhone 模拟器，再点击三角形运行按钮。
+
+GitHub Actions 的 `iOS` 工作流支持手动填写 `test`，例如 `MoReadUITests/ReadingTests/testSpeechPreferencesAndChapterSleepTimer`，只执行指定的界面检查。留空、推送或提交合并请求时执行全套检查。
 
 安装到自己的 iPhone：
 
@@ -122,3 +126,5 @@
 本项目基于 [DataDeletionAZA/MoRead](https://github.com/DataDeletionAZA/MoRead)，参考版本 `2421731e4e29fc081b28cd7f89e2566095cc6513`。
 
 按 [GPL-3.0](LICENSE) 发布，第三方来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+设置页检查覆盖密钥读取延迟时的返回与取消、切换绘图接口，以及云端声音密钥读取失败后的保存拦截和重启保留。听书检查覆盖播放按钮的左、中、右侧点击、停止后重新开始，以及系统朗读和本地缓存音频的暂停、定位与章节定时。

@@ -5,7 +5,8 @@ struct ImageGenerationSettingsView: View {
     @EnvironmentObject private var companion: CompanionModel
     @State private var draft = ImageGenerationSettings()
     @State private var key = ""
-    @State private var hasKey = false
+    @State private var hasKey: Bool?
+    @State private var loadingKey = true
     @State private var loaded = false
     @State private var status: String?
     var body: some View {
@@ -17,7 +18,10 @@ struct ImageGenerationSettingsView: View {
                     ModelAssignmentPicker(task: .image)
                     NavigationLink("管理 AI 服务商") { AISettingsView() }
                 }
-                Picker("绘图接口", selection: Binding(get: { draft.service }, set: { draft.preset($0); key = ""; checkKey() })) {
+                Picker("绘图接口", selection: Binding(get: { draft.service }, set: { service in
+                    guard service != draft.service else { return }
+                    draft.preset(service); key = ""; loadingKey = true; hasKey = nil; status = nil
+                })) {
                     ForEach(ImageGenerationService.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.accessibilityIdentifier("image-service")
                 if draft.useAssignedModel != true {
@@ -51,10 +55,10 @@ struct ImageGenerationSettingsView: View {
                 if let status { Text(status).font(.caption).accessibilityIdentifier("image-settings-status") }
             } footer: { Text("在书籍的插图廊或选中文字段落后开始生成。开启整理时，先由主对话模型把描述转换为绘图提示词，NovelAI 使用英文画面标签。每次生成或重新生成会发送描述并按所用服务商规则计费。允许伴读绘图后，角色可使用绘图工具，每条回复最多生成 4 张。") }
             if draft.useAssignedModel != true { Section("当前接口的密钥") {
-                Text(hasKey ? "已保存密钥" : "尚未保存密钥").font(.caption)
-                SecureField("输入新的 API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("保存密钥") { saveKey(key.trimmingCharacters(in: .whitespacesAndNewlines)) }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if hasKey { Button("删除密钥", role: .destructive) { saveKey("") } }
+                Text(loadingKey ? "正在读取密钥状态…" : hasKey.map { $0 ? "已保存密钥" : "尚未保存密钥" } ?? "暂时无法读取密钥").font(.caption).accessibilityIdentifier("image-key-status")
+                SecureField("输入新的 API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(loadingKey)
+                Button("保存密钥") { saveKey(key.trimmingCharacters(in: .whitespacesAndNewlines)) }.disabled(loadingKey || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if hasKey == true { Button("删除密钥", role: .destructive) { saveKey("") }.disabled(loadingKey) }
             } }
         }.navigationTitle("AI 绘图")
             .onAppear {
@@ -63,12 +67,16 @@ struct ImageGenerationSettingsView: View {
                     else { draft.preset(.images); draft.useAssignedModel = companion.settings.imageProvider != nil }
                     loaded = true
                 }
-                checkKey()
+            }
+            .task(id: draft.service) {
+                loadingKey = true; hasKey = nil
+                do { hasKey = !(try await KeychainStore.readAsync(draft.service.credentialID)).isEmpty }
+                catch is CancellationError { return } catch { status = error.localizedDescription }
+                loadingKey = false
             }
     }
-    private func checkKey() { do { hasKey = !(try KeychainStore.read(draft.service.credentialID)).isEmpty } catch { status = error.localizedDescription } }
     private func saveKey(_ value: String) {
-        do { try KeychainStore.save(value, for: draft.service.credentialID); key = ""; checkKey(); status = value.isEmpty ? "密钥已删除。" : "密钥已保存。" }
+        do { try KeychainStore.save(value, for: draft.service.credentialID); key = ""; hasKey = !value.isEmpty; status = value.isEmpty ? "密钥已删除。" : "密钥已保存。" }
         catch { status = error.localizedDescription }
     }
 }

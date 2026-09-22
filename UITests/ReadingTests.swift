@@ -1,6 +1,34 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testSettingsRemainNavigableWhileCredentialsLoad() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-slow-credentials"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); app.buttons["AI 绘图"].tap()
+        XCTAssertTrue(app.navigationBars["AI 绘图"].waitForExistence(timeout: 5))
+        app.buttons["image-service"].tap(); app.buttons["聊天接口出图"].tap()
+        app.buttons["save-image-settings"].tap()
+        XCTAssertTrue(app.staticTexts["image-settings-status"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["image-settings-status"].label, "绘图设置已保存。")
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["image-key-status"].label.contains("正在读取"))
+        XCTAssertFalse(app.secureTextFields["输入新的 API Key"].isEnabled)
+        app.navigationBars["AI 绘图"].buttons.element(boundBy: 0).tap()
+        tapSettingsRow("AI 服务商", in: app); app.buttons["添加服务商"].tap()
+        XCTAssertTrue(app.navigationBars["连接 AI"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.secureTextFields["API 密钥"].isEnabled); XCTAssertFalse(app.buttons["保存"].isEnabled)
+        app.buttons["取消"].tap(); app.navigationBars["AI 服务商"].buttons.element(boundBy: 0).tap()
+        tapSettingsRow("联网搜索", in: app)
+        app.buttons["web-provider"].tap(); app.buttons["Tavily"].tap(); app.swipeUp()
+        XCTAssertTrue(app.switches["web-advanced-search"].waitForExistence(timeout: 5))
+        app.navigationBars["联网搜索"].buttons.element(boundBy: 0).tap()
+        tapSettingsRow("云端声音与缓存", in: app)
+        XCTAssertTrue(app.navigationBars["云端声音与缓存"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["cloud-speech-service"].isEnabled)
+        app.navigationBars["云端声音与缓存"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+    }
+
     func testCompanionStatisticsScopesPeriodsBranchDeduplicationDeletionAndRestart() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-companion-statistics"]; app.launch()
@@ -1294,6 +1322,14 @@ final class ReadingTests: XCTestCase {
         XCTAssertNotEqual(key.value as? String, "API 密钥")
         XCTAssertEqual((key.value as? String)?.count, "test-voice-key-12345".count)
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-unavailable-credentials"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
+        XCTAssertTrue(app.alerts["需要处理"].waitForExistence(timeout: 5)); app.alerts.buttons["好"].tap()
+        reveal(app.buttons["save-cloud-speech"]); XCTAssertFalse(app.buttons["save-cloud-speech"].isEnabled)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
+        reveal(model); XCTAssertEqual(model.value as? String, "speech-2.8-hd-custom")
+        reveal(key); XCTAssertEqual((key.value as? String)?.count, "test-voice-key-12345".count)
     }
     func testSpeechPreferencesAndChapterSleepTimer() {
         let app = XCUIApplication()
@@ -1320,7 +1356,16 @@ final class ReadingTests: XCTestCase {
         let advanced = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in progress.exists && progress.normalizedSliderPosition > 0 }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [advanced], timeout: 15), .completed)
         playback.tap()
-        XCTAssertEqual(playback.label, "继续")
+        func state(_ label: String) {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@ AND enabled == true", label), object: app.buttons["speech-play-pause"])], timeout: 5), .completed)
+        }
+        state("继续")
+        playback.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap(); state("暂停")
+        playback.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)).tap(); state("继续")
+        app.buttons["结束听书"].coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["speech-start"].waitForExistence(timeout: 5))
+        app.buttons["speech-start"].coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap(); state("暂停")
+        playback.tap(); state("继续")
         app.buttons["speech-timer"].tap(); app.buttons["15 分钟"].tap()
         XCTAssertTrue(app.buttons["speech-timer"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["speech-timer"].label.contains("15:00"))

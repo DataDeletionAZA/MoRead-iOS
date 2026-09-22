@@ -22,7 +22,9 @@ struct SpeechControls: View {
                     if currentBook.chapters.indices.contains(speech.position.chapter) {
                         Text(currentBook.chapters[speech.position.chapter].title).font(.headline)
                     }
-                    Button(speech.isPreparing ? "正在准备…" : speech.isPlaying ? "暂停" : "继续", systemImage: speech.isPlaying ? "pause.fill" : "play.fill") { if speech.isPlaying { speech.pause() } else { speech.resume() } }.accessibilityIdentifier("speech-play-pause").disabled(speech.isPreparing)
+                    speechButton(speech.isPreparing ? "正在准备…" : speech.isPlaying ? "暂停" : "继续", systemImage: speech.isPlaying ? "pause.fill" : "play.fill") {
+                        if speech.isPlaying { speech.pause() } else { speech.resume() }
+                    }.accessibilityIdentifier("speech-play-pause").disabled(speech.isPreparing)
                     HStack {
                         Button("上一章", systemImage: "backward.end") { speech.previousChapter() }.accessibilityIdentifier("speech-previous-chapter").disabled(speech.position.chapter == 0)
                         Spacer()
@@ -32,10 +34,10 @@ struct SpeechControls: View {
                         seeking = editing
                         if editing { seekValue = progress } else { speech.seek(fraction: seekValue) }
                     }.accessibilityLabel("本章听书进度")
-                    Button("结束听书", systemImage: "stop") { speech.stop() }
+                    speechButton("结束听书", systemImage: "stop") { speech.stop() }
                 } else {
                     if speech.stoppedBookID == book.id, let reason = speech.stopReason { Text(reason).foregroundStyle(.secondary).accessibilityIdentifier("speech-stop-reason") }
-                    Button("从这里开始朗读", systemImage: "play.fill") { speech.play(currentBook, library: library) }.accessibilityIdentifier("speech-start")
+                    speechButton("从这里开始朗读", systemImage: "play.fill") { speech.play(currentBook, library: library) }.accessibilityIdentifier("speech-start")
                 }
             }
             Section {
@@ -57,7 +59,7 @@ struct SpeechControls: View {
                 Slider(value: $speech.preferences.rate, in: 0...1, step: 0.05) { Text("语速") } minimumValueLabel: { Text("慢") } maximumValueLabel: { Text("快") }.accessibilityIdentifier("speech-rate")
                 LabeledContent("音调", value: abs(speech.preferences.pitch - 1) < 0.01 ? "自然" : speech.preferences.pitch < 1 ? "低沉" : "明亮")
                 Slider(value: $speech.preferences.pitch, in: 0.5...2, step: 0.05) { Text("音调") } minimumValueLabel: { Text("低") } maximumValueLabel: { Text("高") }.accessibilityIdentifier("speech-pitch")
-                Button(speech.isPreviewing ? "停止试听" : "试听声音", systemImage: speech.isPreviewing ? "stop.circle" : "speaker.wave.2") {
+                speechButton(speech.isPreviewing ? "停止试听" : "试听声音", systemImage: speech.isPreviewing ? "stop.circle" : "speaker.wave.2") {
                     if speech.isPreviewing { speech.stopPreview() } else { speech.preview() }
                 }
                 Button("恢复默认声音设置") { speech.preferences = SpeechPreferences() }
@@ -70,6 +72,11 @@ struct SpeechControls: View {
         }.navigationTitle("听书")
             .sheet(isPresented: $timerSheet) { SpeechTimerSheet() }
             .onDisappear { speech.stopPreview() }
+    }
+    private func speechButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }
     }
     private var timerLabel: String {
         guard let timer = speech.sleepTimer else { return "未开启" }

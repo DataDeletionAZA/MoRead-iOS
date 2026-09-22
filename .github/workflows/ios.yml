@@ -3,6 +3,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      test:
+        description: 'Optional XCTest identifier, for example MoReadUITests/ReadingTests/testSpeechPreferencesAndChapterSleepTimer'
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -21,9 +27,13 @@ jobs:
       - name: Build for iPhone
         run: xcodebuild -project MoRead.xcodeproj -scheme MoRead -sdk iphoneos -configuration Debug -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO build
       - name: Test reader in simulator
+        env:
+          MOREAD_TEST_FILTER: ${{ inputs.test }}
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
-          xcodebuild -project MoRead.xcodeproj -scheme MoRead -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath build/simulator -resultBundlePath build/ReadingTests.xcresult -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 test
+          TEST_ARGS=()
+          if [[ -n "$MOREAD_TEST_FILTER" ]]; then TEST_ARGS+=("-only-testing:$MOREAD_TEST_FILTER"); fi
+          xcodebuild -project MoRead.xcodeproj -scheme MoRead -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath build/simulator -resultBundlePath build/ReadingTests.xcresult -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 "${TEST_ARGS[@]}" test
       - name: Export test screenshots
         if: always()
         run: xcrun xcresulttool export attachments --path build/ReadingTests.xcresult --output-path build/screenshots

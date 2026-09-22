@@ -6,6 +6,8 @@ struct CloudSpeechView: View {
     @EnvironmentObject private var library: LibraryModel
     @State private var settings = CloudSpeechSettings()
     @State private var key = ""
+    @State private var loadingKey = true
+    @State private var keyLoaded = false
     @State private var message: String?
     @State private var cacheBytes: Int64 = 0
     @State private var clearing = false
@@ -19,7 +21,7 @@ struct CloudSpeechView: View {
             Section("语音服务商") {
                 Picker("接口类型", selection: Binding(get: { settings.service }, set: { settings.preset($0); key = ""; message = nil })) {
                     ForEach(SpeechService.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.accessibilityIdentifier("cloud-speech-service")
+                }.accessibilityIdentifier("cloud-speech-service").disabled(loadingKey)
                 field("服务地址", text: $settings.baseURL, id: "cloud-speech-url")
                 if settings.service == .miniMax {
                     Button("使用 MiniMax 国内地址") { settings.baseURL = "https://api.minimaxi.com/v1" }
@@ -28,7 +30,7 @@ struct CloudSpeechView: View {
                 }
                 field("语音模型", text: $settings.model, id: "cloud-speech-model")
                 field("声音 ID", text: $settings.voice, id: "cloud-speech-voice")
-                SecureField("API 密钥", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled().focused($focusedField, equals: "cloud-speech-key").accessibilityIdentifier("cloud-speech-key")
+                SecureField("API 密钥", text: Binding(get: { key }, set: { key = $0; keyLoaded = true })).textInputAutocapitalization(.never).autocorrectionDisabled().focused($focusedField, equals: "cloud-speech-key").accessibilityIdentifier("cloud-speech-key").disabled(loadingKey)
                 Text("声音 ID 请填写服务商提供的名称。密钥保存在这台设备的系统钥匙串中。").font(.caption).foregroundStyle(.secondary)
             }
             Section("声音表现") {
@@ -53,7 +55,7 @@ struct CloudSpeechView: View {
                     focusedField = nil
                     do { try speech.saveCloudSettings(settings, key: key); settings = speech.cloudSettings; message = "已保存。可以打开一本书，点“听书”开始。" }
                     catch { library.error = error.localizedDescription }
-                }.accessibilityIdentifier("save-cloud-speech")
+                }.accessibilityIdentifier("save-cloud-speech").disabled(loadingKey || !keyLoaded)
                 if let message { Text(message).foregroundStyle(.secondary).accessibilityIdentifier("cloud-speech-saved") }
             }
             Section("已生成的音频") {
@@ -66,8 +68,16 @@ struct CloudSpeechView: View {
             .disabled(library.maintenance || clearing)
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focusedField = nil } } }
             .task {
-                settings = speech.cloudSettings
-                library.perform { key = try KeychainStore.read(settings.id); if let root = library.store?.root { cacheBytes = try SpeechAudioCache.size(root: root) } }
+                settings = speech.cloudSettings; loadingKey = true; keyLoaded = false
+                do { key = try await KeychainStore.readAsync(settings.id); keyLoaded = true }
+                catch is CancellationError { return } catch { library.error = error.localizedDescription }
+                loadingKey = false
+                if let root = library.store?.root {
+                    do {
+                        let size = try await Task.detached(priority: .utility) { try SpeechAudioCache.size(root: root) }.value
+                        try Task.checkCancellation(); if library.store?.root == root { cacheBytes = size }
+                    } catch is CancellationError {} catch { library.error = error.localizedDescription }
+                }
             }
             .alert("清空已生成的听书音频？", isPresented: $confirmClear) {
                 Button("取消", role: .cancel) {}

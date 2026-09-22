@@ -6,7 +6,8 @@ struct WebSearchSettingsView: View {
     @State private var search = ""
     @State private var scrape = ""
     @State private var key = ""
-    @State private var hasKey = false
+    @State private var hasKey: Bool?
+    @State private var loadingKey = true
     @State private var status: String?
     private var policy: WebSearchSettings { companion.settings.webSearch ?? WebSearchSettings() }
     private func field<T>(_ keyPath: WritableKeyPath<WebSearchSettings, T>) -> Binding<T> {
@@ -32,10 +33,10 @@ struct WebSearchSettingsView: View {
                 Button("恢复官方地址") { update { $0.searchEndpoint = $0.provider.searchEndpoint; $0.scrapeEndpoint = $0.provider.scrapeEndpoint }; loadFields() }
             }.textInputAutocapitalization(.never).autocorrectionDisabled()
             Section {
-                Text(hasKey ? "已保存密钥" : "尚未保存密钥").font(.caption).foregroundStyle(.secondary)
-                SecureField("输入新的 API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("保存密钥") { saveKey(key.trimmingCharacters(in: .whitespacesAndNewlines)) }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if hasKey { Button("删除密钥", role: .destructive) { saveKey("") } }
+                Text(loadingKey ? "正在读取密钥状态…" : hasKey.map { $0 ? "已保存密钥" : "尚未保存密钥" } ?? "暂时无法读取密钥").font(.caption).foregroundStyle(.secondary)
+                SecureField("输入新的 API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(loadingKey)
+                Button("保存密钥") { saveKey(key.trimmingCharacters(in: .whitespacesAndNewlines)) }.disabled(loadingKey || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if hasKey == true { Button("删除密钥", role: .destructive) { saveKey("") }.disabled(loadingKey) }
             } header: { Text("密钥") } footer: { Text("密钥保存在本机安全存储中，不随书库备份导出。") }
             if policy.provider == .tavily {
                 Section {
@@ -45,7 +46,13 @@ struct WebSearchSettingsView: View {
             }
             if let status { Section { Text(status).font(.caption) } }
         }.navigationTitle("联网搜索").onAppear { loadFields() }
-            .onChange(of: policy.provider) { _, _ in key = ""; status = nil; loadFields() }
+            .onChange(of: policy.provider) { _, _ in key = ""; status = nil; loadingKey = true; hasKey = nil; loadFields() }
+            .task(id: policy.provider) {
+                loadingKey = true; hasKey = nil
+                do { hasKey = !(try await KeychainStore.readAsync(policy.provider.credentialID)).isEmpty }
+                catch is CancellationError { return } catch { status = error.localizedDescription }
+                loadingKey = false
+            }
     }
     @discardableResult
     private func update(_ edit: (inout WebSearchSettings) -> Void) -> Bool {
@@ -57,7 +64,6 @@ struct WebSearchSettingsView: View {
     }
     private func loadFields() {
         search = policy.searchEndpoint; scrape = policy.scrapeEndpoint
-        do { hasKey = try !KeychainStore.read(policy.provider.credentialID).isEmpty } catch { status = error.localizedDescription }
     }
     private func saveKey(_ value: String) {
         do { try KeychainStore.save(value, for: policy.provider.credentialID); companion.stop(); key = ""; hasKey = !value.isEmpty; status = value.isEmpty ? "密钥已删除。" : "密钥已保存。" }

@@ -154,6 +154,7 @@ struct AISettingsView: View {
 struct ProviderEditor: View {
     @State var provider: AIProvider
     @State private var key = ""
+    @State private var loadingKey = true
     @EnvironmentObject private var companion: CompanionModel
     @Environment(\.dismiss) private var dismiss
     var body: some View {
@@ -163,7 +164,7 @@ struct ProviderEditor: View {
                 Picker("接口类型", selection: $provider.dialect) { ForEach(AIProtocol.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                 Section("连接") {
                     TextField("HTTPS 接口地址", text: $provider.baseURL).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    SecureField("API 密钥", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SecureField("API 密钥", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(loadingKey)
                     TextField("模型名称", text: $provider.model).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Stepper("回复上限：\(provider.maxTokens)", value: $provider.maxTokens, in: 256...65536, step: 256)
                     if provider.dialect == .openAI {
@@ -189,9 +190,14 @@ struct ProviderEditor: View {
                             if firstProvider, settings.selectedProvider == nil { settings.selectedProvider = provider.id }
                             try companion.saveModelSettings(settings); dismiss()
                         }
-                    } }
+                    }.disabled(loadingKey) }
                 }
-                .task { companion.perform { key = try KeychainStore.read(provider.id) } }
+                .task {
+                    loadingKey = true
+                    do { key = try await KeychainStore.readAsync(provider.id) }
+                    catch is CancellationError { return } catch { companion.error = error.localizedDescription }
+                    loadingKey = false
+                }
         }
     }
 }
