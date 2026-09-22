@@ -9,7 +9,7 @@ final class ChatTests: XCTestCase {
             XCTAssertFalse(request.url!.absoluteString.contains("test-only"))
             let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
             switch dialect {
-            case .openAI: XCTAssertEqual(request.url?.path, "/v1/chat/completions"); XCTAssertNotNil(body["messages"])
+            case .openAI: XCTAssertEqual(request.url?.path, "/v1/chat/completions"); XCTAssertNotNil(body["messages"]); XCTAssertEqual(body["max_tokens"] as? Int, provider.maxTokens)
             case .responses: XCTAssertEqual(body["store"] as? Bool, false); XCTAssertEqual(body["instructions"] as? String, "规则")
             case .claude: XCTAssertEqual(request.value(forHTTPHeaderField: "x-api-key"), "test-only"); XCTAssertNotNil(body["max_tokens"])
             case .gemini: XCTAssertEqual(request.url?.query, "alt=sse"); XCTAssertNotNil(body["systemInstruction"])
@@ -17,6 +17,29 @@ final class ChatTests: XCTestCase {
         }
         var bad = AIProvider(); bad.model = "model"; bad.baseURL = "http://example.invalid"
         XCTAssertThrowsError(try ChatRequest.make(provider: bad, key: "test", messages: []))
+        bad.baseURL = "https://example.invalid"
+        XCTAssertThrowsError(try ChatRequest.make(provider: bad, key: "test", messages: [], temperature: .nan))
+        for dialect in AIProtocol.allCases {
+            bad.dialect = dialect; bad.maxTokens = 6000
+            let request = try ChatRequest.make(provider: bad, key: "test", messages: [], temperature: 0.2)
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+            let options = dialect == .gemini ? try XCTUnwrap(body["generationConfig"] as? [String: Any]) : body
+            XCTAssertEqual(options["temperature"] as? Double, 0.2)
+            let field = dialect == .gemini ? "maxOutputTokens" : dialect == .claude ? "max_tokens" : dialect == .responses ? "max_output_tokens" : "max_tokens"
+            XCTAssertEqual(options[field] as? Int, 6000)
+        }
+        bad.dialect = .openAI
+        for endpoint in ["https://example.invalid", "https://api.openai.com/v1"] {
+            for selected: ChatTokenLimitParameter? in [nil, .legacy, .completion] {
+                bad.baseURL = endpoint; bad.chatTokenLimitParameter = selected
+                let request = try ChatRequest.make(provider: bad, key: "test", messages: [])
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+                let expected = selected ?? (endpoint.contains("api.openai.com") ? .completion : .legacy)
+                XCTAssertEqual(body[expected.rawValue] as? Int, 6000)
+                XCTAssertNil(body[expected == .legacy ? "max_completion_tokens" : "max_tokens"])
+                XCTAssertEqual(try JSONDecoder().decode(AIProvider.self, from: JSONEncoder().encode(bad)).chatTokenLimitParameter, selected)
+            }
+        }
         bad.baseURL = "https://user:password@example.invalid"
         XCTAssertThrowsError(try ChatRequest.make(provider: bad, key: "test", messages: []))
     }

@@ -163,7 +163,13 @@ final class LibraryModel: ObservableObject {
         guard !maintenance else { return }
         perform {
             guard let store else { return }
-            let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: TextImporter.chapters(Self.sampleText))
+            var chapters = try TextImporter.chapters(Self.sampleText)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-knowledge") {
+                chapters[0].text = "林遥独自推开书店的大门。\n" + chapters[0].text
+            }
+            #endif
+            let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
                let encoded = ProcessInfo.processInfo.environment["MOREAD_TEST_SPEECH_AUDIO"], encoded.utf8.count < 200000,

@@ -4,6 +4,8 @@ import MoReadCore
 
 @MainActor
 final class CompanionModel: ObservableObject {
+    @Published var knowledgeStates: [KnowledgeJobKey: String] = [:]
+    var knowledgeTasks: [KnowledgeJobKey: Task<Void, Never>] = [:]
     @Published var settings = CompanionSettings()
     @Published var characters: [CharacterCard] = []
     @Published var conversations: [Conversation] = []
@@ -29,6 +31,7 @@ final class CompanionModel: ObservableObject {
 
     init() { load() }
     func load() {
+        knowledgeStates.removeAll()
         do {
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             let folder = ProcessInfo.processInfo.arguments.contains("--ui-testing") ? "MoRead-UITests" : "MoRead"
@@ -70,11 +73,14 @@ final class CompanionModel: ObservableObject {
     }
     func stop() { task?.cancel(); stopAnnotations() }
     func stopAndWait() async {
+        let knowledge = Array(knowledgeTasks.values)
+        for job in knowledge { job.cancel() }
         task?.cancel(); annotationTask?.cancel(); summaryTask?.cancel(); personaMemoryTask?.cancel()
         if let task { await task.value }
         if let annotationTask { await annotationTask.value }
         if let summaryTask { await summaryTask.value }
         if let personaMemoryTask { await personaMemoryTask.value }
+        for job in knowledge { await job.value }
     }
     func embeddingConnection() throws -> (AIProvider, String, String) {
         guard var provider = settings.providers.first(where: { $0.id == settings.embeddingProvider }),

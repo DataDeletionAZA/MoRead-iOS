@@ -164,6 +164,13 @@ struct ProviderEditor: View {
                     SecureField("API 密钥", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("模型名称", text: $provider.model).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Stepper("回复上限：\(provider.maxTokens)", value: $provider.maxTokens, in: 256...65536, step: 256)
+                    if provider.dialect == .openAI {
+                        Picker("回复上限兼容方式", selection: $provider.chatTokenLimitParameter) {
+                            Text("自动").tag(nil as ChatTokenLimitParameter?)
+                            Text("通用接口").tag(Optional(ChatTokenLimitParameter.legacy))
+                            Text("OpenAI 新版").tag(Optional(ChatTokenLimitParameter.completion))
+                        }
+                    }
                 }
                 Section { Text("接口地址和模型名称由服务商提供。保存后，这个服务商会用于新的伴读回复。").font(.footnote).foregroundStyle(.secondary) }
             }.navigationTitle("连接 AI")

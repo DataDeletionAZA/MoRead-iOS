@@ -1,6 +1,7 @@
 import Foundation
 
 public struct CompanionSettings: Codable {
+    public var knowledgeProvider: UUID?
     public var toolsEnabled: Bool?
     public var webSearch: WebSearchSettings?
     public var rerank: RerankSettings?

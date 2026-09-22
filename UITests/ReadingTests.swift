@@ -7,6 +7,52 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testChapterKnowledgePreviewSaveEvidenceFailureStopAndRelaunch() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-knowledge"] + extra; app.launch() }
+        func tap(_ id: String) {
+            let button = app.buttons[id]
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable, id); button.tap()
+        }
+        func openBook() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
+            XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        }
+        func openKnowledge() { tap("目录"); tap("章节提纲"); XCTAssertTrue(app.navigationBars["章节提纲"].waitForExistence(timeout: 5)) }
+        func generate() { tap("knowledge-generate-0"); XCTAssertTrue(app.navigationBars["确认章节整理"].waitForExistence(timeout: 5)); tap("knowledge-confirm") }
+        launch(["--reset-test-library"])
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 10)); app.buttons["add-sample"].tap()
+        openBook(); openKnowledge()
+        XCTAssertFalse(app.staticTexts["第二章 来信"].exists)
+        XCTAssertTrue(app.staticTexts["尚未生成"].exists)
+        tap("knowledge-generate-0")
+        XCTAssertTrue(app.navigationBars["确认章节整理"].waitForExistence(timeout: 5)); tap("取消")
+        XCTAssertTrue(app.staticTexts["尚未生成"].exists)
+        generate()
+        app.navigationBars["章节提纲"].buttons.element(boundBy: 0).tap(); tap("完成")
+        openKnowledge()
+        let outline = app.staticTexts["knowledge-outline-0"]
+        XCTAssertTrue(outline.waitForExistence(timeout: 15))
+        XCTAssertEqual(outline.label, "林遥推开书店的大门，开始了这一天的阅读。")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Chapter-outline"; shot.lifetime = .keepAlways; add(shot)
+        tap("原文依据（1）"); tap("knowledge-locate-0-0")
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        tap("书签"); tap("添加当前位置书签"); tap("完成")
+        app.terminate(); launch(["--knowledge-fail"]); openBook(); openKnowledge()
+        XCTAssertTrue(outline.waitForExistence(timeout: 5)); generate()
+        XCTAssertTrue(app.staticTexts["整理服务暂不可用。"].waitForExistence(timeout: 15)); XCTAssertTrue(outline.exists)
+        app.terminate(); launch(["--knowledge-slow"]); openBook(); openKnowledge(); generate()
+        tap("knowledge-stop-0")
+        XCTAssertTrue(app.staticTexts["已停止，可重新生成。"].waitForExistence(timeout: 10)); XCTAssertTrue(outline.exists)
+        tap("knowledge-delete-0"); app.alerts["删除本章提纲？"].buttons["删除"].tap()
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: outline)
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 5), .completed)
+        app.terminate(); launch(); openBook(); openKnowledge()
+        XCTAssertTrue(app.staticTexts["尚未生成"].exists); XCTAssertFalse(outline.exists)
+    }
     func testOnlineCoverSearchSelectCancelFailuresAndStop() {
         executionTimeAllowance = 360
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-cover-search"]; app.launch()

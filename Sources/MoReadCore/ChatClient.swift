@@ -7,7 +7,13 @@ public enum AIProtocol: String, Codable, CaseIterable, Sendable {
     case gemini = "Gemini"
 }
 
+public enum ChatTokenLimitParameter: String, Codable, CaseIterable, Sendable {
+    case legacy = "max_tokens"
+    case completion = "max_completion_tokens"
+}
+
 public struct AIProvider: Codable, Identifiable, Hashable, Sendable {
+    public var chatTokenLimitParameter: ChatTokenLimitParameter?
     public var id = UUID()
     public var name = "我的服务商"
     public var baseURL = "https://api.openai.com/v1"
@@ -33,7 +39,7 @@ public struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
 }
 
 public enum ChatRequest {
-    public static func make(provider: AIProvider, key: String, messages: [ChatMessage], tools: [ChatTool] = [], exchanges: [ChatToolExchange] = []) throws -> URLRequest {
+    public static func make(provider: AIProvider, key: String, messages: [ChatMessage], tools: [ChatTool] = [], exchanges: [ChatToolExchange] = [], temperature: Double? = nil) throws -> URLRequest {
         guard !key.isEmpty, !provider.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               var components = URLComponents(string: provider.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               components.scheme?.lowercased() == "https", components.host != nil,
@@ -56,7 +62,8 @@ public enum ChatRequest {
             if !path.hasSuffix(suffix) { path += "/" + suffix }
             headers["Authorization"] = "Bearer \(key)"
             if provider.dialect == .openAI {
-                body = ["model": provider.model, "messages": messages.map { ["role": $0.role, "content": $0.content] }, "stream": true]
+                let limit = provider.chatTokenLimitParameter ?? (components.host?.lowercased() == "api.openai.com" ? .completion : .legacy)
+                body = ["model": provider.model, "messages": messages.map { ["role": $0.role, "content": $0.content] }, "stream": true, limit.rawValue: maxTokens]
             } else {
                 body = ["model": provider.model, "instructions": system, "input": turns, "stream": true, "store": false, "max_output_tokens": maxTokens]
             }
@@ -72,6 +79,12 @@ public enum ChatRequest {
             headers["x-goog-api-key"] = key
             let contents: [[String: Any]] = turns.map { ["role": $0["role"] == "assistant" ? "model" : "user", "parts": [["text": $0["content"] ?? ""]]] }
             body = ["contents": contents, "systemInstruction": ["parts": [["text": system]]], "generationConfig": ["maxOutputTokens": maxTokens]]
+        }
+        if let temperature {
+            guard temperature.isFinite, (0...2).contains(temperature) else { throw MoReadError.invalid("模型随机度必须在 0 到 2 之间。") }
+            if provider.dialect == .gemini {
+                var generation = body["generationConfig"] as? [String: Any] ?? [:]; generation["temperature"] = temperature; body["generationConfig"] = generation
+            } else { body["temperature"] = provider.dialect == .claude ? min(1, temperature) : temperature }
         }
         components.path = "/" + path
         guard let url = components.url else { throw MoReadError.invalid("接口地址无效。") }
@@ -170,8 +183,8 @@ public enum ChatClient {
     public static func stream(provider: AIProvider, key: String, messages: [ChatMessage], onDelta: @escaping @Sendable (String) async -> Void) async throws {
         _ = try await turn(provider: provider, key: key, messages: messages, onDelta: onDelta)
     }
-    public static func turn(provider: AIProvider, key: String, messages: [ChatMessage], tools: [ChatTool] = [], exchanges: [ChatToolExchange] = [], onDelta: @escaping @Sendable (String) async -> Void) async throws -> ChatToolRound {
-        let request = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: tools, exchanges: exchanges)
+    public static func turn(provider: AIProvider, key: String, messages: [ChatMessage], tools: [ChatTool] = [], exchanges: [ChatToolExchange] = [], temperature: Double? = nil, onDelta: @escaping @Sendable (String) async -> Void) async throws -> ChatToolRound {
+        let request = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: tools, exchanges: exchanges, temperature: temperature)
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil; config.httpCookieStorage = nil; config.timeoutIntervalForResource = 300
         let delegate = NoRedirects()

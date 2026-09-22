@@ -142,6 +142,13 @@ public enum BackupArchive {
             let records = try library.records(for: book), notes = records.notes ?? []
             guard Set(notes.map(\.id)).count == notes.count else { throw MoReadError.invalid("备份包含重复笔记编号。") }
             for note in notes { try note.validate() }
+            let knowledge = records.chapterKnowledge ?? []
+            guard Set(knowledge.map(\.chapter)).count == knowledge.count else { throw MoReadError.invalid("备份包含重复的章节提纲。") }
+            for entry in knowledge {
+                try entry.validate()
+                guard entry.bookID == book.id else { throw MoReadError.invalid("章节提纲与书籍不一致。") }
+                if entry.visible(in: book) { try library.validateKnowledge(entry) }
+            }
             if book.format == "epub", book.hasBody {
                 guard manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("original.epub").path), manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("epub-map.json").path) else { throw MoReadError.invalid("备份缺少 EPUB 正文或定位信息。") }
             }
