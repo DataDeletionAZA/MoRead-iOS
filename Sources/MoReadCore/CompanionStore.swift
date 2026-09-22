@@ -44,6 +44,9 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
         try validateFocus()
         for message in messages {
             for trace in message.toolTrace ?? [] {
+                if let image = trace.illustration {
+                    guard message.role == "assistant", trace.call.name == "generate_illustration", trace.state == "succeeded", image.bookID == bookID else { throw MoReadError.invalid("插图与伴读话题不一致。") }
+                }
                 if let sources = trace.webSources {
                     guard WebSearchClient.tools.contains(trace.call.name), trace.state == "succeeded", message.role == "assistant", sources.count <= 8, Set(sources.map(\.url)).count == sources.count else { throw MoReadError.invalid("网页来源记录无效。") }
                     for source in sources { try source.validate() }

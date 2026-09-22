@@ -76,7 +76,8 @@ final class CompanionModel: ObservableObject {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
         perform { try store?.save(conversation) }
     }
-    func stop() { task?.cancel(); stopAnnotations(); dismissSuggestions() }
+    func stopReply() { task?.cancel() }
+    func stop() { stopReply(); stopAnnotations(); dismissSuggestions() }
     func stopAndWait() async {
         let suggestions = suggestionTask; dismissSuggestions()
         let knowledge = Array(knowledgeTasks.values)

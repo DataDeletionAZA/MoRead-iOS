@@ -11,6 +11,7 @@ public enum ImageGenerationService: String, Codable, CaseIterable, Sendable {
 }
 
 public struct ImageGenerationSettings: Codable, Equatable, Sendable {
+    public var companionEnabled: Bool?
     public var useAssignedModel: Bool?
     public var optimizePrompt: Bool?
     public var service: ImageGenerationService = .images

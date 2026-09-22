@@ -10,13 +10,16 @@ extension CompanionModel {
         let memory = settings.personaMemory ?? PersonaMemorySettings()
         let enabled = settings.toolsEnabled ?? true
         let web = settings.webSearch ?? WebSearchSettings()
-        let specs = enabled ? try ReaderTools.specs(currentBook: conversation.bookID, memory: memory.enabled && !memory.disabledCharacters.contains(card.id), webSearch: web.enabled, enabled: card.enabledTools) : []
+        let imageConnection = settings.imageConnection
+        let imagesEnabled = settings.imageGeneration?.companionEnabled == true && imageConnection != nil
+        let specs = enabled ? try ReaderTools.specs(currentBook: conversation.bookID, memory: memory.enabled && !memory.disabledCharacters.contains(card.id), webSearch: web.enabled, imageGeneration: imagesEnabled, enabled: card.enabledTools) : []
         if specs.isEmpty {
             try await ChatClient.stream(provider: provider, key: key, messages: messages) { delta in await self.append(delta, to: conversationID, messageID: responseID) }
             return
         }
         var accessed = Set<UUID>()
         var roundIndex = 0
+        var imageRequests = 0
         let availableBooks = books.filter { !$0.removed && $0.hasBody && (conversation.bookID == nil || $0.id == conversation.bookID) }
         try await ChatToolLoop.run(tools: specs, stream: { exchanges in
             roundIndex = exchanges.count
@@ -49,7 +52,26 @@ extension CompanionModel {
                 try ReaderTools.validate(book, current: library.books); accessed.insert(book.id)
             }
             var output: ReaderToolOutput
-            if ReaderTools.writing.contains(call.name) {
+            if call.name == "generate_illustration" {
+                guard imagesEnabled, let imageConnection, let storage = library.store else { throw MoReadError.invalid("请开启伴读绘图并选择模型。") }
+                guard imageRequests < 4 else { throw MoReadError.invalid("已达到本条回复 4 张插图的上限。") }
+                let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks)
+                guard conversation.bookID == book.id else { throw MoReadError.invalid("请在这本书的伴读中生成插图。") }
+                let sources = latest.messages.first { $0.id == responseID }?.sources ?? []
+                let request = try IllustrationToolRequest(call: call, book: book, sources: sources, store: storage)
+                _ = try self.saveToolSources(.init(text: "", passages: request.source.map { [$0] } ?? [], books: [book]), conversationID: conversationID, responseID: responseID)
+                let promptProvider = imageConnection.settings.optimizePrompt != false ? self.settings.resolvedProvider(for: .chat) : nil
+                imageRequests += 1
+                let result = try await library.generateIllustration(prompt: request.prompt, source: request.source, book: book, connection: imageConnection, promptProvider: promptProvider, anchor: request.anchor, character: card, validate: {
+                    guard self.settings.imageConnection == imageConnection, self.settings.imageGeneration?.companionEnabled == true,
+                          self.settings.toolsEnabled ?? true, self.settings.providers.contains(provider),
+                          self.characters.first(where: { $0.id == card.id })?.enabledTools == card.enabledTools,
+                          imageConnection.settings.optimizePrompt == false || self.settings.resolvedProvider(for: .chat) == promptProvider,
+                          self.activeConversation == conversationID,
+                          self.conversations.first(where: { $0.id == conversationID })?.messages.contains(where: { $0.id == responseID && $0.status == "receiving" }) == true else { throw CancellationError() }
+                }, progress: { self.memoryStatus = $0 })
+                return String(decoding: try JSONEncoder().encode(IllustrationReference(result.item)), as: UTF8.self)
+            } else if ReaderTools.writing.contains(call.name) {
                 let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks)
                 guard conversation.bookID == book.id else { throw MoReadError.invalid("请在这本书的伴读中保存内容。") }
                 let mutationKey = "tool:\(responseID):\(roundIndex):\(call.id)"
@@ -158,6 +180,10 @@ extension CompanionModel {
                     traces[trace].organizationPlan = plan
                     traces[trace].preview = "已准备 \(plan.changes.count) 本书的整理预览，等待你确认。"
                 }
+                if result.call.name == "generate_illustration", !result.failed {
+                    traces[trace].illustration = try JSONDecoder().decode(IllustrationReference.self, from: Data(result.content.utf8))
+                    traces[trace].preview = "插图已保存，可在聊天中查看，也可进入这本书的插图廊。"
+                }
             }
             memoryStatus = nil
         }
@@ -169,6 +195,23 @@ extension CompanionModel {
         _ = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: specs, exchanges: exchanges)
         try await Task.sleep(for: .milliseconds(200))
         let calls: [ChatToolCall]
+        if ProcessInfo.processInfo.arguments.contains("--simulate-tool-images") {
+            if !specs.contains(where: { $0.name == "generate_illustration" }) {
+                let answer = "伴读绘图已关闭。"; append(answer, to: conversationID, messageID: responseID)
+                return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+            }
+            if exchanges.isEmpty {
+                let text = messages.last { $0.role == "user" }?.content ?? ""
+                let args: [String: Any] = ["prompt": text.contains("slow") ? "slow lighthouse" : text.contains("fail") ? "fail lighthouse" : "A lighthouse", "chapter_number": text.contains("future") ? 3 : 1, "source_text": text.contains("future") ? "lighthouse secret identity." : "lighthouse first clue."]
+                let encoded = String(decoding: try JSONSerialization.data(withJSONObject: args), as: UTF8.self)
+                return try mockToolCalls((0..<(text.contains("many") ? 5 : 1)).map { .init(id: "illustration-\($0)", name: "generate_illustration", arguments: encoded) })
+            }
+            let result = exchanges.last?.results.last
+            let saved = exchanges.flatMap(\.results).filter { !$0.failed }.count
+            let answer = saved == 4 ? "本轮已保存 4 张插图。" : result?.failed == true ? "插图未生成：" + (result?.content ?? "") : "插图已生成并保存。"
+            append(answer, to: conversationID, messageID: responseID)
+            return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+        }
         if ProcessInfo.processInfo.arguments.contains("--simulate-presets") {
             if exchanges.isEmpty { return try mockToolCalls([.init(id: "preset-catalog", name: "list_chapters", arguments: "{}")]) }
             func names(_ role: String) -> String {

@@ -39,6 +39,7 @@ struct ImageGenerationSettingsView: View {
             }
             Section {
                 Toggle("AI 整理画面描述", isOn: Binding(get: { draft.optimizePrompt != false }, set: { draft.optimizePrompt = $0 }))
+                Toggle("允许伴读生成插图", isOn: Binding(get: { draft.companionEnabled == true }, set: { draft.companionEnabled = $0 })).accessibilityIdentifier("image-companion-enabled")
                 Button("保存绘图设置") {
                     do {
                         var settings = companion.settings; settings.imageGeneration = draft
@@ -48,7 +49,7 @@ struct ImageGenerationSettingsView: View {
                     } catch { status = error.localizedDescription }
                 }.accessibilityIdentifier("save-image-settings")
                 if let status { Text(status).font(.caption).accessibilityIdentifier("image-settings-status") }
-            } footer: { Text("在书籍的插图廊或选中文字段落后开始生成。开启整理时，先由主对话模型把描述转换为绘图提示词，NovelAI 使用英文画面标签。每次生成或重新生成会发送描述并按所用服务商规则计费。") }
+            } footer: { Text("在书籍的插图廊或选中文字段落后开始生成。开启整理时，先由主对话模型把描述转换为绘图提示词，NovelAI 使用英文画面标签。每次生成或重新生成会发送描述并按所用服务商规则计费。允许伴读绘图后，角色可使用绘图工具，每条回复最多生成 4 张。") }
             if draft.useAssignedModel != true { Section("当前接口的密钥") {
                 Text(hasKey ? "已保存密钥" : "尚未保存密钥").font(.caption)
                 SecureField("输入新的 API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -114,49 +115,63 @@ struct IllustrationGenerator: View {
             .onChange(of: connection) { _, _ in stop() }
             .onChange(of: library.maintenance) { _, busy in if busy { stop() } }
     }
-    private func stop() { requestID = nil; task?.cancel(); task = nil }
+    private func stop() { if task != nil { status = "已停止。" }; requestID = nil; task?.cancel(); task = nil }
     private func generate() {
-        guard task == nil, !library.maintenance, let connection, let store = library.store, let book = library.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }) else { return }
+        guard task == nil, !library.maintenance, let connection, let book = library.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }) else { return }
         focused = false; library.flush()
-        let policy = connection.settings, prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines), id = UUID()
-        let promptProvider = policy.optimizePrompt != false ? companion.settings.resolvedProvider(for: .chat) : nil
+        let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines), id = UUID()
+        let promptProvider = connection.settings.optimizePrompt != false ? companion.settings.resolvedProvider(for: .chat) : nil
         requestID = id; status = nil
         task = Task {
             defer { if requestID == id { task = nil; requestID = nil } }
             do {
-                if let source {
-                    guard source.bookID == bookID, source.isValid(in: try store.chapter(source.chapter, in: book), scope: ReadingScope(through: book.readThrough)) else { throw MoReadError.invalid("选段不在当前已读范围，请重新选择。") }
-                }
-                let bytes: Data
-                var imagePrompt = prompt
-                @MainActor func validateCurrent() throws {
-                    guard requestID == id, !library.maintenance, library.store === store, self.connection == connection,
-                          policy.optimizePrompt == false || companion.settings.resolvedProvider(for: .chat) == promptProvider,
-                          let current = library.books.first(where: { $0.id == bookID && !$0.removed }), current.chapters == book.chapters, current.readThrough >= book.readThrough else { throw MoReadError.invalid("书籍、已读范围或绘图设置已变化，请重新生成。") }
-                }
-                @MainActor func generateRemote() async throws -> Data {
-                    status = "正在整理画面描述…"
-                    let promptKey = try promptProvider.map { try KeychainStore.read($0.id) } ?? ""
-                    imagePrompt = try await IllustrationPrompt.compose(prompt, service: policy.service, provider: promptProvider, key: promptKey)
-                    try Task.checkCancellation(); try validateCurrent(); status = "正在生成插图…"
-                    return try await ImageGenerationClient.generate(settings: policy, key: KeychainStore.read(connection.credentialID), prompt: imagePrompt)
-                }
-                #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-images") {
-                    _ = try ImageGenerationClient.request(settings: policy, key: "fixture", prompt: prompt)
-                    try await Task.sleep(for: .milliseconds(prompt.contains("slow") ? 5000 : 300))
-                    if prompt.contains("fail") { throw MoReadError.invalid("本地绘图服务暂不可用。") }
-                    guard let data = ReaderImage.coverFixture().pngData() else { throw MoReadError.invalid("无法读取测试图片。") }; bytes = data
-                } else { bytes = try await generateRemote() }
-                #else
-                bytes = try await generateRemote()
-                #endif
-                try Task.checkCancellation()
-                try validateCurrent()
-                let image = try ReaderImage.thumbnail(bytes, maximum: 1600)
-                let saved = try store.saveIllustration(data: bytes, bookID: bookID, prompt: imagePrompt, originalPrompt: prompt, model: policy.model, source: source, through: book.readThrough)
-                latest = saved; preview = image; status = "已保存到插图廊。"
+                let result = try await library.generateIllustration(prompt: prompt, source: source, book: book, connection: connection, promptProvider: promptProvider, validate: {
+                    guard requestID == id, self.connection == connection,
+                          connection.settings.optimizePrompt == false || companion.settings.resolvedProvider(for: .chat) == promptProvider else { throw CancellationError() }
+                }, progress: { status = $0 })
+                latest = result.item; preview = try ReaderImage.thumbnail(result.data, maximum: 1600); status = "已保存到插图廊。"
             } catch { if !Task.isCancelled, requestID == id { status = error.localizedDescription } }
         }
+    }
+}
+
+extension LibraryModel {
+    func generateIllustration(prompt: String, source: SourcePassage?, book: Book, connection: ImageGenerationConnection, promptProvider: AIProvider?, anchor: ReadingPosition? = nil, character: CharacterCard? = nil,
+                              validate: @MainActor () throws -> Void, progress: @MainActor (String) -> Void = { _ in }) async throws -> (item: BookIllustration, data: Data) {
+        guard let storage = store else { throw MoReadError.invalid("书库尚未打开。") }
+        @MainActor func check() throws {
+            try Task.checkCancellation()
+            guard !maintenance, store === storage else { throw CancellationError() }
+            try ReaderTools.validate(book, current: books); try validate()
+        }
+        try check()
+        guard (character?.name.utf16.count ?? 0) <= 512 else { throw MoReadError.invalid("插图作者名称过长。") }
+        if let source {
+            guard source.bookID == book.id, source.isValid(in: try storage.chapter(source.chapter, in: book), scope: ReadingScope(through: book.readThrough)) else { throw MoReadError.invalid("选段不在当前已读范围，请重新选择。") }
+        }
+        var imagePrompt = prompt
+        @MainActor func remote() async throws -> Data {
+            progress("正在整理画面描述…")
+            let promptKey = try promptProvider.map { try KeychainStore.read($0.id) } ?? ""
+            imagePrompt = try await IllustrationPrompt.compose(prompt, service: connection.settings.service, provider: promptProvider, key: promptKey)
+            try check(); progress("正在生成插图…")
+            return try await ImageGenerationClient.generate(settings: connection.settings, key: KeychainStore.read(connection.credentialID), prompt: imagePrompt)
+        }
+        let bytes: Data
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-images") {
+            _ = try ImageGenerationClient.request(settings: connection.settings, key: "fixture", prompt: prompt)
+            progress("正在生成插图…")
+            try await Task.sleep(for: .milliseconds(prompt.contains("slow") ? 5000 : 300))
+            if prompt.contains("fail") { throw MoReadError.invalid("本地绘图服务暂不可用。") }
+            guard let data = ReaderImage.coverFixture().pngData() else { throw MoReadError.invalid("无法读取测试图片。") }; bytes = data
+        } else { bytes = try await remote() }
+        #else
+        bytes = try await remote()
+        #endif
+        try check()
+        let saved = try storage.saveIllustration(data: bytes, bookID: book.id, prompt: imagePrompt, originalPrompt: prompt, model: connection.settings.model, source: source, through: book.readThrough, anchor: anchor, characterID: character?.id, characterName: character?.name)
+        recordsRevision = UUID()
+        return (saved, bytes)
     }
 }

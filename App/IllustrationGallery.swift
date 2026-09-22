@@ -44,7 +44,7 @@ struct IllustrationGallery: View {
     }
 }
 
-private struct IllustrationThumbnail: View {
+struct IllustrationThumbnail: View {
     let item: BookIllustration
     @EnvironmentObject private var library: LibraryModel
     @State private var image: UIImage?
@@ -54,6 +54,31 @@ private struct IllustrationThumbnail: View {
                 guard let store = library.store else { return }
                 image = try? await Task.detached(priority: .utility) { try ReaderImage.thumbnail(store.illustrationData(item), maximum: 240) }.value
             }.accessibilityHidden(true)
+    }
+}
+
+struct ChatIllustrationButton: View {
+    let reference: IllustrationReference
+    let open: (BookIllustration) -> Void
+    @EnvironmentObject private var library: LibraryModel
+    @State private var item: BookIllustration?
+    var body: some View {
+        Group {
+            if let item {
+                Button { open(item) } label: {
+                    HStack {
+                        IllustrationThumbnail(item: item).frame(width: 96, height: 120)
+                        VStack(alignment: .leading) { Text("查看插图"); Text(item.originalPrompt ?? item.prompt).font(.caption).lineLimit(3) }
+                        Spacer(); Image(systemName: "chevron.right")
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 16)).accessibilityIdentifier("chat-illustration-" + item.id.uuidString)
+            } else { Text("这张插图当前不可用。").font(.caption).foregroundStyle(.secondary) }
+        }.task(id: library.recordsRevision) { reload() }.onChange(of: library.books) { _, _ in reload() }
+    }
+    private func reload() {
+        guard let book = library.books.first(where: { $0.id == reference.bookID }),
+              let saved = try? library.store?.illustrations(for: reference.bookID).first(where: { $0.id == reference.illustrationID }), saved.visible(in: book) else { item = nil; return }
+        item = saved
     }
 }
 
@@ -74,6 +99,7 @@ struct IllustrationDetail: View {
             if available {
                 if let image { Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 500).accessibilityIdentifier("illustration-detail-image") }
                 Section("画面描述") { Text(item.originalPrompt ?? item.prompt).textSelection(.enabled); Text(item.model + " · \(item.width) × \(item.height)").font(.caption).foregroundStyle(.secondary) }
+                if let name = item.characterName { Text("由\(name)生成").font(.caption).foregroundStyle(.secondary) }
                 if let original = item.originalPrompt, original != item.prompt { Section("绘图提示词") { Text(item.prompt).textSelection(.enabled) } }
                 if let source = item.source { Section("原文") { Text(source.text).textSelection(.enabled) } }
                 Section("分类") {
@@ -111,7 +137,7 @@ struct IllustrationDetail: View {
             .alert("删除这张插图？", isPresented: $deleting) {
                 Button("取消", role: .cancel) {}
                 Button("删除", role: .destructive) {
-                    do { guard !library.maintenance else { return }; try library.store?.deleteIllustration(item); dismiss() }
+                    do { guard !library.maintenance else { return }; try library.store?.deleteIllustration(item); library.recordsRevision = UUID(); dismiss() }
                     catch { status = error.localizedDescription }
                 }
             } message: { Text("已导出到照片或文件中的副本会保留。") }

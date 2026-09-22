@@ -5,6 +5,50 @@ import ReadiumZIPFoundation
 @testable import MoReadCore
 
 final class ImageGenerationTests: XCTestCase {
+    func testIllustrationToolScopeReferencesAndBackup() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let root = folder.appendingPathComponent("library"), store = try LibraryStore(root: root)
+        let visible = "灯🌙塔。灯🌙塔。"
+        let chapter = Chapter(id: 0, title: "第一章", text: visible + "秘密。")
+        var book = try store.importBook(title: "灯塔", chapters: [chapter, .init(id: 1, title: "后文", text: "未读内容。")])
+        book.readThrough = .init(offset: visible.utf16.count); try store.save(book)
+        let source = SourcePassage(bookID: book.id, chapter: chapter, offset: 5, text: "灯🌙塔。")
+        func call(_ fields: [String: Any]) throws -> ChatToolCall { .init(id: "image", name: "generate_illustration", arguments: String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self)) }
+        func request(_ fields: [String: Any]) throws -> IllustrationToolRequest { try .init(call: call(fields), book: book, sources: [source], store: store) }
+        XCTAssertFalse(try ReaderTools.specs(currentBook: book.id, memory: false).contains { $0.name == "generate_illustration" })
+        XCTAssertFalse(try ReaderTools.specs(currentBook: nil, memory: false, imageGeneration: true).contains { $0.name == "generate_illustration" })
+        XCTAssertFalse(try ReaderTools.specs(currentBook: book.id, memory: false, imageGeneration: true, enabled: []).contains { $0.name == "generate_illustration" })
+        XCTAssertTrue(try ReaderTools.specs(currentBook: book.id, memory: false, imageGeneration: true).contains { $0.name == "generate_illustration" })
+        let invalid: [[String: Any]] = [
+            ["prompt": ""], ["prompt": "scene", "chapter_number": 2], ["prompt": "scene", "char_offset": 11],
+            ["prompt": "scene", "char_offset": 2], ["prompt": "scene", "char_offset": true],
+            ["prompt": "scene", "source_text": "秘密。"], ["prompt": "scene", "source_text": "灯🌙塔。"],
+            ["prompt": "scene", "source_text": "灯🌙塔。", "char_offset": 1], ["prompt": "scene", "source_ref": source.id],
+            ["prompt": "scene", "source_text": "灯🌙塔。", "source_ref": "missing"]
+        ]
+        for fields in invalid { XCTAssertThrowsError(try request(fields)) }
+        let anchored = try request(["prompt": "A lighthouse", "source_text": "灯🌙塔。", "source_ref": source.id])
+        XCTAssertEqual(anchored.source, source); XCTAssertEqual(anchored.anchor.offset, 5)
+        XCTAssertEqual(try request(["prompt": "A lighthouse", "source_text": "灯🌙塔。", "char_offset": 0]).anchor.offset, 0)
+        XCTAssertNil(try request(["prompt": "An imagined lighthouse"]).source)
+        let character = UUID()
+        let item = try store.saveIllustration(data: picture(), bookID: book.id, prompt: anchored.prompt, model: "fixture", source: anchored.source, through: book.readThrough, anchor: anchored.anchor, characterID: character, characterName: "伙伴")
+        let reference = IllustrationReference(item)
+        var trace = ChatToolTrace(call: try call(["prompt": anchored.prompt]), title: "生成插图"); trace.state = "succeeded"; trace.illustration = reference
+        var message = ChatMessage(role: "assistant", content: "已生成插图。"); message.toolTrace = [trace]
+        var conversation = Conversation(title: "灯塔", bookID: book.id, characterID: character); conversation.messages = [message]
+        let companion = try CompanionStore(root: root); try companion.save(conversation)
+        var global = conversation; global.bookID = nil; XCTAssertThrowsError(try companion.save(global))
+        var wrong = conversation; wrong.messages[0].role = "user"; XCTAssertThrowsError(try companion.save(wrong))
+        let backup = folder.appendingPathComponent("chat-image.zip"); _ = try await BackupArchive.create(root: root, output: backup)
+        try store.deleteIllustration(item)
+        let prepared = try await BackupArchive.prepare(backup, beside: root); try BackupArchive.activate(prepared, replacing: root)
+        XCTAssertEqual(try companion.conversations().first?.messages.first?.toolTrace?.first?.illustration, reference)
+        let restored = try XCTUnwrap(store.illustrations(for: book.id).first)
+        XCTAssertEqual(restored.anchor, anchored.anchor); XCTAssertEqual(restored.characterID, character); XCTAssertEqual(restored.characterName, "伙伴")
+        XCTAssertEqual(try store.illustrationData(restored), try picture())
+    }
     func testImageModelAssignmentStandalonePriorityAndCredentialSelection() throws {
         var settings = try JSONDecoder().decode(CompanionSettings.self, from: Data(#"{"providers":[],"userName":"读者"}"#.utf8))
         var provider = AIProvider(); provider.model = "image-model"; provider.baseURL = "https://images.example/v1"

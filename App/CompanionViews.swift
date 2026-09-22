@@ -205,6 +205,7 @@ struct CompanionChat: View {
     @State private var editing: ChatMessage?
     @State private var editText = ""
     @State private var organizationPlan: LibraryOrganizationPlan?
+    @State private var illustration: BookIllustration?
     @State private var showFocus = false
     @State private var showSummary = false
     @State private var showIdentity = false
@@ -222,48 +223,7 @@ struct CompanionChat: View {
                     if conversation?.messages.isEmpty != false {
                         Text(companion.characters.first { $0.id == conversation?.characterID }?.greeting ?? "想聊些什么？").foregroundStyle(.secondary).padding(.top, 30)
                     }
-                    ForEach(conversation?.messages ?? []) { message in
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(message.role == "user" ? message.identity?.label ?? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
-                            else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                            if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
-                            if let traces = message.toolTrace, !traces.isEmpty {
-                                DisclosureGroup("查询过程（\(traces.count) 步）") {
-                                    ForEach(traces) { trace in
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Label(trace.title + " · " + (trace.state == "succeeded" ? "完成" : trace.state == "failed" ? "未完成" : trace.state == "interrupted" ? "已停止" : "进行中"), systemImage: trace.state == "succeeded" ? "checkmark.circle" : "magnifyingglass")
-                                            if !trace.preview.isEmpty { Text(trace.preview).font(.caption).textSelection(.enabled) }
-                                            ForEach(trace.webSources ?? [], id: \.url) { source in
-                                                if let url = try? WebSearchClient.webURL(source.url) { Link(source.title, destination: url).accessibilityIdentifier("web-source-" + source.url) }
-                                            }
-                                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-                                    }
-                                }.font(.caption)
-                                ForEach(traces.filter { $0.organizationPlan != nil }) { trace in
-                                    if let plan = trace.organizationPlan {
-                                        let status = library.organization.organizationDecisions?[plan.id]
-                                        Button(status == "applied" ? "查看已应用的整理方案" : status == "cancelled" ? "查看已取消的整理方案" : "查看整理方案（\(plan.changes.count) 本）", systemImage: "books.vertical") { organizationPlan = plan }
-                                            .accessibilityIdentifier("organization-plan-" + (status ?? "pending"))
-                                    }
-                                }
-                            }
-                            if let notice = message.retrievalNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-                            if !message.sources.isEmpty {
-                                ScrollView(.horizontal) {
-                                    HStack { ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, passage in
-                                        Button("来源 \(index + 1)") { showSource(passage) }.font(.caption).buttonStyle(.bordered)
-                                    } }
-                                }
-                            }
-                        }.padding(16).background(message.role == "user" ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 16))
-                            .id(message.id)
-                            .contextMenu {
-                                Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content }
-                                Button("编辑", systemImage: "pencil") { editing = message; editText = message.content }.disabled(companion.busy)
-                                Button("从此处分支", systemImage: "arrow.triangle.branch") { if let id = companion.fork(conversationID, through: message.id) { conversationID = id } }.disabled(companion.busy)
-                            }
-                    }
+                    ForEach(conversation?.messages ?? []) { message in messageRow(message) }
                 }.padding(.horizontal, 14).padding(.bottom, 20).scrollTargetLayout()
             }.accessibilityIdentifier("chat-messages").scrollPosition(id: $scrollPosition, anchor: .bottom)
                 .defaultScrollAnchor(.bottom)
@@ -297,6 +257,7 @@ struct CompanionChat: View {
             }
             .sheet(isPresented: $showFocus) { NavigationStack { ConversationScopeView(conversationID: conversationID) } }
             .sheet(item: $organizationPlan) { plan in NavigationStack { LibraryOrganizationPreview(conversationID: conversationID, plan: plan) } }
+            .sheet(item: $illustration) { item in NavigationStack { IllustrationDetail(item: item).toolbar { Button("完成") { illustration = nil } } } }
             .sheet(isPresented: $showSummary) { NavigationStack { ConversationSummaryView(conversationID: conversationID).toolbar { Button("完成") { showSummary = false } } } }
             .sheet(isPresented: $showIdentity) { NavigationStack { UserMaskSettingsView().toolbar { Button("完成") { showIdentity = false } } } }
             .sheet(item: $editing) { message in
@@ -308,6 +269,52 @@ struct CompanionChat: View {
             .sheet(item: $source) { passage in
                 NavigationStack { ScrollView { Text(passage.text).textSelection(.enabled).padding(24) }.navigationTitle("核对原文").toolbar { Button("完成") { source = nil } } }
             }
+    }
+    private func messageRow(_ message: ChatMessage) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(message.role == "user" ? message.identity?.label ?? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
+            else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+            if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
+            if let traces = message.toolTrace, !traces.isEmpty { toolTraceViews(traces) }
+            if let notice = message.retrievalNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+            ForEach((message.toolTrace ?? []).compactMap(\.illustration), id: \.illustrationID) { reference in
+                ChatIllustrationButton(reference: reference) { illustration = $0 }
+            }
+            if !message.sources.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack { ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, passage in
+                        Button("来源 \(index + 1)") { showSource(passage) }.font(.caption).buttonStyle(.bordered)
+                    } }
+                }
+            }
+        }.padding(16).background(message.role == "user" ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 16))
+            .id(message.id)
+            .contextMenu {
+                Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content }
+                Button("编辑", systemImage: "pencil") { editing = message; editText = message.content }.disabled(companion.busy)
+                Button("从此处分支", systemImage: "arrow.triangle.branch") { if let id = companion.fork(conversationID, through: message.id) { conversationID = id } }.disabled(companion.busy)
+            }
+    }
+    @ViewBuilder private func toolTraceViews(_ traces: [ChatToolTrace]) -> some View {
+        DisclosureGroup("查询过程（\(traces.count) 步）") {
+            ForEach(traces) { trace in
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(trace.title + " · " + (trace.state == "succeeded" ? "完成" : trace.state == "failed" ? "未完成" : trace.state == "interrupted" ? "已停止" : "进行中"), systemImage: trace.state == "succeeded" ? "checkmark.circle" : "magnifyingglass")
+                    if !trace.preview.isEmpty { Text(trace.preview).font(.caption).textSelection(.enabled) }
+                    ForEach(trace.webSources ?? [], id: \.url) { source in
+                        if let url = try? WebSearchClient.webURL(source.url) { Link(source.title, destination: url).accessibilityIdentifier("web-source-" + source.url) }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+            }
+        }.font(.caption)
+        ForEach(traces.filter { $0.organizationPlan != nil }) { trace in
+            if let plan = trace.organizationPlan {
+                let status = library.organization.organizationDecisions?[plan.id]
+                Button(status == "applied" ? "查看已应用的整理方案" : status == "cancelled" ? "查看已取消的整理方案" : "查看整理方案（\(plan.changes.count) 本）", systemImage: "books.vertical") { organizationPlan = plan }
+                    .accessibilityIdentifier("organization-plan-" + (status ?? "pending"))
+            }
+        }
     }
     private func send(_ text: String, clearDraft: Bool = true) {
         companion.send(text, in: conversationID, library: library, selection: selection)

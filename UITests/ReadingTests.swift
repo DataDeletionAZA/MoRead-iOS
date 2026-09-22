@@ -1,6 +1,55 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testChatIllustrationsSaveRestoreRefuseFutureFailAndStop() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        func launch(_ reset: Bool = false) { app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-images", "--simulate-tool-images"] + (reset ? ["--reset-test-library"] : []); app.launch() }
+        func tap(_ name: String) {
+            let button = app.buttons[name]
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable, name); button.tap()
+        }
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
+        func send(_ text: String) {
+            let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch
+            input.tap(); input.typeText(text); app.buttons["发送"].tap()
+        }
+        func imageSetting() {
+            app.tabBars.buttons["设置"].tap()
+            if !app.navigationBars["AI 绘图"].exists { tapSettingsRow("AI 绘图", in: app) }
+            let toggle = app.switches["image-companion-enabled"]
+            for _ in 0..<6 { if toggle.exists && toggle.isHittable { break }; app.swipeUp() }
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap(); tap("save-image-settings")
+            XCTAssertTrue(app.staticTexts["绘图设置已保存。"].waitForExistence(timeout: 5))
+        }
+        launch(true); imageSetting(); openChat(); send("Draw the lighthouse.")
+        XCTAssertTrue(app.staticTexts["插图已生成并保存。"].waitForExistence(timeout: 15))
+        let pictures = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat-illustration-"))
+        XCTAssertTrue(pictures.firstMatch.waitForExistence(timeout: 5)); pictures.firstMatch.tap()
+        XCTAssertTrue(app.images["illustration-detail-image"].waitForExistence(timeout: 5))
+        for _ in 0..<6 { if app.staticTexts["lighthouse first clue."].exists { break }; app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["lighthouse first clue."].exists); tap("完成")
+        app.terminate(); launch(); openChat()
+        XCTAssertTrue(pictures.firstMatch.waitForExistence(timeout: 5)); XCTAssertEqual(pictures.count, 1)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Chat-illustration"; shot.lifetime = .keepAlways; add(shot)
+        send("Draw many.")
+        XCTAssertTrue(app.staticTexts["本轮已保存 4 张插图。"].waitForExistence(timeout: 15))
+        send("Draw future.")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "插图未生成：")).firstMatch.waitForExistence(timeout: 10))
+        send("Draw fail.")
+        XCTAssertTrue(app.staticTexts["插图未生成：本地绘图服务暂不可用。"].waitForExistence(timeout: 10))
+        send("Draw slow.")
+        XCTAssertTrue(app.staticTexts["正在生成插图…"].waitForExistence(timeout: 10)); tap("停止回复")
+        XCTAssertTrue(app.staticTexts["回复已中断，可重试"].waitForExistence(timeout: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["停止回复"])], timeout: 5), .completed)
+        tap("返回"); imageSetting(); openChat(); send("Draw again.")
+        XCTAssertTrue(app.staticTexts["伴读绘图已关闭。"].waitForExistence(timeout: 10))
+        tap("返回"); app.tabBars.buttons["书架"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "查询测试")).firstMatch.tap()
+        tap("目录"); tap("插图廊")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "illustration-row-")).count, 5)
+    }
     func testImageModelRoleRoutingAndSettingsPersist() {
         executionTimeAllowance = 240
         let app = XCUIApplication()

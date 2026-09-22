@@ -63,6 +63,7 @@ extension CompanionModel {
         guard let store else { throw MoReadError.invalid("伴读设置尚未打开。") }
         let previous = settings
         try store.save(next); settings = next
+        if previous.imageConnection != next.imageConnection || previous.imageGeneration?.companionEnabled != next.imageGeneration?.companionEnabled { stopReply() }
         if previous.resolvedProvider(for: .knowledge) != next.resolvedProvider(for: .knowledge) { for job in knowledgeTasks.values { job.cancel() } }
         if previous.resolvedProvider(for: .summary) != next.resolvedProvider(for: .summary) { summaryTask?.cancel() }
         if previous.resolvedProvider(for: .memory) != next.resolvedProvider(for: .memory) { personaMemoryTask?.cancel() }
