@@ -348,7 +348,9 @@ final class ReadingTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["characters-summary"].exists)
         generate(); XCTAssertTrue(app.staticTexts["已保存 1 位人物。"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["江舟"].exists)
-        tap("characters-locate-林遥-0"); XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        tap("characters-locate-林遥-0")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["书中人物"])], timeout: 5), .completed)
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
         openPeople(); tap("全书"); tap("characters-generate")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "包括尚未读到的章节")).firstMatch.waitForExistence(timeout: 5))
         tap("取消"); XCTAssertTrue(app.staticTexts["characters-summary"].label.contains("已读"))
@@ -365,6 +367,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["江舟"].waitForExistence(timeout: 5))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Book-characters-search"; shot.lifetime = .keepAlways; add(shot)
         tap("characters-locate-江舟-0")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["书中人物"])], timeout: 5), .completed)
         XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
         XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("江舟送来了灯塔地图"))
         app.terminate(); launch(["--characters-fail"]); openBook(); openPeople(); generate()
@@ -1017,8 +1020,15 @@ final class ReadingTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         app.buttons["听书"].tap(); app.buttons["speech-start"].tap()
         let playback = app.buttons["speech-play-pause"]
-        let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暂停' AND enabled == true"), object: playback)
-        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 20), .completed)
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let current = app.buttons["speech-play-pause"]
+            return current.exists && current.label == "暂停" && current.isEnabled
+        }, object: nil)
+        let started = XCTWaiter.wait(for: [playing], timeout: 20)
+        if started != .completed {
+            let state = XCTAttachment(string: app.debugDescription); state.name = "Speech-start-state"; state.lifetime = .keepAlways; add(state)
+        }
+        XCTAssertEqual(started, .completed)
         playback.tap(); XCTAssertEqual(playback.label, "继续")
         app.buttons["speech-timer"].tap(); app.buttons["按章节"].tap(); app.buttons["本章结束"].tap()
         app.buttons["speech-next-chapter"].tap()

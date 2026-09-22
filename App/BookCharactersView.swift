@@ -70,7 +70,7 @@ struct BookCharactersView: View {
                                 Text(evidence.fact.text)
                                 Text("“\(evidence.fact.quote)”").font(.callout).foregroundStyle(.secondary)
                                 Text(book?.chapters.first { $0.id == evidence.chapter }?.title ?? "第 \(evidence.chapter + 1) 章").font(.caption).foregroundStyle(.secondary)
-                                Button("核对原文") { locate(guide, evidence: evidence) }.accessibilityIdentifier("characters-locate-\(person.name)-\(index)")
+                                Button("核对原文") { locate(guide, evidence: evidence) }.buttonStyle(.borderless).accessibilityIdentifier("characters-locate-\(person.name)-\(index)")
                             }.padding(.vertical, 6)
                         }
                         if person.evidence.count > 1 {
