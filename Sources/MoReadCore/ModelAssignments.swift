@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ModelTask: String, CaseIterable, Sendable {
-    case chat, batch, knowledge, summary, memory, annotation, coverQuery, suggestion
+    case chat, batch, knowledge, summary, memory, annotation, coverQuery, suggestion, image
     public var label: String {
         switch self {
         case .chat: "主对话"
@@ -12,6 +12,7 @@ public enum ModelTask: String, CaseIterable, Sendable {
         case .annotation: "随读段评"
         case .coverQuery: "封面搜索词"
         case .suggestion: "建议回复"
+        case .image: "绘图"
         }
     }
 }
@@ -27,12 +28,13 @@ extension CompanionSettings {
         case .annotation: proactive?.providerID
         case .coverQuery: coverQueryProvider
         case .suggestion: suggestionProvider
+        case .image: imageProvider
         }
     }
     public func resolvedProvider(for task: ModelTask) -> AIProvider? {
         let fallback: UUID?
         switch task {
-        case .chat, .batch: fallback = nil
+        case .chat, .batch, .image: fallback = nil
         case .summary, .memory: fallback = batchProvider
         case .knowledge, .annotation, .coverQuery, .suggestion: fallback = batchProvider ?? selectedProvider
         }
@@ -53,6 +55,7 @@ extension CompanionSettings {
             var value = proactive ?? ProactiveSettings(); value.providerID = id; proactive = value
         case .coverQuery: coverQueryProvider = id
         case .suggestion: suggestionProvider = id
+        case .image: imageProvider = id
         }
     }
 }

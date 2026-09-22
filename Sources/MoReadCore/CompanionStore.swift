@@ -1,6 +1,7 @@
 import Foundation
 
 public struct CompanionSettings: Codable {
+    public var imageProvider: UUID?
     public var imageGeneration: ImageGenerationSettings?
     public var suggestionRepliesEnabled: Bool?
     public var suggestionProvider: UUID?

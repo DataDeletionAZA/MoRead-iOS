@@ -6,15 +6,24 @@ struct ImageGenerationSettingsView: View {
     @State private var draft = ImageGenerationSettings()
     @State private var key = ""
     @State private var hasKey = false
+    @State private var loaded = false
     @State private var status: String?
     var body: some View {
         Form {
             Section {
+                Toggle("使用模型分工的绘图模型", isOn: Binding(get: { draft.useAssignedModel == true }, set: { draft.useAssignedModel = $0 }))
+                    .accessibilityIdentifier("image-use-assigned")
+                if draft.useAssignedModel == true {
+                    ModelAssignmentPicker(task: .image)
+                    NavigationLink("管理 AI 服务商") { AISettingsView() }
+                }
                 Picker("绘图接口", selection: Binding(get: { draft.service }, set: { draft.preset($0); key = ""; checkKey() })) {
                     ForEach(ImageGenerationService.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.accessibilityIdentifier("image-service")
-                TextField("HTTPS 服务地址", text: $draft.baseURL).accessibilityIdentifier("image-base-url")
-                TextField("模型名称", text: $draft.model).accessibilityIdentifier("image-model")
+                if draft.useAssignedModel != true {
+                    TextField("HTTPS 服务地址", text: $draft.baseURL).accessibilityIdentifier("image-base-url")
+                    TextField("模型名称", text: $draft.model).accessibilityIdentifier("image-model")
+                }
                 TextField("接口路径", text: $draft.endpoint)
                 TextField("图片尺寸，例如 1024x1024", text: $draft.size)
             }.textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -32,22 +41,27 @@ struct ImageGenerationSettingsView: View {
                 Toggle("AI 整理画面描述", isOn: Binding(get: { draft.optimizePrompt != false }, set: { draft.optimizePrompt = $0 }))
                 Button("保存绘图设置") {
                     do {
-                        _ = try ImageGenerationClient.request(settings: draft, key: "validation", prompt: "画面")
                         var settings = companion.settings; settings.imageGeneration = draft
+                        guard let connection = settings.imageConnection else { throw MoReadError.invalid("请先选择绘图模型，或填写独立绘图配置。") }
+                        _ = try ImageGenerationClient.request(settings: connection.settings, key: "validation", prompt: "画面")
                         try companion.saveModelSettings(settings); status = "绘图设置已保存。"
                     } catch { status = error.localizedDescription }
                 }.accessibilityIdentifier("save-image-settings")
                 if let status { Text(status).font(.caption).accessibilityIdentifier("image-settings-status") }
             } footer: { Text("在书籍的插图廊或选中文字段落后开始生成。开启整理时，先由主对话模型把描述转换为绘图提示词，NovelAI 使用英文画面标签。每次生成或重新生成会发送描述并按所用服务商规则计费。") }
-            Section("当前接口的密钥") {
+            if draft.useAssignedModel != true { Section("当前接口的密钥") {
                 Text(hasKey ? "已保存密钥" : "尚未保存密钥").font(.caption)
                 SecureField("输入新的 API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button("保存密钥") { saveKey(key.trimmingCharacters(in: .whitespacesAndNewlines)) }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if hasKey { Button("删除密钥", role: .destructive) { saveKey("") } }
-            }
+            } }
         }.navigationTitle("AI 绘图")
             .onAppear {
-                if let saved = companion.settings.imageGeneration { draft = saved } else { draft.preset(.images) }
+                if !loaded {
+                    if let saved = companion.settings.imageGeneration { draft = saved }
+                    else { draft.preset(.images); draft.useAssignedModel = companion.settings.imageProvider != nil }
+                    loaded = true
+                }
                 checkKey()
             }
     }
@@ -70,7 +84,7 @@ struct IllustrationGenerator: View {
     @State private var task: Task<Void, Never>?
     @State private var requestID: UUID?
     @FocusState private var focused: Bool
-    private var policy: ImageGenerationSettings { companion.settings.imageGeneration ?? ImageGenerationSettings() }
+    private var connection: ImageGenerationConnection? { companion.settings.imageConnection }
     init(bookID: UUID, source: SourcePassage? = nil, prompt: String? = nil) {
         self.bookID = bookID; self.source = source
         _prompt = State(initialValue: prompt ?? source.map { "小说插画，忠实表现以下选段，无文字、无水印：\n" + $0.text } ?? "")
@@ -81,9 +95,9 @@ struct IllustrationGenerator: View {
             Section {
                 TextEditor(text: $prompt).frame(minHeight: 120).focused($focused).accessibilityIdentifier("illustration-prompt").accessibilityLabel("画面描述")
                 NavigationLink("绘图设置") { ImageGenerationSettingsView() }
-                Text(policy.configured ? policy.service.label + " · " + policy.model : "请先保存绘图设置与密钥。").font(.caption).foregroundStyle(.secondary)
+                Text(connection?.label ?? "请先配置绘图模型与密钥。").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("illustration-model")
                 Button(latest == nil ? "生成插图" : "重新生成一张") { generate() }
-                    .disabled(task != nil || !policy.configured || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || library.maintenance)
+                    .disabled(task != nil || connection == nil || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || library.maintenance)
                     .accessibilityIdentifier("generate-illustration")
             } header: { Text("画面描述") } footer: { Text("这里的描述会发送给绘图服务；开启 AI 整理时，也会发送给主对话模型。生成后自动保存到这本书的插图廊；重新生成会保留之前的图片。") }
             if task != nil { Section { ProgressView("正在生成插图…"); Button("停止生成") { stop(); status = "已停止。" } } }
@@ -97,14 +111,14 @@ struct IllustrationGenerator: View {
             NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
         }.navigationTitle("生成插图")
             .onDisappear { stop() }
-            .onChange(of: policy) { _, _ in stop() }
+            .onChange(of: connection) { _, _ in stop() }
             .onChange(of: library.maintenance) { _, busy in if busy { stop() } }
     }
     private func stop() { requestID = nil; task?.cancel(); task = nil }
     private func generate() {
-        guard task == nil, !library.maintenance, let store = library.store, let book = library.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }) else { return }
+        guard task == nil, !library.maintenance, let connection, let store = library.store, let book = library.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }) else { return }
         focused = false; library.flush()
-        let policy = policy, prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines), id = UUID()
+        let policy = connection.settings, prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines), id = UUID()
         let promptProvider = policy.optimizePrompt != false ? companion.settings.resolvedProvider(for: .chat) : nil
         requestID = id; status = nil
         task = Task {
@@ -116,7 +130,7 @@ struct IllustrationGenerator: View {
                 let bytes: Data
                 var imagePrompt = prompt
                 @MainActor func validateCurrent() throws {
-                    guard requestID == id, !library.maintenance, library.store === store, self.policy == policy,
+                    guard requestID == id, !library.maintenance, library.store === store, self.connection == connection,
                           policy.optimizePrompt == false || companion.settings.resolvedProvider(for: .chat) == promptProvider,
                           let current = library.books.first(where: { $0.id == bookID && !$0.removed }), current.chapters == book.chapters, current.readThrough >= book.readThrough else { throw MoReadError.invalid("书籍、已读范围或绘图设置已变化，请重新生成。") }
                 }
@@ -125,7 +139,7 @@ struct IllustrationGenerator: View {
                     let promptKey = try promptProvider.map { try KeychainStore.read($0.id) } ?? ""
                     imagePrompt = try await IllustrationPrompt.compose(prompt, service: policy.service, provider: promptProvider, key: promptKey)
                     try Task.checkCancellation(); try validateCurrent(); status = "正在生成插图…"
-                    return try await ImageGenerationClient.generate(settings: policy, key: KeychainStore.read(policy.service.credentialID), prompt: imagePrompt)
+                    return try await ImageGenerationClient.generate(settings: policy, key: KeychainStore.read(connection.credentialID), prompt: imagePrompt)
                 }
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-images") {

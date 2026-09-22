@@ -15,6 +15,12 @@ struct ModelAssignmentsView: View {
             } header: { Text("各项任务") } footer: {
                 Text("未分配批量模型时，章节、人物、段评、封面搜索词和建议回复沿用主对话模型。更换整理模型会停止对应的整理任务，已有结果保留；对话从下一条回复生效。")
             }
+            Section {
+                ModelAssignmentPicker(task: .image)
+                NavigationLink("绘图接口与参数") { ImageGenerationSettingsView() }
+            } header: { Text("绘图") } footer: {
+                Text("独立绘图配置优先。也可在绘图设置中选择使用这里分配的地址、模型和密钥，并单独选择图片接口及参数。请选择支持绘图的模型。")
+            }
             Section("检索与听书") {
                 NavigationLink("向量服务商与模型") { VectorMemoryView() }
                 NavigationLink("原文相关性排序") { RerankSettingsView() }
@@ -32,16 +38,17 @@ struct ModelAssignmentPicker: View {
     @EnvironmentObject private var companion: CompanionModel
     private var selected: UUID? { companion.settings.assignedProvider(for: task) }
     private var current: AIProvider? { companion.settings.resolvedProvider(for: task) }
+    private var effectiveLabel: String? { task == .image ? companion.settings.imageConnection?.label : current.map { $0.name + " · " + $0.model } }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Picker(title ?? task.label, selection: Binding(get: { selected }, set: { id in companion.perform { try companion.assignProvider(id, to: task) } })) {
-                Text(task == .chat || task == .batch ? "未分配" : "使用默认模型").tag(nil as UUID?)
+                Text(task == .chat || task == .batch || task == .image ? "未分配" : "使用默认模型").tag(nil as UUID?)
                 if let selected, !companion.settings.providers.contains(where: { $0.id == selected }) {
                     Text("已分配模型不可用").tag(Optional(selected))
                 }
                 ForEach(companion.settings.providers) { Text($0.name + " · " + $0.model).tag(Optional($0.id)) }
             }.accessibilityIdentifier(identifier ?? "model-role-" + task.rawValue)
-            Text(current.map { "实际使用：" + $0.name + " · " + $0.model } ?? "尚无可用模型")
+            Text(effectiveLabel.map { "实际使用：" + $0 } ?? "尚无可用模型")
                 .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("model-effective-" + task.rawValue)
         }
     }

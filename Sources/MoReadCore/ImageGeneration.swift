@@ -11,6 +11,7 @@ public enum ImageGenerationService: String, Codable, CaseIterable, Sendable {
 }
 
 public struct ImageGenerationSettings: Codable, Equatable, Sendable {
+    public var useAssignedModel: Bool?
     public var optimizePrompt: Bool?
     public var service: ImageGenerationService = .images
     public var baseURL = ""
@@ -30,6 +31,25 @@ public struct ImageGenerationSettings: Codable, Equatable, Sendable {
         model = service == .novelAI ? "nai-diffusion-4-5-full" : "gpt-image-1"
         endpoint = service == .images ? "images/generations" : service == .chat ? "chat/completions" : "ai/generate-image"
         size = service == .novelAI ? "832x1216" : "1024x1024"
+    }
+}
+
+public struct ImageGenerationConnection: Equatable, Sendable {
+    public let settings: ImageGenerationSettings
+    public let credentialID: UUID
+    public let label: String
+}
+
+extension CompanionSettings {
+    public var imageConnection: ImageGenerationConnection? {
+        var configuration = imageGeneration ?? ImageGenerationSettings()
+        if configuration.useAssignedModel != true, configuration.configured {
+            return .init(settings: configuration, credentialID: configuration.service.credentialID, label: configuration.service.label + " · " + configuration.model)
+        }
+        guard let provider = resolvedProvider(for: .image) else { return nil }
+        configuration.baseURL = provider.baseURL; configuration.model = provider.model
+        guard configuration.configured else { return nil }
+        return .init(settings: configuration, credentialID: provider.id, label: provider.name + " · " + provider.model)
     }
 }
 
@@ -195,10 +215,16 @@ public enum ImageGenerationClient {
     public static func unzipImage(_ data: Data) async throws -> Data {
         guard data.count >= 22, data.count <= maximumBytes else { throw MoReadError.invalid("NovelAI 图片压缩包大小无效。") }
         let tail = Array(data.suffix(65_557))
-        let footer = stride(from: tail.count - 22, through: 0, by: -1).first { index in
-            Array(tail[index..<index + 4]) == [80, 75, 5, 6] && index + 22 + Int(tail[index + 20]) + (Int(tail[index + 21]) << 8) == tail.count
+        var footer: Int?
+        for index in stride(from: tail.count - 22, through: 0, by: -1) {
+            guard tail[index] == 80, tail[index + 1] == 75, tail[index + 2] == 5, tail[index + 3] == 6 else { continue }
+            let commentLength = Int(tail[index + 20]) | (Int(tail[index + 21]) << 8)
+            if index + 22 + commentLength == tail.count { footer = index; break }
         }
-        guard let footer, (1...64).contains(Int(tail[footer + 10]) | Int(tail[footer + 11]) << 8), footer < 20 || Array(tail[(footer - 20)..<(footer - 16)]) != [80, 75, 6, 7] else { throw MoReadError.invalid("NovelAI 图片压缩包目录无效。") }
+        guard let footer else { throw MoReadError.invalid("NovelAI 图片压缩包目录无效。") }
+        let count = Int(tail[footer + 10]) | (Int(tail[footer + 11]) << 8)
+        let zip64 = footer >= 20 && Array(tail[(footer - 20)..<(footer - 16)]) == [UInt8(80), 75, 6, 7]
+        guard (1...64).contains(count), !zip64 else { throw MoReadError.invalid("NovelAI 图片压缩包目录无效。") }
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
         try data.write(to: temporary); defer { try? FileManager.default.removeItem(at: temporary) }
         let archive = try await Archive(url: temporary, accessMode: .read), entries = try await archive.entries()

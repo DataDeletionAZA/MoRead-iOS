@@ -10,10 +10,11 @@ final class ModelAssignmentsTests: XCTestCase {
         var custom = AIProvider(); custom.model = "custom"
         settings.providers = [chat, batch, custom]; settings.selectedProvider = chat.id
         for task in [ModelTask.chat, .knowledge, .annotation, .coverQuery, .suggestion] { XCTAssertEqual(settings.resolvedProvider(for: task), chat) }
-        for task in [ModelTask.batch, .summary, .memory] { XCTAssertNil(settings.resolvedProvider(for: task)) }
+        for task in [ModelTask.batch, .summary, .memory, .image] { XCTAssertNil(settings.resolvedProvider(for: task)) }
         try settings.assignProvider(batch.id, to: .batch)
         XCTAssertEqual(settings.resolvedProvider(for: .chat), chat)
-        for task in ModelTask.allCases where task != .chat { XCTAssertEqual(settings.resolvedProvider(for: task), batch) }
+        for task in ModelTask.allCases where task != .chat && task != .image { XCTAssertEqual(settings.resolvedProvider(for: task), batch) }
+        XCTAssertNil(settings.resolvedProvider(for: .image))
         let tasks: [ModelTask] = [.knowledge, .summary, .memory, .annotation, .coverQuery, .suggestion]
         for task in tasks { try settings.assignProvider(custom.id, to: task) }
         try settings.assignProvider(chat.id, to: .batch)

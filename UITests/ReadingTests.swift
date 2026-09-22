@@ -1,6 +1,60 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testImageModelRoleRoutingAndSettingsPersist() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        func launch(_ reset: Bool = false) { app.launchArguments = ["--ui-testing", "--simulate-images", "--simulate-model-roles"] + (reset ? ["--reset-test-library"] : []); app.launch() }
+        func tap(_ name: String) {
+            let button = app.buttons[name]
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable, name); button.tap()
+        }
+        func gallery() {
+            app.tabBars.buttons["书架"].tap()
+            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+            tap("目录"); tap("插图廊")
+        }
+        func describe(_ text: String) {
+            let field = app.textViews["illustration-prompt"]
+            for _ in 0..<6 { if field.isHittable { break }; app.swipeDown() }
+            field.tap(); field.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.85)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count) + text)
+            XCTAssertEqual(field.value as? String, text)
+        }
+        func select(_ model: String) {
+            tap("model-role-image"); tap(model); tap("save-image-settings")
+            XCTAssertTrue(app.staticTexts["绘图设置已保存。"].waitForExistence(timeout: 5))
+            app.navigationBars["AI 绘图"].buttons.element(boundBy: 0).tap()
+        }
+        launch(true); XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 10)); app.buttons["add-sample"].tap()
+        gallery(); tap("生成新插图")
+        XCTAssertEqual(app.staticTexts["illustration-model"].label, "请先配置绘图模型与密钥。")
+        XCTAssertFalse(app.buttons["generate-illustration"].isEnabled)
+        tap("绘图设置")
+        app.switches["image-use-assigned"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        select("批量测试 · batch-fixture")
+        XCTAssertEqual(app.staticTexts["illustration-model"].label, "批量测试 · batch-fixture")
+        describe("A shop"); tap("generate-illustration")
+        XCTAssertTrue(app.images["generated-illustration"].waitForExistence(timeout: 10))
+        describe("slow"); tap("generate-illustration"); tap("绘图设置")
+        select("主对话测试 · chat-fixture")
+        XCTAssertEqual(app.staticTexts["illustration-model"].label, "主对话测试 · chat-fixture")
+        describe("A garden"); tap("generate-illustration")
+        XCTAssertTrue(app.staticTexts["已保存到插图廊。"].waitForExistence(timeout: 10))
+        app.terminate(); launch(); gallery()
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "illustration-row-"))
+        XCTAssertEqual(rows.count, 2)
+        rows.element(boundBy: 0).tap()
+        let model = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "chat-fixture ·" )).firstMatch
+        for _ in 0..<6 { if model.exists { break }; app.swipeUp() }
+        XCTAssertTrue(model.exists)
+        tap("修改描述并重新生成")
+        XCTAssertEqual(app.staticTexts["illustration-model"].label, "主对话测试 · chat-fixture")
+        tap("绘图设置")
+        XCTAssertEqual(app.switches["image-use-assigned"].value as? String, "1")
+        XCTAssertTrue(app.staticTexts["model-effective-image"].label.contains("chat-fixture"))
+    }
     func testIllustrationsGenerateRerollFailCancelCategorizeCoverAndRelaunch() {
         executionTimeAllowance = 300
         let app = XCUIApplication()

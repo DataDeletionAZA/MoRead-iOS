@@ -5,6 +5,30 @@ import ReadiumZIPFoundation
 @testable import MoReadCore
 
 final class ImageGenerationTests: XCTestCase {
+    func testImageModelAssignmentStandalonePriorityAndCredentialSelection() throws {
+        var settings = try JSONDecoder().decode(CompanionSettings.self, from: Data(#"{"providers":[],"userName":"读者"}"#.utf8))
+        var provider = AIProvider(); provider.model = "image-model"; provider.baseURL = "https://images.example/v1"
+        settings.providers = [provider]; settings.selectedProvider = provider.id; settings.batchProvider = provider.id
+        XCTAssertNil(settings.imageConnection)
+        try settings.assignProvider(provider.id, to: .image)
+        let assigned = try XCTUnwrap(settings.imageConnection)
+        XCTAssertEqual(assigned.credentialID, provider.id); XCTAssertEqual(assigned.settings.model, provider.model)
+        XCTAssertEqual(assigned.settings.baseURL, provider.baseURL)
+        var standalone = ImageGenerationSettings(); standalone.preset(.novelAI); settings.imageGeneration = standalone
+        XCTAssertEqual(settings.imageConnection?.credentialID, ImageGenerationService.novelAI.credentialID)
+        XCTAssertEqual(settings.imageConnection?.settings, standalone)
+        standalone.useAssignedModel = true; standalone.service = .chat; standalone.endpoint = "chat/completions"; settings.imageGeneration = standalone
+        let chat = try XCTUnwrap(settings.imageConnection)
+        XCTAssertEqual(chat.credentialID, provider.id); XCTAssertEqual(chat.settings.service, .chat)
+        XCTAssertEqual(try ImageGenerationClient.request(settings: chat.settings, key: "fixture", prompt: "scene").url?.absoluteString, "https://images.example/v1/chat/completions")
+        let restored = try JSONDecoder().decode(CompanionSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(restored.imageConnection, chat)
+        settings.providers[0].model = "another-image-model"; XCTAssertNotEqual(settings.imageConnection, chat)
+        settings.providers = []; XCTAssertNil(settings.imageConnection)
+        standalone.useAssignedModel = false; settings.imageGeneration = standalone
+        XCTAssertEqual(settings.imageConnection?.credentialID, ImageGenerationService.chat.credentialID)
+        try settings.assignProvider(nil, to: .image); XCTAssertNotNil(settings.imageConnection)
+    }
     private func picture() throws -> Data {
         let context = try XCTUnwrap(CGContext(data: nil, width: 12, height: 18, bitsPerComponent: 8, bytesPerRow: 48, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
         context.setFillColor(CGColor(red: 0.2, green: 0.6, blue: 0.5, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 12, height: 18))
