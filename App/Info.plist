@@ -48,6 +48,8 @@
 	<string>1</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>将选中的插图保存到照片。</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>NotoSerifSC.ttf</string>

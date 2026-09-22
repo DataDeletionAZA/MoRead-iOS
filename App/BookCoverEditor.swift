@@ -17,6 +17,9 @@ struct BookCoverEditor: View {
     @State private var importTask: Task<Void, Never>?
     @State private var error: String?
     @State private var remove = false
+    init(bookID: UUID, initialImage: UIImage? = nil) {
+        self.bookID = bookID; _draft = State(initialValue: initialImage)
+    }
     private var preview: UIImage? {
         guard let image = draft?.cgImage,
               let rect = try? BookCoverImage.cropRect(width: image.width, height: image.height, x: focusX, y: focusY),

@@ -268,22 +268,7 @@ struct CompanionChat: View {
             }.accessibilityIdentifier("chat-messages").scrollPosition(id: $scrollPosition, anchor: .bottom)
                 .defaultScrollAnchor(.bottom)
             if generating { Button("停止回复", systemImage: "stop.circle") { companion.stop() }.padding(8) }
-            let suggestions = companion.suggestions(in: conversationID, library: library)
-            if !companion.busy, !suggestions.isEmpty {
-                HStack(alignment: .top, spacing: 4) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 6) {
-                        ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
-                            Button(text) {
-                                guard companion.suggestions(in: conversationID, library: library).contains(text) else { return }
-                                send(text, clearDraft: false)
-                            }.buttonStyle(.bordered).controlSize(.large).lineLimit(2)
-                                .accessibilityIdentifier("reply-suggestion-\(index)").accessibilityHint("发送这条回复")
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    Button { companion.dismissSuggestions() } label: { Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle()) }
-                        .fixedSize().accessibilityLabel("收起建议").accessibilityIdentifier("dismiss-suggestions")
-                }.font(.subheadline).padding(.horizontal)
-            }
+            suggestionButtons
             Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
                 .font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).accessibilityIdentifier("chat-identity")
             HStack(alignment: .bottom, spacing: 12) {
@@ -327,6 +312,24 @@ struct CompanionChat: View {
     private func send(_ text: String, clearDraft: Bool = true) {
         companion.send(text, in: conversationID, library: library, selection: selection)
         if companion.activeConversation == conversationID { if clearDraft { draft = "" }; scrollPosition = conversation?.messages.last?.id }
+    }
+    @ViewBuilder private var suggestionButtons: some View {
+        let suggestions = companion.suggestions(in: conversationID, library: library)
+        if !companion.busy, !suggestions.isEmpty {
+            HStack(alignment: .top, spacing: 4) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 6) {
+                    ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
+                        Button(text) {
+                            guard companion.suggestions(in: conversationID, library: library).contains(text) else { return }
+                            send(text, clearDraft: false)
+                        }.buttonStyle(.bordered).controlSize(.large).lineLimit(2)
+                            .accessibilityIdentifier("reply-suggestion-\(index)").accessibilityHint("发送这条回复")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Button { companion.dismissSuggestions() } label: { Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle()) }
+                    .fixedSize().accessibilityLabel("收起建议").accessibilityIdentifier("dismiss-suggestions")
+            }.font(.subheadline).padding(.horizontal)
+        }
     }
     private func showSource(_ passage: SourcePassage) {
         library.perform {

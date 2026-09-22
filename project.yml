@@ -51,6 +51,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 墨知
+        NSPhotoLibraryAddUsageDescription: 将选中的插图保存到照片。
         UIAppFonts: [NotoSerifSC.ttf]
         UILaunchScreen: {}
         UIApplicationSceneManifest:

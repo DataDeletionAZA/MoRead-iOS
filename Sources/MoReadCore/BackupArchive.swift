@@ -130,6 +130,7 @@ public enum BackupArchive {
         _ = try library.organization()
         for book in books {
             _ = try library.coverData(for: book.id)
+            for image in try library.illustrations(for: book.id) { _ = try library.illustrationData(image) }
             guard !book.chapters.isEmpty, book.chapters.enumerated().allSatisfy({ $0.offset == $0.element.id && $0.element.length >= 0 }), ["txt", "epub"].contains(book.format),
                   book.chapters.indices.contains(book.position.chapter), book.chapters.indices.contains(book.readThrough.chapter),
                   book.position.offset >= 0, book.position.offset <= book.chapters[book.position.chapter].length,

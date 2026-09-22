@@ -363,6 +363,7 @@ struct SettingsView: View {
                     NavigationLink("AI 服务商") { AISettingsView() }
                     NavigationLink("模型分工") { ModelAssignmentsView() }
                     NavigationLink("建议回复") { ReplySuggestionSettingsView() }
+                    NavigationLink("AI 绘图") { ImageGenerationSettingsView() }
                     NavigationLink("全局提示词预设") { GlobalPromptView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("原文相关性排序") { RerankSettingsView() }

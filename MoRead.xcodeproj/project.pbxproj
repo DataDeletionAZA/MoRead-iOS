@@ -17,6 +17,7 @@
 		1F0FE229B25D7B15718CE296 /* PersonaMemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */; };
 		23D5B1908720955DDBC039FC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = E13CDB21AB706B03ADB8D9DE /* LICENSE */; };
 		24BE19737D07CA5C65B7F2A0 /* LibraryOrganizationPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */; };
+		27BC9AA1292D1582650458E5 /* ImageGenerationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEBBC3B9D8EA30E701591BD /* ImageGenerationViews.swift */; };
 		282A768FD9A6BA6A2B84D073 /* NotoSerifSC.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9CB4AB0E592A32B4110298DE /* NotoSerifSC.ttf */; };
 		2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */; };
 		29AEA22D98DF5F68D70521C5 /* PersonaMemoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */; };
@@ -42,6 +43,7 @@
 		85CD8ABACFC53F6E35957730 /* ReadingNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 711CE6FD1F1EE272D2CAAA67 /* ReadingNotesView.swift */; };
 		8863B1DE85FB0E330B55382C /* ReaderTypographyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEBDFD9464F9BE8B1B39C0D /* ReaderTypographyView.swift */; };
 		8E774956C4DFF83556A12C5B /* ChapterKnowledgeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C33E022BE43A5D8195D64849 /* ChapterKnowledgeModel.swift */; };
+		8E87742832CA967319D9AE9D /* IllustrationGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9724B60ACBC358E02A9F36C /* IllustrationGallery.swift */; };
 		8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */; };
 		9468C4DD3A460A45139DFA7E /* UserMaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF601B6CB703407F00D933F4 /* UserMaskView.swift */; };
 		99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9710D70B97A3A946E9FAED25 /* EPUBReader.swift */; };
@@ -123,6 +125,7 @@
 		B9F48B66B02BAA67D887F3A7 /* StorageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageView.swift; sourceTree = "<group>"; };
 		C11477324D774EAB870E5221 /* RerankSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerankSettingsView.swift; sourceTree = "<group>"; };
 		C33E022BE43A5D8195D64849 /* ChapterKnowledgeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterKnowledgeModel.swift; sourceTree = "<group>"; };
+		C9724B60ACBC358E02A9F36C /* IllustrationGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IllustrationGallery.swift; sourceTree = "<group>"; };
 		CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryView.swift; sourceTree = "<group>"; };
 		D873B44D290EDDDCE5025C21 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
@@ -132,6 +135,7 @@
 		F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionToolModel.swift; sourceTree = "<group>"; };
 		F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViews.swift; sourceTree = "<group>"; };
 		FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
+		FEEBBC3B9D8EA30E701591BD /* ImageGenerationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -169,6 +173,8 @@
 				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
 				10876F211B91CB27519F3138 /* FontLibraryView.swift */,
 				946AD37116378D50E6B49695 /* GlobalPromptView.swift */,
+				C9724B60ACBC358E02A9F36C /* IllustrationGallery.swift */,
+				FEEBBC3B9D8EA30E701591BD /* ImageGenerationViews.swift */,
 				4F1C7E35F6BA22FAB8ED449F /* Info.plist */,
 				B12B808B9926C791C07C1201 /* KeychainStore.swift */,
 				1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */,
@@ -395,6 +401,8 @@
 				99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */,
 				3363F5D260EF8FD6F95EC143 /* FontLibraryView.swift in Sources */,
 				673ADEA9197EEC5B7E307995 /* GlobalPromptView.swift in Sources */,
+				8E87742832CA967319D9AE9D /* IllustrationGallery.swift in Sources */,
+				27BC9AA1292D1582650458E5 /* ImageGenerationViews.swift in Sources */,
 				7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */,
 				24BE19737D07CA5C65B7F2A0 /* LibraryOrganizationPreview.swift in Sources */,
 				EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */,

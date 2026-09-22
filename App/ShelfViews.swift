@@ -172,6 +172,7 @@ struct BookMetadataEditor: View {
         NavigationStack {
             Form {
                 Section { NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) } }
+                Section { NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) } }
                 Section("书籍资料") {
                     TextField("书名", text: $title).accessibilityIdentifier("book-title")
                     TextField("作者", text: $author)

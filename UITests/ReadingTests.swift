@@ -1,6 +1,64 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testIllustrationsGenerateRerollFailCancelCategorizeCoverAndRelaunch() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        func launch(_ reset: Bool = false) { app.launchArguments = ["--ui-testing", "--simulate-images"] + (reset ? ["--reset-test-library"] : []); app.launch() }
+        func tap(_ name: String) {
+            let button = app.buttons[name]
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable, name); button.tap()
+        }
+        func gallery() {
+            app.tabBars.buttons["书架"].tap()
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap(); tap("目录"); tap("插图廊")
+        }
+        let prompt = app.textViews["illustration-prompt"]
+        func describe(_ text: String) {
+            for _ in 0..<6 { if prompt.isHittable { break }; app.swipeDown() }
+            prompt.tap(); prompt.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.85)).tap()
+            let old = prompt.value as? String ?? ""
+            prompt.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+            XCTAssertEqual(prompt.value as? String, text)
+        }
+        launch(true); XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 10)); app.buttons["add-sample"].tap()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("AI 绘图", in: app); tap("save-image-settings")
+        XCTAssertTrue(app.staticTexts["绘图设置已保存。"].waitForExistence(timeout: 5))
+        gallery(); tap("生成新插图"); describe("A quiet shop"); tap("generate-illustration")
+        XCTAssertTrue(app.images["generated-illustration"].waitForExistence(timeout: 10))
+        describe("A green shop"); tap("generate-illustration")
+        XCTAssertTrue(app.staticTexts["已保存到插图廊。"].waitForExistence(timeout: 10))
+        describe("fail"); tap("generate-illustration")
+        XCTAssertTrue(app.staticTexts["本地绘图服务暂不可用。"].waitForExistence(timeout: 10)); XCTAssertTrue(app.images["generated-illustration"].exists)
+        describe("slow"); tap("generate-illustration"); tap("停止生成")
+        XCTAssertTrue(app.staticTexts["已停止。"].waitForExistence(timeout: 5))
+        tap("查看与导出"); XCTAssertTrue(app.images["illustration-detail-image"].waitForExistence(timeout: 5))
+        tap("分享或存储到文件")
+        let share = app.otherElements["ActivityListView"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        let closeShare = app.buttons.matching(NSPredicate(format: "label IN %@", ["关闭", "Close"])).firstMatch
+        if closeShare.exists { closeShare.tap() } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap() }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: share)], timeout: 5), .completed)
+        let category = app.textFields["illustration-category"]
+        category.tap(); category.typeText("Scene"); tap("保存分类")
+        XCTAssertTrue(app.staticTexts["分类已保存。"].waitForExistence(timeout: 5))
+        tap("用作书籍封面"); XCTAssertTrue(app.images["draft-book-cover"].waitForExistence(timeout: 5)); tap("save-book-cover")
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        app.navigationBars["书籍封面"].buttons.element(boundBy: 0).tap()
+        for _ in 0..<6 { if category.exists && category.isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(category.value as? String, "Scene")
+        app.terminate(); launch(); gallery()
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "illustration-row-"))
+        XCTAssertEqual(rows.count, 2)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Illustration-gallery"; shot.lifetime = .keepAlways; add(shot)
+        rows.element(boundBy: 0).tap(); XCTAssertTrue(app.images["illustration-detail-image"].waitForExistence(timeout: 5))
+        for _ in 0..<6 { if category.exists && category.isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(app.textFields["illustration-category"].value as? String, "Scene")
+        tap("删除这张插图"); app.alerts.buttons["删除"].tap()
+        XCTAssertTrue(app.navigationBars["插图廊"].waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, 1)
+    }
     override func setUp() { super.setUp(); continueAfterFailure = false }
     private func tapSettingsRow(_ title: String, in app: XCUIApplication) {
         let row = app.buttons[title]

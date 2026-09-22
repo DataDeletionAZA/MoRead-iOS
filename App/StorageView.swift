@@ -62,6 +62,7 @@ struct StoredBookView: View {
                 }
                 Section("笔记与批注") {
                     NavigationLink("读书笔记与梗概") { ReadingNotesView(bookID: bookID) }
+                    NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                     ForEach(records.annotations) { annotation in
                         VStack(alignment: .leading, spacing: 8) {
                             if annotation.characterName != nil { Text(annotation.authorLabel).font(.caption).foregroundStyle(.secondary) }
