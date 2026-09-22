@@ -153,7 +153,11 @@ final class ReadingTests: XCTestCase {
         send("Draw fail.")
         XCTAssertTrue(app.staticTexts["插图未生成：本地绘图服务暂不可用。"].waitForExistence(timeout: 10))
         send("Draw slow.")
-        XCTAssertTrue(app.staticTexts["正在生成插图…"].waitForExistence(timeout: 10)); tap("停止回复")
+        let generating = app.activityIndicators["正在生成插图…"]
+        XCTAssertTrue(generating.waitForExistence(timeout: 10))
+        let generatingShot = XCTAttachment(screenshot: app.screenshot()); generatingShot.name = "Chat-generating-visible"; generatingShot.lifetime = .keepAlways; add(generatingShot)
+        XCTAssertTrue(generating.isHittable)
+        tap("停止回复")
         XCTAssertTrue(app.staticTexts["回复已中断，可重试"].waitForExistence(timeout: 5))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["停止回复"])], timeout: 5), .completed)
         tap("返回"); imageSetting(); openChat(); send("Draw again.")
@@ -443,8 +447,9 @@ final class ReadingTests: XCTestCase {
         func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-characters"] + extra; app.launch() }
         func tap(_ id: String) {
             let button = app.buttons[id]
-            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
-            XCTAssertTrue(button.exists && button.isHittable, id); button.tap()
+            let visible = app.frame.insetBy(dx: 0, dy: id.hasPrefix("characters-locate-") ? 60 : 0)
+            for _ in 0..<6 { if button.exists && button.isHittable && visible.contains(button.frame) { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable && visible.contains(button.frame), id); button.tap()
         }
         func openBook() {
             let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
@@ -1191,7 +1196,7 @@ final class ReadingTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         XCTAssertTrue(app.buttons["听书"].waitForExistence(timeout: 10)); app.buttons["听书"].tap()
         let rate = app.sliders["speech-rate"]
-        XCTAssertTrue(rate.waitForExistence(timeout: 10)); rate.adjust(toNormalizedSliderPosition: 0.65)
+        XCTAssertTrue(rate.waitForExistence(timeout: 10)); rate.adjust(toNormalizedSliderPosition: 0.3)
         let savedRate = rate.value as? String; XCTAssertNotNil(savedRate)
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
@@ -1200,7 +1205,10 @@ final class ReadingTests: XCTestCase {
         app.buttons["speech-start"].tap()
         let playback = app.buttons["speech-play-pause"]
         XCTAssertTrue(playback.waitForExistence(timeout: 15))
-        let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暂停' AND enabled == true"), object: playback)
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let current = app.buttons["speech-play-pause"]
+            return current.exists && current.label == "暂停" && current.isEnabled
+        }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 20), .completed)
         let progress = app.sliders["本章听书进度"]
         let advanced = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in progress.exists && progress.normalizedSliderPosition > 0 }, object: nil)

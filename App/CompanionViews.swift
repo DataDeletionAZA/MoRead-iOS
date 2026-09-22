@@ -210,7 +210,7 @@ struct CompanionChat: View {
     @State private var showSummary = false
     @State private var showIdentity = false
     @State private var source: SourcePassage?
-    @State private var scrollPosition: UUID?
+    @State private var followsLatest = true
     private var conversation: Conversation? { companion.conversations.first { $0.id == conversationID } }
     private var generating: Bool { companion.activeConversation == conversationID }
     var body: some View {
@@ -218,15 +218,30 @@ struct CompanionChat: View {
             if let selection {
                 Text(selection.text).font(.caption).lineLimit(3).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding().background(.quaternary)
             }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
-                    if conversation?.messages.isEmpty != false {
-                        Text(companion.characters.first { $0.id == conversation?.characterID }?.greeting ?? "想聊些什么？").foregroundStyle(.secondary).padding(.top, 30)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 24) {
+                        if conversation?.messages.isEmpty != false {
+                            Text(companion.characters.first { $0.id == conversation?.characterID }?.greeting ?? "想聊些什么？").foregroundStyle(.secondary).padding(.top, 30)
+                        }
+                        ForEach(conversation?.messages ?? []) { message in messageRow(message) }
+                        Color.clear.frame(height: 1).id("chat-bottom")
+                    }.padding(.horizontal, 14).padding(.bottom, 20)
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in
+                            if followsLatest { proxy.scrollTo("chat-bottom", anchor: .bottom) }
+                        }
+                }.accessibilityIdentifier("chat-messages").defaultScrollAnchor(.bottom)
+                    .simultaneousGesture(DragGesture().onChanged { _ in followsLatest = false })
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in
+                        if followsLatest { proxy.scrollTo("chat-bottom", anchor: .bottom) }
                     }
-                    ForEach(conversation?.messages ?? []) { message in messageRow(message) }
-                }.padding(.horizontal, 14).padding(.bottom, 20).scrollTargetLayout()
-            }.accessibilityIdentifier("chat-messages").scrollPosition(id: $scrollPosition, anchor: .bottom)
-                .defaultScrollAnchor(.bottom)
+                    .task(id: conversation?.messages.last?.id) {
+                        followsLatest = true
+                        await Task.yield()
+                        guard !Task.isCancelled else { return }
+                        proxy.scrollTo("chat-bottom", anchor: .bottom)
+                    }
+            }
             if generating { Button("停止回复", systemImage: "stop.circle") { companion.stop() }.padding(8) }
             suggestionButtons
             Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
@@ -318,7 +333,7 @@ struct CompanionChat: View {
     }
     private func send(_ text: String, clearDraft: Bool = true) {
         companion.send(text, in: conversationID, library: library, selection: selection)
-        if companion.activeConversation == conversationID { if clearDraft { draft = "" }; scrollPosition = conversation?.messages.last?.id }
+        if companion.activeConversation == conversationID, clearDraft { draft = "" }
     }
     @ViewBuilder private var suggestionButtons: some View {
         let suggestions = companion.suggestions(in: conversationID, library: library)

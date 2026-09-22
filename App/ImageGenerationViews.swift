@@ -168,7 +168,7 @@ extension LibraryModel {
         if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-images") {
             _ = try ImageGenerationClient.request(settings: connection.settings, key: "fixture", prompt: prompt)
             progress("正在生成插图…")
-            try await Task.sleep(for: .milliseconds(prompt.contains("slow") ? 5000 : 300))
+            try await Task.sleep(for: .milliseconds(prompt.contains("slow") ? 30000 : 300))
             if prompt.contains("fail") { throw MoReadError.invalid("本地绘图服务暂不可用。") }
             guard let data = ReaderImage.coverFixture().pngData() else { throw MoReadError.invalid("无法读取测试图片。") }; bytes = data
         } else { bytes = try await remote() }
