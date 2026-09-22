@@ -20,6 +20,12 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-epub"), model.books.isEmpty,
+               let encoded = ProcessInfo.processInfo.environment["MOREAD_TEST_EPUB"], encoded.utf8.count <= 3_000_000, let data = Data(base64Encoded: encoded) {
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".epub")
+                do { try data.write(to: url); defer { try? FileManager.default.removeItem(at: url) }; await model.importFile(url) }
+                catch { model.error = error.localizedDescription }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-illustration-locations"), model.books.isEmpty {
                 model.addSample()
                 if let url = Bundle.main.url(forResource: "sample", withExtension: "epub") { await model.importFile(url) }

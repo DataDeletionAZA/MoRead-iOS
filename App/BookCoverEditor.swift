@@ -9,6 +9,7 @@ struct BookCoverEditor: View {
     @State private var selection: PhotosPickerItem?
     @State private var filePicker = false
     @State private var searchPicker = false
+    @State private var generationPicker = false
     @State private var original: UIImage?
     @State private var draft: UIImage?
     @State private var focusX = 0.5
@@ -52,6 +53,9 @@ struct BookCoverEditor: View {
                     PhotosPicker("从照片选择", selection: $selection, matching: .images)
                     Button("从文件选择") { filePicker = true }
                     Button("网络搜索封面") { searchPicker = true }
+                    if model.books.first(where: { $0.id == bookID })?.hasBody == true {
+                        Button("AI 生成封面") { generationPicker = true }
+                    }
                     if original != nil { Button("恢复文字封面", role: .destructive) { remove = true } }
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-cover") {
@@ -97,6 +101,13 @@ struct BookCoverEditor: View {
                     NavigationStack { BookCoverSearchView(book: book) { image in draft = image; focusX = 0.5; focusY = 0.5 } }
                 }
             }
+            .sheet(isPresented: $generationPicker) {
+                NavigationStack {
+                    IllustrationGenerator(bookID: bookID, coverSelection: { image in
+                        draft = image; focusX = 0.5; focusY = 0.5; generationPicker = false
+                    }).toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { generationPicker = false } } }
+                }
+            }
             .onDisappear { importTask?.cancel() }
             .confirmationDialog("恢复文字封面？", isPresented: $remove, titleVisibility: .visible) {
                 Button("恢复文字封面", role: .destructive) {
@@ -113,17 +124,24 @@ struct BookCoverEditor: View {
     private func save() {
         do {
             guard draft != nil, let image = preview else { return }
-            let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
-            let width = min(1200, image.size.width), size = CGSize(width: width, height: width * 1.5)
-            let rect = CGRect(origin: .zero, size: size)
-            let rendered = UIGraphicsImageRenderer(size: size, format: format).image { context in
-                UIColor.white.setFill(); context.fill(rect)
-                image.draw(in: rect)
-            }
-            guard let data = rendered.jpegData(compressionQuality: 0.9) else { throw MoReadError.invalid("无法保存封面。") }
+            let data = try ReaderImage.coverJPEG(image)
             try model.saveBookCover(data, for: bookID)
-            original = rendered; draft = nil; selection = nil
+            original = UIImage(data: data); draft = nil; selection = nil
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+extension ReaderImage {
+    @MainActor static func coverJPEG(_ image: UIImage) throws -> Data {
+        guard image.size.width > 0, image.size.height > 0 else { throw MoReadError.invalid("封面尺寸无效。") }
+        let scale = min(1, min(1200 / image.size.width, 1800 / image.size.height))
+        let rect = CGRect(x: 0, y: 0, width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+        let rendered = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
+            UIColor.white.setFill(); context.fill(rect); image.draw(in: rect)
+        }
+        guard let data = rendered.jpegData(compressionQuality: 0.9) else { throw MoReadError.invalid("无法保存封面。") }
+        try BookCoverImage.validate(data); return data
     }
 }
 

@@ -5,6 +5,23 @@ import ReadiumZIPFoundation
 @testable import MoReadCore
 
 final class ImageGenerationTests: XCTestCase {
+    func testCoverPromptUsesOnlyReadOpeningAndOptionalDirection() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try LibraryStore(root: root)
+        var book = try store.importBook(title: "海边的书店", author: "作者", chapters: [.init(id: 0, title: "开篇", text: "灯🌙塔。未读秘密。"), .init(id: 1, title: "以后", text: "最终结局。")])
+        let unread = try IllustrationPrompt.cover(book: book, store: store)
+        XCTAssertTrue(unread.contains("海边的书店")); XCTAssertFalse(unread.contains("灯🌙塔"))
+        book.readThrough = .init(offset: 5)
+        let read = try IllustrationPrompt.cover(book: book, store: store, direction: "水墨，冷色调")
+        XCTAssertTrue(read.contains("灯🌙塔。")); XCTAssertTrue(read.contains("水墨，冷色调")); XCTAssertTrue(read.contains("2:3"))
+        XCTAssertFalse(read.contains("未读秘密")); XCTAssertFalse(read.contains("最终结局"))
+        XCTAssertThrowsError(try IllustrationPrompt.cover(book: book, store: store, direction: String(repeating: "长", count: 20_001)))
+        let long = try store.importBook(title: "长篇", chapters: [.init(id: 0, title: "开篇", text: String(repeating: "甲", count: 1199) + "🌙后文")])
+        var readLong = long; readLong.readThrough = .init(offset: 1300)
+        let limited = try IllustrationPrompt.cover(book: readLong, store: store)
+        XCTAssertFalse(limited.contains("🌙")); XCTAssertFalse(limited.contains("后文"))
+    }
     func testIllustrationSourceLocationValidatesSavedImageRevisionAndReadBoundary() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

@@ -16,6 +16,11 @@ final class BookCoverTests: XCTestCase {
         let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil))
         CGImageDestinationAddImage(destination, image, nil); XCTAssertTrue(CGImageDestinationFinalize(destination))
         let jpeg = data as Data
+        let imported = try store.importBook(title: "有封面的书", chapters: [.init(id: 0, title: "开篇", text: "书籍正文。")], cover: jpeg)
+        XCTAssertEqual(try store.coverData(for: imported.id), jpeg)
+        let count = try store.books().count
+        XCTAssertThrowsError(try store.importBook(title: "损坏的封面", chapters: [.init(id: 0, title: "开篇", text: "正文。")], cover: Data("broken".utf8)))
+        XCTAssertEqual(try store.books().count, count)
         XCTAssertNil(try store.coverData(for: book.id)); try store.saveCover(jpeg, for: book.id)
         XCTAssertEqual(try store.book(book.id), book)
         XCTAssertThrowsError(try store.saveCover(Data("broken".utf8), for: book.id))

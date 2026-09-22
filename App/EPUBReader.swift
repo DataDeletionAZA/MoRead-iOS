@@ -63,9 +63,29 @@ final class EPUBService {
                 chapters[index].text += text + "\n"
             }
         }
+        let cover = try await embeddedCover(in: publication)
+        try Task.checkCancellation()
         return try store.importBook(title: publication.metadata.title ?? url.deletingPathExtension().lastPathComponent,
                                     author: publication.metadata.authors.map(\.name).joined(separator: "、"),
-                                    chapters: chapters, original: url, format: "epub", readingMap: JSONEncoder().encode(anchors))
+                                    chapters: chapters, original: url, format: "epub", readingMap: JSONEncoder().encode(anchors), cover: cover)
+    }
+    private func embeddedCover(in publication: Publication) async throws -> Data? {
+        var links = publication.linksWithRel(.cover)
+        if let first = publication.readingOrder.first {
+            if first.mediaType?.isBitmap == true { links.append(first) }
+            links += first.alternates.filter { $0.mediaType?.isBitmap == true }
+        }
+        for link in links.prefix(32) {
+            try Task.checkCancellation()
+            guard !link.templated, URLComponents(string: link.url().string)?.scheme == nil, URLComponents(string: link.url().string)?.host == nil,
+                  let resource = publication.get(link) else { continue }
+            defer { resource.close() }
+            if let count = try? await resource.estimatedLength().get(), count > 32 * 1024 * 1024 { continue }
+            guard let data = try? await resource.read(range: 0..<UInt64(32 * 1024 * 1024 + 1)).get(),
+                  let image = try? ReaderImage.thumbnail(data, maximum: 1800), let jpeg = try? ReaderImage.coverJPEG(image) else { continue }
+            try Task.checkCancellation(); return jpeg
+        }
+        try Task.checkCancellation(); return nil
     }
 }
 

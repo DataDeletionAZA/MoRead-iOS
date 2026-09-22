@@ -76,6 +76,7 @@ struct ImageGenerationSettingsView: View {
 struct IllustrationGenerator: View {
     let bookID: UUID
     let source: SourcePassage?
+    let coverSelection: ((UIImage) -> Void)?
     @EnvironmentObject private var library: LibraryModel
     @EnvironmentObject private var companion: CompanionModel
     @State private var prompt: String
@@ -86,8 +87,8 @@ struct IllustrationGenerator: View {
     @State private var requestID: UUID?
     @FocusState private var focused: Bool
     private var connection: ImageGenerationConnection? { companion.settings.imageConnection }
-    init(bookID: UUID, source: SourcePassage? = nil, prompt: String? = nil) {
-        self.bookID = bookID; self.source = source
+    init(bookID: UUID, source: SourcePassage? = nil, prompt: String? = nil, coverSelection: ((UIImage) -> Void)? = nil) {
+        self.bookID = bookID; self.source = source; self.coverSelection = coverSelection
         _prompt = State(initialValue: prompt ?? source.map { "小说插画，忠实表现以下选段，无文字、无水印：\n" + $0.text } ?? "")
     }
     var body: some View {
@@ -97,20 +98,23 @@ struct IllustrationGenerator: View {
                 TextEditor(text: $prompt).frame(minHeight: 120).focused($focused).accessibilityIdentifier("illustration-prompt").accessibilityLabel("画面描述")
                 NavigationLink("绘图设置") { ImageGenerationSettingsView() }
                 Text(connection?.label ?? "请先配置绘图模型与密钥。").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("illustration-model")
-                Button(latest == nil ? "生成插图" : "重新生成一张") { generate() }
-                    .disabled(task != nil || connection == nil || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || library.maintenance)
+                Button(latest == nil ? (coverSelection == nil ? "生成插图" : "生成封面图片") : "重新生成一张") { generate() }
+                    .disabled(task != nil || connection == nil || (coverSelection == nil && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || library.maintenance)
                     .accessibilityIdentifier("generate-illustration")
-            } header: { Text("画面描述") } footer: { Text("这里的描述会发送给绘图服务；开启 AI 整理时，也会发送给主对话模型。生成后自动保存到这本书的插图廊；重新生成会保留之前的图片。") }
+            } header: { Text(coverSelection == nil ? "画面描述" : "自定义方向（可选）") } footer: {
+                Text(coverSelection == nil ? "这里的描述会发送给绘图服务；开启 AI 整理时，也会发送给主对话模型。生成后自动保存到这本书的插图廊；重新生成会保留之前的图片。" : "可填写水墨、悬疑或科幻等风格。书名、作者、已读开篇和画面方向会发送给绘图服务；开启 AI 整理时，也会发送给主对话模型。确认裁剪后应用封面，生成图片同时保存在插图廊。")
+            }
             if task != nil { Section { ProgressView("正在生成插图…"); Button("停止生成") { stop(); status = "已停止。" } } }
             if let status { Section { Text(status).font(.caption).accessibilityIdentifier("illustration-status") } }
             if let preview, let latest {
                 Section("已保存的插图") {
                     Image(uiImage: preview).resizable().scaledToFit().frame(maxHeight: 350).accessibilityIdentifier("generated-illustration")
+                    if let coverSelection { Button("预览封面裁剪") { coverSelection(preview) }.accessibilityIdentifier("preview-generated-cover") }
                     NavigationLink("查看与导出") { IllustrationDetail(item: latest) }
                 }
             }
             NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
-        }.navigationTitle("生成插图")
+        }.navigationTitle(coverSelection == nil ? "生成插图" : "AI 生成封面")
             .onDisappear { stop() }
             .onChange(of: connection) { _, _ in stop() }
             .onChange(of: library.maintenance) { _, busy in if busy { stop() } }
@@ -125,11 +129,13 @@ struct IllustrationGenerator: View {
         task = Task {
             defer { if requestID == id { task = nil; requestID = nil } }
             do {
-                let result = try await library.generateIllustration(prompt: prompt, source: source, book: book, connection: connection, promptProvider: promptProvider, validate: {
+                guard let storage = library.store else { throw MoReadError.invalid("书库尚未打开。") }
+                let preparedPrompt = coverSelection == nil ? prompt : try IllustrationPrompt.cover(book: book, store: storage, direction: prompt)
+                let result = try await library.generateIllustration(prompt: preparedPrompt, source: source, book: book, connection: connection, promptProvider: promptProvider, validate: {
                     guard requestID == id, self.connection == connection,
                           connection.settings.optimizePrompt == false || companion.settings.resolvedProvider(for: .chat) == promptProvider else { throw CancellationError() }
                 }, progress: { status = $0 })
-                latest = result.item; preview = try ReaderImage.thumbnail(result.data, maximum: 1600); status = "已保存到插图廊。"
+                latest = result.item; preview = try ReaderImage.thumbnail(result.data, maximum: 2400); status = "已保存到插图廊。"
             } catch { if !Task.isCancelled, requestID == id { status = error.localizedDescription } }
         }
     }

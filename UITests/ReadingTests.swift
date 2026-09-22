@@ -1,6 +1,72 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testEPUBEmbeddedCoverAndDamagedCoverPreserveReadableBook() throws {
+        executionTimeAllowance = 600
+        let app = XCUIApplication()
+        for name in ["Cover", "BrokenCover"] {
+            let url = try XCTUnwrap(Bundle(for: ReadingTests.self).url(forResource: name, withExtension: "epub"))
+            app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
+            app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-epub"]; app.launch()
+            func openCover() {
+                let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
+                XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
+                XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
+                app.buttons["目录"].tap(); app.buttons["书籍封面"].tap()
+                XCTAssertTrue(app.navigationBars["书籍封面"].waitForExistence(timeout: 5))
+            }
+            openCover()
+            if name == "Cover" { XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5)) }
+            else { XCTAssertTrue(app.staticTexts["文字封面"].waitForExistence(timeout: 5)); XCTAssertFalse(app.images["saved-book-cover"].exists) }
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "EPUB-" + name; shot.lifetime = .keepAlways; add(shot)
+            app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); openCover()
+            if name == "Cover" { XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5)) }
+            else { XCTAssertTrue(app.staticTexts["文字封面"].waitForExistence(timeout: 5)) }
+            app.navigationBars["书籍封面"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.buttons["完成"].waitForExistence(timeout: 5))
+            app.buttons["完成"].tap()
+            XCTAssertFalse(app.navigationBars["目录"].exists)
+            XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
+            XCTAssertTrue(app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "雨停后")).firstMatch.waitForExistence(timeout: 20))
+            app.terminate()
+        }
+    }
+    func testAICoverPreviewCancelFailureStopSaveAndRelaunch() {
+        executionTimeAllowance = 600
+        let app = XCUIApplication()
+        func launch(_ reset: Bool = false) { app.launchArguments = ["--ui-testing", "--simulate-images", "--simulate-cover"] + (reset ? ["--reset-test-library"] : []); app.launch() }
+        func tap(_ name: String) {
+            let button = app.buttons[name]
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable, name); button.tap()
+        }
+        func openCover() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap(); tap("目录"); tap("书籍封面")
+        }
+        func generate(_ direction: String = "") {
+            tap("AI 生成封面"); XCTAssertTrue(app.navigationBars["AI 生成封面"].waitForExistence(timeout: 5))
+            if !direction.isEmpty { let field = app.textViews["illustration-prompt"]; field.tap(); field.typeText(direction) }
+            tap("generate-illustration")
+        }
+        launch(true); XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("AI 绘图", in: app); tap("save-image-settings")
+        XCTAssertTrue(app.staticTexts["绘图设置已保存。"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["书架"].tap(); openCover(); tap("选择测试封面"); tap("save-book-cover")
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        generate(); XCTAssertTrue(app.images["generated-illustration"].waitForExistence(timeout: 10)); tap("preview-generated-cover")
+        XCTAssertTrue(app.images["draft-book-cover"].waitForExistence(timeout: 5)); tap("取消裁剪")
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        generate("fail"); XCTAssertTrue(app.staticTexts["本地绘图服务暂不可用。"].waitForExistence(timeout: 10)); tap("关闭")
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        generate("slow"); tap("停止生成"); XCTAssertTrue(app.staticTexts["已停止。"].waitForExistence(timeout: 5)); tap("关闭")
+        XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        generate("A quiet blue bookshop"); XCTAssertTrue(app.images["generated-illustration"].waitForExistence(timeout: 10)); tap("preview-generated-cover")
+        XCTAssertTrue(app.images["draft-book-cover"].waitForExistence(timeout: 5)); app.sliders["cover-focus-y"].adjust(toNormalizedSliderPosition: 0.85)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "AI-cover-crop"; shot.lifetime = .keepAlways; add(shot)
+        tap("save-book-cover"); XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+        app.terminate(); launch(); openCover(); XCTAssertTrue(app.images["saved-book-cover"].waitForExistence(timeout: 5))
+    }
     func testIllustrationsOpenTheirSourceInTextAndEPUB() {
         executionTimeAllowance = 240
         let app = XCUIApplication()

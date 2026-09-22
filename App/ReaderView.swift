@@ -157,6 +157,7 @@ struct ReaderView: View {
                     SpeechControls(book: book)
                 case .contents:
                     List {
+                        NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                         NavigationLink("书中人物") {
                             BookCharactersView(bookID: book.id) { passage in
