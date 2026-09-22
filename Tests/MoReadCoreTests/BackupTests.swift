@@ -16,6 +16,7 @@ final class BackupTests: XCTestCase {
         records.bookmarks = [Bookmark(position: book.position, label: "灯塔")]
         records.annotations = [Annotation(passage: SourcePassage(bookID: book.id, chapter: chapter, offset: 0, text: "灯塔"), note: "地点")]
         records.readingSeconds = ["2026-09-19": 123]
+        records.recordReading(from: Date(timeIntervalSince1970: 1_789_780_800), to: Date(timeIntervalSince1970: 1_789_784_400), timeZone: TimeZone(secondsFromGMT: 0)!)
         try store.saveRecords(records, for: book)
         let companion = try CompanionStore(root: root)
         let conversation = Conversation(title: "话题", bookID: book.id, characterID: UUID())
@@ -43,6 +44,8 @@ final class BackupTests: XCTestCase {
         try BackupArchive.activate(prepared, replacing: root)
         XCTAssertEqual(try store.books(), [cleared])
         XCTAssertEqual(try store.records(for: cleared).bookmarks, records.bookmarks)
+        XCTAssertEqual(try store.records(for: cleared).readingSeconds, records.readingSeconds)
+        XCTAssertEqual(try store.records(for: cleared).readingHours, records.readingHours)
     }
     func testVerifiedBackupRestoresAtomicallyAndKeepsPreviousLibrary() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

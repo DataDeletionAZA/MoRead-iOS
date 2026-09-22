@@ -55,7 +55,7 @@ final class LibraryModel: ObservableObject {
             }
             #if DEBUG
             if reset, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
-                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography"] { UserDefaults.standard.removeObject(forKey: key) }
+                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography", "stats.widgets"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             #endif
             let storage = try LibraryStore(root: root)
@@ -66,6 +66,7 @@ final class LibraryModel: ObservableObject {
             try reloadFonts()
             try loadReadingBackground()
             coverRevision = UUID()
+            recordsRevision = UUID()
         } catch { self.error = error.localizedDescription }
     }
     var fontLibrary: FontLibrary? { store.map { FontLibrary(root: $0.root) } }

@@ -332,17 +332,7 @@ struct ReaderView: View {
         guard let start = readingStarted else { return }
         readingStarted = nil
         let end = Date()
-        let calendar = Calendar.current
-        var cursor = start
-        let formatter = DateFormatter(); formatter.calendar = calendar; formatter.dateFormat = "yyyy-MM-dd"
-        var elapsed: [String: Double] = [:]
-        while cursor < end {
-            guard let next = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: cursor)) else { break }
-            let sliceEnd = min(end, next)
-            elapsed[formatter.string(from: cursor), default: 0] += sliceEnd.timeIntervalSince(cursor)
-            cursor = sliceEnd
-        }
-        changeRecords { value in for (day, seconds) in elapsed { value.readingSeconds[day, default: 0] += seconds } }
+        changeRecords { $0.recordReading(from: start, to: end) }
     }
     private func refreshReadingTime() {
         if sheet == nil, selection == nil, chat == nil, scenePhase == .active {

@@ -1,6 +1,61 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testStatisticsPeriodsCalendarWidgetsAndRestart() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-statistics"]; app.launch()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "月下书店")).firstMatch.waitForExistence(timeout: 15))
+        app.tabBars.buttons["足迹"].tap()
+        func total(_ text: String) {
+            let row = app.descendants(matching: .any).matching(identifier: "stats-total").firstMatch
+            XCTAssertTrue(NSPredicate(format: "label CONTAINS %@", text).evaluate(with: row) || XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", text), object: row)], timeout: 10) == .completed)
+        }
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<35 {
+                if element.exists && element.isHittable && app.frame.insetBy(dx: 0, dy: 90).contains(element.frame) { return }
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.50)))
+            }
+            XCTFail("Missing statistics control: \(element)")
+        }
+        func shot(_ name: String) { let image = XCTAttachment(screenshot: app.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image) }
+        total("1 小时 30 分钟"); XCTAssertFalse(app.buttons["stats-next"].isEnabled)
+        app.buttons["stats-previous"].tap(); total("2 小时 0 分钟")
+        XCTAssertTrue(app.buttons["stats-next"].isEnabled); app.buttons["stats-next"].tap(); total("1 小时 30 分钟")
+        app.segmentedControls["stats-period"].buttons["总"].tap(); total("3 小时 30 分钟")
+        XCTAssertFalse(app.buttons["stats-next"].isEnabled); XCTAssertFalse(app.buttons["stats-previous"].isEnabled)
+        app.segmentedControls["stats-period"].buttons["日"].tap(); total("1 小时 30 分钟")
+        app.segmentedControls["stats-period"].buttons["月"].tap(); total("1 小时 30 分钟"); shot("statistics-overview")
+        let calendar = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "stats-calendar-day-", "2 本书")).firstMatch
+        reveal(calendar)
+        XCTAssertFalse(app.buttons["stats-calendar-next"].isEnabled)
+        app.buttons["stats-calendar-previous"].tap()
+        XCTAssertTrue(app.buttons["stats-calendar-next"].isEnabled)
+        let emptyDay = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@ AND enabled == true", "stats-calendar-day-", "0 本书")).firstMatch
+        XCTAssertTrue(emptyDay.waitForExistence(timeout: 5)); emptyDay.tap()
+        XCTAssertTrue(app.staticTexts["这一天还没有阅读记录。"].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        app.buttons["stats-calendar-next"].tap()
+        reveal(calendar); shot("statistics-calendar"); calendar.tap()
+        XCTAssertTrue(app.navigationBars["1 小时 30 分钟"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "月下书店")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "山间来信")).firstMatch.exists)
+        shot("statistics-day-details"); app.buttons["完成"].tap()
+        for title in ["阅读趋势", "阅读时间段", "阅读时间线", "阅读排行", "标签云", "作者云"] {
+            reveal(app.staticTexts[title].firstMatch)
+            if title == "阅读时间段" {
+                reveal(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "凌晨 00–06")).firstMatch)
+                shot("statistics-hours")
+            }
+        }
+        shot("statistics-clouds")
+        app.buttons["调整统计组件"].tap()
+        let toggle = app.switches["stats-visible-calendar"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5)); toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap(); XCTAssertEqual(toggle.value as? String, "0")
+        app.buttons["完成"].tap(); app.terminate()
+        app.launchArguments = ["--ui-testing"]; app.launch(); app.tabBars.buttons["足迹"].tap(); total("1 小时 30 分钟")
+        app.buttons["调整统计组件"].tap(); XCTAssertTrue(toggle.waitForExistence(timeout: 5)); XCTAssertEqual(toggle.value as? String, "0")
+        app.buttons["恢复默认组件"].tap(); XCTAssertEqual(toggle.value as? String, "1"); app.buttons["完成"].tap()
+    }
+
     func testEPUBEmbeddedCoverAndDamagedCoverPreserveReadableBook() throws {
         executionTimeAllowance = 600
         let app = XCUIApplication()
@@ -329,7 +384,14 @@ final class ReadingTests: XCTestCase {
         var chat = "主对话测试 · chat-fixture"
         let batch = "批量测试 · batch-fixture"
         func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-model-roles", "--simulate-knowledge"] + extra; app.launch() }
-        func tap(_ id: String) { let button = app.buttons[id]; for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }; XCTAssertTrue(button.exists && button.isHittable, id); button.tap() }
+        func tap(_ id: String) {
+            let button = app.buttons[id]
+            for _ in 0..<12 {
+                if button.exists && button.isHittable { break }
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+            }
+            XCTAssertTrue(button.exists && button.isHittable, id); button.tap()
+        }
         func models() { app.tabBars.buttons["设置"].tap(); if !app.navigationBars["模型分工"].exists { tap("模型分工") }; app.swipeDown(); app.swipeDown() }
         func select(_ task: String, _ option: String) { tap("model-role-" + task); app.buttons[option].tap() }
         func saveProvider() {

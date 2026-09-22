@@ -20,6 +20,22 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-statistics"), model.books.isEmpty {
+                model.perform {
+                    guard let store = model.store else { return }
+                    let calendar = ReadingCalendar.calendar(), today = calendar.startOfDay(for: Date())
+                    let previousMonth = calendar.date(byAdding: .month, value: -1, to: today)!
+                    for (index, title) in ["月下书店", "山间来信"].enumerated() {
+                        var book = try store.importBook(title: title, author: "林间", chapters: [.init(id: 0, title: "开篇", text: "夜色中的书店，亮着一盏灯。")])
+                        book.tags = ["小说"]; book.state = index == 0 ? "已读" : "在读"; try store.save(book)
+                        _ = try model.modifyRecords(for: book) { records in
+                            records.recordReading(from: today, to: today.addingTimeInterval(index == 0 ? 3600 : 1800))
+                            if index == 0 { records.recordReading(from: previousMonth, to: previousMonth.addingTimeInterval(7200)) }
+                        }
+                    }
+                    model.load()
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-epub"), model.books.isEmpty,
                let encoded = ProcessInfo.processInfo.environment["MOREAD_TEST_EPUB"], encoded.utf8.count <= 3_000_000, let data = Data(base64Encoded: encoded) {
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".epub")
@@ -344,35 +360,6 @@ struct BookCover: View {
                 let data = await Task.detached(priority: .utility) { try? store.coverData(for: id) }.value
                 guard !Task.isCancelled else { return }; image = data.flatMap(UIImage.init(data:))
             }
-    }
-}
-
-struct StatisticsView: View {
-    @EnvironmentObject private var model: LibraryModel
-    @State private var seconds: Double = 0
-    @State private var annotationCount = 0
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("阅读足迹") {
-                    LabeledContent("藏书", value: "\(model.books.filter { !$0.removed }.count) 本")
-                    LabeledContent("已读", value: "\(model.books.filter { $0.state == "已读" }.count) 本")
-                    LabeledContent("阅读时长", value: "\(Int(seconds / 60)) 分钟")
-                    LabeledContent("批注", value: "\(annotationCount) 条")
-                }
-            }.navigationTitle("足迹")
-                .onAppear {
-                    model.perform {
-                        seconds = 0; annotationCount = 0
-                        for book in model.books {
-                            if let records = try model.store?.records(for: book) {
-                                seconds += records.readingSeconds.values.reduce(0, +)
-                                annotationCount += records.annotations.count
-                            }
-                        }
-                    }
-                }
-        }
     }
 }
 

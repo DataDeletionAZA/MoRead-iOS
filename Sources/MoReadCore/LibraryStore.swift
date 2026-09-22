@@ -35,6 +35,7 @@ public struct BookRecords: Codable, Sendable {
     public var annotations: [Annotation] = []
     public var bookmarks: [Bookmark] = []
     public var readingSeconds: [String: Double] = [:]
+    public var readingHours: [String: [Double]]?
     public init() {}
 }
 
