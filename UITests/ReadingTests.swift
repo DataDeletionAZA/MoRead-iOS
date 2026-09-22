@@ -7,6 +7,63 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testBookCharactersScopePreviewResumeSearchCacheAndStop() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-characters"] + extra; app.launch() }
+        func tap(_ id: String) {
+            let button = app.buttons[id]
+            for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(button.exists && button.isHittable, id); button.tap()
+        }
+        func openBook() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
+            XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        }
+        func openPeople() { tap("目录"); tap("书中人物"); XCTAssertTrue(app.navigationBars["书中人物"].waitForExistence(timeout: 5)) }
+        func generate() { tap("characters-generate"); XCTAssertTrue(app.navigationBars["确认人物提取"].waitForExistence(timeout: 5)); tap("characters-confirm") }
+        launch(["--reset-test-library"])
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 10)); app.buttons["add-sample"].tap()
+        openBook(); openPeople()
+        XCTAssertEqual(app.segmentedControls["characters-scope"].buttons["读到此处"].isSelected, true)
+        tap("characters-generate"); XCTAssertTrue(app.navigationBars["确认人物提取"].waitForExistence(timeout: 5)); tap("取消")
+        XCTAssertFalse(app.staticTexts["characters-summary"].exists)
+        generate(); XCTAssertTrue(app.staticTexts["已保存 1 位人物。"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["江舟"].exists)
+        tap("characters-locate-林遥-0"); XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        openPeople(); tap("全书"); tap("characters-generate")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "包括尚未读到的章节")).firstMatch.waitForExistence(timeout: 5))
+        tap("取消"); XCTAssertTrue(app.staticTexts["characters-summary"].label.contains("已读"))
+        app.terminate(); launch(["--characters-fail"]); openBook(); openPeople(); tap("全书"); generate()
+        XCTAssertTrue(app.staticTexts["人物整理服务暂不可用。"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["characters-summary"].label.contains("1 位人物"))
+        app.terminate(); launch(); openBook(); openPeople(); tap("全书"); generate()
+        XCTAssertTrue(app.staticTexts["已保存 2 位人物。"].waitForExistence(timeout: 15))
+        let field = app.textFields["characters-search"]
+        for _ in 0..<6 { if field.exists && field.isHittable { break }; app.swipeUp() }
+        field.tap(); field.typeText("不存在\n")
+        XCTAssertTrue(app.staticTexts["没有找到这个人物"].waitForExistence(timeout: 5))
+        tap("清除搜索"); field.tap(); field.typeText("江舟\n")
+        XCTAssertTrue(app.staticTexts["江舟"].waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Book-characters-search"; shot.lifetime = .keepAlways; add(shot)
+        tap("characters-locate-江舟-0")
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("江舟送来了灯塔地图"))
+        app.terminate(); launch(["--characters-fail"]); openBook(); openPeople(); generate()
+        XCTAssertTrue(app.staticTexts["已保存 2 位人物。"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["人物整理服务暂不可用。"].exists)
+        app.terminate(); launch(["--characters-slow", "--characters-new-model"]); openBook(); openPeople(); generate()
+        tap("characters-stop")
+        XCTAssertTrue(app.staticTexts["已停止，已核对的分段会保留。"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["characters-summary"].label.contains("2 位人物"))
+        tap("characters-delete"); app.alerts["删除人物资料？"].buttons["删除"].tap()
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.staticTexts["characters-summary"])
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 5), .completed)
+        app.terminate(); launch(); openBook(); openPeople()
+        XCTAssertFalse(app.staticTexts["characters-summary"].exists)
+        XCTAssertTrue(app.buttons["characters-generate"].label.contains("提取读过的人物"))
+    }
     func testChapterKnowledgePreviewSaveEvidenceFailureStopAndRelaunch() {
         executionTimeAllowance = 240
         let app = XCUIApplication()

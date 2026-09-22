@@ -1,7 +1,7 @@
 import Foundation
 import MoReadCore
 
-struct KnowledgeJobKey: Hashable { let bookID: UUID; let chapter: Int }
+struct KnowledgeJobKey: Hashable { let bookID: UUID; let chapter: Int? }
 struct KnowledgePlan: Identifiable {
     let id = UUID()
     let source: KnowledgeSource
@@ -14,23 +14,25 @@ extension CompanionModel {
         guard !library.maintenance, let storage = library.store else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
         library.flush()
         let source = try storage.knowledgeSource(bookID: bookID, chapter: chapter)
+        let provider = try knowledgeProvider()
+        return .init(source: source, provider: provider)
+    }
+    func knowledgeProvider() throws -> AIProvider {
         var provider = settings.providers.first { $0.id == (settings.knowledgeProvider ?? settings.selectedProvider) }
         #if DEBUG
-        if simulatedKnowledge { var mock = AIProvider(); mock.name = "本地模拟"; mock.model = "本地模拟"; provider = mock }
+        if simulatedKnowledge || simulatedCharacters {
+            var mock = AIProvider(); mock.id = UUID(uuidString: "E8153D1B-25AC-45F3-AECB-47CD20F93C0C")!; mock.name = "本地模拟"
+            mock.model = ProcessInfo.processInfo.arguments.contains("--characters-new-model") ? "本地模拟二" : "本地模拟"; provider = mock
+        }
         #endif
         guard let provider else { throw MoReadError.invalid("请先在设置中添加 AI 服务商，再选择整理模型。") }
         guard (provider.name + " · " + provider.model).utf16.count <= 500 else { throw MoReadError.invalid("服务商或模型名称过长，请在设置中缩短后重试。") }
         _ = try ChatRequest.make(provider: provider, key: "configuration-check", messages: [])
-        return .init(source: source, provider: provider)
+        return provider
     }
     func startKnowledge(_ plan: KnowledgePlan, library: LibraryModel) {
         guard knowledgeTasks[plan.job] == nil, !library.maintenance else { return }
-        knowledgeStates[plan.job] = "等待整理…"
-        if knowledgeStates.count > 128 {
-            for key in Array(knowledgeStates.keys) where key != plan.job && knowledgeTasks[key] == nil {
-                if knowledgeStates.count <= 128 { break }; knowledgeStates.removeValue(forKey: key)
-            }
-        }
+        prepareKnowledgeJob(plan.job)
         knowledgeTasks[plan.job] = Task {
             defer { self.knowledgeTasks[plan.job] = nil }
             do {
@@ -49,12 +51,20 @@ extension CompanionModel {
                 try self.validateKnowledgePlan(plan, library: library)
                 guard let storage = library.store else { throw CancellationError() }
                 let provider = plan.provider
-                let fingerprint = MemoryBookScope.fingerprint([provider.id.uuidString, provider.baseURL, provider.model, provider.dialect.rawValue, String(min(max(256, provider.maxTokens), 6000)), provider.chatTokenLimitParameter?.rawValue ?? "auto", "temperature=0.2"])
+                let fingerprint = provider.knowledgeFingerprint
                 try storage.saveKnowledge(content, source: plan.source, modelFingerprint: fingerprint, modelLabel: provider.name + " · " + provider.model)
                 library.recordsRevision = UUID()
                 self.knowledgeStates[plan.job] = "已保存"
             } catch is CancellationError { self.knowledgeStates[plan.job] = "已停止，可重新生成。" }
             catch { self.knowledgeStates[plan.job] = Task.isCancelled ? "已停止，可重新生成。" : error.localizedDescription }
+        }
+    }
+    func prepareKnowledgeJob(_ job: KnowledgeJobKey) {
+        knowledgeStates[job] = "等待整理…"
+        if knowledgeStates.count > 128 {
+            for key in Array(knowledgeStates.keys) where key != job && knowledgeTasks[key] == nil {
+                if knowledgeStates.count <= 128 { break }; knowledgeStates.removeValue(forKey: key)
+            }
         }
     }
     func stopKnowledge(_ key: KnowledgeJobKey) {
@@ -89,4 +99,10 @@ extension CompanionModel {
     #if DEBUG
     var simulatedKnowledge: Bool { ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--simulate-knowledge") }
     #endif
+}
+
+extension AIProvider {
+    var knowledgeFingerprint: String {
+        MemoryBookScope.fingerprint([id.uuidString, baseURL, model, dialect.rawValue, String(min(max(256, maxTokens), 6000)), chatTokenLimitParameter?.rawValue ?? "auto", "temperature=0.2"])
+    }
 }

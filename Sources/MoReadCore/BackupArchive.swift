@@ -139,6 +139,7 @@ public enum BackupArchive {
                 let chapter = try library.chapter(index, in: book)
                 guard chapter.text.utf16.count == book.chapters[index].length else { throw MoReadError.invalid("备份中的章节长度不一致。") }
             }
+            try BookCharactersStore(library: library, bookID: book.id).validateBackup()
             let records = try library.records(for: book), notes = records.notes ?? []
             guard Set(notes.map(\.id)).count == notes.count else { throw MoReadError.invalid("备份包含重复笔记编号。") }
             for note in notes { try note.validate() }

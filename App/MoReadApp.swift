@@ -165,8 +165,9 @@ final class LibraryModel: ObservableObject {
             guard let store else { return }
             var chapters = try TextImporter.chapters(Self.sampleText)
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-knowledge") {
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-knowledge") || ProcessInfo.processInfo.arguments.contains("--simulate-characters") {
                 chapters[0].text = "林遥独自推开书店的大门。\n" + chapters[0].text
+                if ProcessInfo.processInfo.arguments.contains("--simulate-characters") { chapters[1].text = "江舟送来了灯塔地图，与林遥约好第二天出发。" }
             }
             #endif
             let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)

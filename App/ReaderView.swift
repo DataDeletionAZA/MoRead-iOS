@@ -140,6 +140,13 @@ struct ReaderView: View {
                     SpeechControls(book: book)
                 case .contents:
                     List {
+                        NavigationLink("书中人物") {
+                            BookCharactersView(bookID: book.id) { passage in
+                                if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
+                                else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset)) }
+                                sheet = nil
+                            }
+                        }
                         NavigationLink("章节提纲") {
                             ChapterKnowledgeView(bookID: book.id) { passage in
                                 if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }

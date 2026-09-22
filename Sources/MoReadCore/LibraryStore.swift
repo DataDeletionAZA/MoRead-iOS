@@ -124,11 +124,17 @@ public final class LibraryStore {
         }
     }
     public func storageBytes(for book: Book) throws -> Int64 {
-        let files = try manager.contentsOfDirectory(at: directory(book.id), includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey])
-        return try files.reduce(0) { sum, url in
-            let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-            return sum + (values.isRegularFile == true ? Int64(values.fileSize ?? 0) : 0)
+        let keys: [URLResourceKey] = [.fileSizeKey, .isRegularFileKey]
+        var failure: Error?
+        guard let files = manager.enumerator(at: directory(book.id), includingPropertiesForKeys: keys, options: [.skipsHiddenFiles], errorHandler: { _, error in failure = error; return false }) else {
+            throw MoReadError.invalid("无法读取书籍存储目录。")
         }
+        var total: Int64 = 0
+        while let url = files.nextObject() as? URL {
+            let values = try url.resourceValues(forKeys: Set(keys))
+            if values.isRegularFile == true { total += Int64(values.fileSize ?? 0) }
+        }
+        if let failure { throw failure }; return total
     }
     public func clearBody(_ book: Book) throws -> Book {
         let original = directory(book.id)

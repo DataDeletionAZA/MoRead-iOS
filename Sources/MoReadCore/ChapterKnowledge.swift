@@ -4,8 +4,8 @@ import CryptoKit
 public struct KnowledgePart: Sendable {
     public let start: Int
     public let text: String
-    public static func split(_ source: String) throws -> [Self] {
-        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.utf16.count <= 60_000 else {
+    public static func split(_ source: String, enforceChapterLimit: Bool = true) throws -> [Self] {
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !enforceChapterLimit || source.utf16.count <= 60_000 else {
             throw MoReadError.invalid("每章最多整理 60000 字已读内容。")
         }
         let text = source as NSString, punctuation = Set("\n。！？.!?".utf16)
@@ -25,13 +25,13 @@ public struct KnowledgeFact: Codable, Hashable, Sendable {
     public let quote: String
     public let start: Int
     public let end: Int
-    fileprivate func validate(sourceEnd: Int) throws {
+    func validate(sourceEnd: Int) throws {
         guard (1...600).contains(text.utf16.count), (4...300).contains(quote.utf16.count),
               start >= 0, end > start, end <= sourceEnd, end - start == quote.utf16.count else {
             throw MoReadError.invalid("提纲的原文依据无效。")
         }
     }
-    fileprivate func matches(_ source: String) -> Bool {
+    func matches(_ source: String) -> Bool {
         start >= 0 && end > start && end <= source.utf16.count && TextBoundary.floor(start, in: source) == start && TextBoundary.floor(end, in: source) == end &&
         (source as NSString).substring(with: NSRange(location: start, length: end - start)).utf16.elementsEqual(quote.utf16)
     }
@@ -66,32 +66,52 @@ public struct ChapterKnowledge: Codable, Equatable, Sendable {
         guard raw.utf16.count <= 64_000, part.start >= 0, part.start <= 60_000, part.text.utf16.count <= 60_000 - part.start else {
             throw MoReadError.invalid("整理结果或原文范围过长。")
         }
-        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean.hasPrefix("```json") { clean.removeFirst(7) } else if clean.hasPrefix("```") { clean.removeFirst(3) }
-        if clean.hasSuffix("```") { clean.removeLast(3) }
-        guard let draft = try? JSONDecoder().decode(Draft.self, from: Data(clean.utf8)),
+        guard let draft = try? JSONDecoder().decode(Draft.self, from: jsonData(raw)),
               (1...8).contains(draft.summary.count), (draft.characters ?? []).count <= 16 else {
             throw MoReadError.invalid("整理结果格式不完整或条目过多，请重试。")
         }
-        func verify(_ fact: Draft.Fact) throws -> KnowledgeFact {
-            let text = fact.text.trimmingCharacters(in: .whitespacesAndNewlines), quote = fact.quote.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard (1...600).contains(text.utf16.count), (4...300).contains(quote.utf16.count) else { throw MoReadError.invalid("整理结果缺少简短描述或原文依据。") }
-            let source = part.text as NSString, found = source.range(of: quote, options: .literal)
-            // Search again one UTF-16 unit later to catch overlapping repetitions as well.
-            guard found.location != NSNotFound,
-                  source.range(of: quote, options: .literal, range: NSRange(location: found.location + 1, length: source.length - found.location - 1)).location == NSNotFound else {
-                throw MoReadError.invalid("部分引文无法唯一核对，请重新整理。")
-            }
-            return KnowledgeFact(text: text, quote: quote, start: part.start + found.location, end: part.start + found.location + found.length)
+        return Self(outline: try validateOutline(draft.outline, limit: maximumOutline), summary: try draft.summary.map { try verify($0, part: part) },
+                    characters: try verifyCharacters(draft.characters ?? [], part: part))
+    }
+    public static func parseCharacters(_ raw: String, part: KnowledgePart) throws -> [KnowledgeCharacter] {
+        struct Characters: Decodable { let characters: [Draft.Character] }
+        guard part.start >= 0, part.text.utf16.count <= 10_000, part.start <= Int.max - part.text.utf16.count,
+              let draft = try? JSONDecoder().decode(Characters.self, from: jsonData(raw)), draft.characters.count <= 24 else {
+            throw MoReadError.invalid("人物资料格式无效或条目过多。")
         }
-        let characters = try (draft.characters ?? []).map { character in
+        return try verifyCharacters(draft.characters, part: part)
+    }
+    static func jsonData(_ raw: String) throws -> Data {
+        guard raw.utf16.count <= 64_000 else { throw MoReadError.invalid("整理结果过长。") }
+        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```json") { clean.removeFirst(7) } else if clean.hasPrefix("```") { clean.removeFirst(3) }
+        if clean.hasSuffix("```") { clean.removeLast(3) }
+        return Data(clean.utf8)
+    }
+    private static func verify(_ fact: Draft.Fact, part: KnowledgePart) throws -> KnowledgeFact {
+        let text = fact.text.trimmingCharacters(in: .whitespacesAndNewlines), quote = fact.quote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...600).contains(text.utf16.count), (4...300).contains(quote.utf16.count) else { throw MoReadError.invalid("整理结果缺少简短描述或原文依据。") }
+        let source = part.text as NSString, found = source.range(of: quote, options: .literal)
+        // Search again one UTF-16 unit later to catch overlapping repetitions as well.
+        guard found.location != NSNotFound,
+              source.range(of: quote, options: .literal, range: NSRange(location: found.location + 1, length: source.length - found.location - 1)).location == NSNotFound else {
+            throw MoReadError.invalid("部分引文无法唯一核对，请重新整理。")
+        }
+        return KnowledgeFact(text: text, quote: quote, start: part.start + found.location, end: part.start + found.location + found.length)
+    }
+    private static func verifyCharacters(_ characters: [Draft.Character], part: KnowledgePart) throws -> [KnowledgeCharacter] {
+        try characters.map { character in
             let name = character.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard validName(name), (1...4).contains(character.facts.count), (part.text as NSString).range(of: name, options: .literal).location != NSNotFound else {
                 throw MoReadError.invalid("人物名称或原文依据无效，请使用原文中的人名或稳定称呼。")
             }
-            return KnowledgeCharacter(name: name, facts: try character.facts.map(verify))
+            return KnowledgeCharacter(name: name, facts: try character.facts.map { try verify($0, part: part) })
         }
-        return Self(outline: try validateOutline(draft.outline, limit: maximumOutline), summary: try draft.summary.map(verify), characters: characters)
+    }
+    static func validateCharacters(_ characters: [KnowledgeCharacter], part: KnowledgePart) throws {
+        guard characters.count <= 24 else { throw MoReadError.invalid("单段人物条目过多。") }
+        let drafts = characters.map { Draft.Character(name: $0.name, facts: $0.facts.map { Draft.Fact(text: $0.text, quote: $0.quote) }) }
+        guard try verifyCharacters(drafts, part: part) == characters else { throw MoReadError.invalid("缓存中的人物依据与原文不一致。") }
     }
     public static func merge(_ parts: [Self], outline: String? = nil) throws -> Self {
         guard !parts.isEmpty, parts.count <= 12 else { throw MoReadError.invalid("章节整理分段不完整。") }
@@ -101,10 +121,10 @@ public struct ChapterKnowledge: Codable, Equatable, Sendable {
         return Self(outline: try validateOutline(outline ?? parts[0].outline), summary: unique(parts.flatMap(\.summary)),
                     characters: names.map { name in KnowledgeCharacter(name: name, facts: unique(parts.flatMap(\.characters).filter { $0.name == name }.flatMap(\.facts))) })
     }
-    fileprivate static func validName(_ name: String) -> Bool {
+    static func validName(_ name: String) -> Bool {
         (1...60).contains(name.utf16.count) && !["他", "她", "我", "你", "他们", "她们", "旁白"].contains(name)
     }
-    fileprivate func validate(sourceEnd: Int) throws {
+    func validate(sourceEnd: Int) throws {
         _ = try Self.validateOutline(outline)
         guard (1...96).contains(summary.count), characters.count <= 192,
               characters.allSatisfy({ Self.validName($0.name) && (1...48).contains($0.facts.count) }) else {
@@ -141,9 +161,8 @@ public struct ChapterKnowledgeEntry: Codable, Equatable, Identifiable, Sendable 
     public let content: ChapterKnowledge
     public let createdAt: Date
     public func validate() throws {
-        func hash(_ value: String) -> Bool { value.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
         guard chapter >= 0, (1...60_000).contains(sourceEnd), promptVersion == 2,
-              hash(sourceRevision), hash(sourceHash), hash(modelFingerprint), !modelLabel.isEmpty, modelLabel.utf16.count <= 500,
+              Self.validHash(sourceRevision), Self.validHash(sourceHash), Self.validHash(modelFingerprint), !modelLabel.isEmpty, modelLabel.utf16.count <= 500,
               createdAt.timeIntervalSince1970.isFinite else { throw MoReadError.invalid("章节提纲的来源记录无效。") }
         try content.validate(sourceEnd: sourceEnd)
     }
@@ -153,6 +172,7 @@ public struct ChapterKnowledgeEntry: Codable, Equatable, Identifiable, Sendable 
         ReadingScope(through: book.readThrough).allows(chapter: chapter, range: NSRange(location: 0, length: sourceEnd)) &&
         (try? validate()) != nil
     }
+    static func validHash(_ value: String) -> Bool { value.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
     static func hash(_ text: String) -> String { SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined() }
 }
 
