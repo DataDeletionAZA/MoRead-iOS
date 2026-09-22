@@ -877,7 +877,11 @@ final class ReadingTests: XCTestCase {
         let playback = app.buttons["speech-play-pause"]
         XCTAssertTrue(playback.waitForExistence(timeout: 15))
         let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暂停' AND enabled == true"), object: playback)
-        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 15), .completed); playback.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 20), .completed)
+        let progress = app.sliders["本章听书进度"]
+        let advanced = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in progress.exists && progress.normalizedSliderPosition > 0 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [advanced], timeout: 15), .completed)
+        playback.tap()
         XCTAssertEqual(playback.label, "继续")
         app.buttons["speech-timer"].tap(); app.buttons["15 分钟"].tap()
         XCTAssertTrue(app.buttons["speech-timer"].waitForExistence(timeout: 10))

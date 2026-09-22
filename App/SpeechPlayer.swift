@@ -205,30 +205,37 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                     let settings = preferences.validated()
                     utterance.rate = settings.rate; utterance.pitchMultiplier = settings.pitch
                     utterance.voice = AVSpeechSynthesisVoice(identifier: settings.voiceIdentifier) ?? AVSpeechSynthesisVoice(language: "zh-CN")
-                    current = utterance; synthesizer.speak(utterance); updateNowPlaying(); return
+                    current = utterance; isPlaying = false; isPreparing = true
+                    synthesizer.speak(utterance); updateNowPlaying(); return
                 }
                 position = ReadingPosition(chapter: position.chapter + 1, offset: 0); chapter = nil
             }
             stop()
         } catch { library.error = error.localizedDescription; stop() }
     }
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in
+            guard let self, self.current === utterance else { return }
+            self.isPreparing = false; self.lastTick = .now; self.isPlaying = self.wantsPlayback
+            if !self.wantsPlayback { self.synthesizer.pauseSpeaking(at: .immediate) }
+            self.updateNowPlaying()
+        }
+    }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        let id = ObjectIdentifier(utterance)
-        Task { @MainActor [weak self] in self?.finished(id) }
+        Task { @MainActor [weak self] in self?.finished(utterance) }
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        let id = ObjectIdentifier(utterance)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if self.previewUtterance.map(ObjectIdentifier.init) == id { self.previewUtterance = nil; self.isPreviewing = false }
-            else if self.current.map(ObjectIdentifier.init) == id {
-                self.tickTimer(); self.current = nil; self.segment = nil; self.isPlaying = false; self.updateNowPlaying()
+            if self.previewUtterance === utterance { self.previewUtterance = nil; self.isPreviewing = false }
+            else if self.current === utterance {
+                self.tickTimer(); self.current = nil; self.segment = nil; self.isPreparing = false; self.isPlaying = false; self.updateNowPlaying()
             }
         }
     }
-    private func finished(_ id: ObjectIdentifier) {
-        if let previewUtterance, ObjectIdentifier(previewUtterance) == id { self.previewUtterance = nil; isPreviewing = false; return }
-        guard let current, ObjectIdentifier(current) == id else { return }
+    private func finished(_ utterance: AVSpeechUtterance) {
+        if previewUtterance === utterance { previewUtterance = nil; isPreviewing = false; return }
+        guard current === utterance else { return }
         completeSegment()
     }
     private func completeSegment() {
@@ -303,11 +310,10 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
-        let id = ObjectIdentifier(utterance)
-        Task { @MainActor [weak self] in self?.speaking(characterRange, id: id) }
+        Task { @MainActor [weak self] in self?.speaking(characterRange, utterance: utterance) }
     }
-    private func speaking(_ characterRange: NSRange, id: ObjectIdentifier) {
-        guard let current, ObjectIdentifier(current) == id, let segment, let library, let index = library.books.firstIndex(where: { $0.id == bookID }) else { return }
+    private func speaking(_ characterRange: NSRange, utterance: AVSpeechUtterance) {
+        guard current === utterance, let segment, let library, let index = library.books.firstIndex(where: { $0.id == bookID }) else { return }
         let range = NSRange(location: segment.offset + characterRange.location, length: characterRange.length)
         position.offset = range.location
         var book = library.books[index]
