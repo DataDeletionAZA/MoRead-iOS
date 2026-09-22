@@ -130,6 +130,7 @@ struct AISettingsView: View {
     var body: some View {
         List {
             Section("你的称呼") { TextField("称呼", text: $companion.settings.userName).onSubmit { companion.saveSettings() } }
+            Section { NavigationLink("模型分工") { ModelAssignmentsView() } }
             Section("服务商") {
                 ForEach(companion.settings.providers) { provider in
                     Button { editing = provider } label: {
@@ -172,7 +173,7 @@ struct ProviderEditor: View {
                         }
                     }
                 }
-                Section { Text("接口地址和模型名称由服务商提供。保存后，这个服务商会用于新的伴读回复。").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("接口地址和模型名称由服务商提供。可在“模型分工”为聊天和整理任务选择不同模型。").font(.footnote).foregroundStyle(.secondary) }
             }.navigationTitle("连接 AI")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
@@ -180,10 +181,12 @@ struct ProviderEditor: View {
                         companion.perform {
                             _ = try ChatRequest.make(provider: provider, key: key, messages: [.init(role: "user", content: "连接配置检查")])
                             try KeychainStore.save(key, for: provider.id)
-                            if let index = companion.settings.providers.firstIndex(where: { $0.id == provider.id }) { companion.settings.providers[index] = provider }
-                            else { companion.settings.providers.append(provider) }
-                            companion.settings.selectedProvider = provider.id; companion.saveSettings()
-                            if companion.error == nil { dismiss() }
+                            var settings = companion.settings
+                            let firstProvider = settings.providers.isEmpty
+                            if let index = settings.providers.firstIndex(where: { $0.id == provider.id }) { settings.providers[index] = provider }
+                            else { settings.providers.append(provider) }
+                            if firstProvider, settings.selectedProvider == nil { settings.selectedProvider = provider.id }
+                            try companion.saveModelSettings(settings); dismiss()
                         }
                     } }
                 }

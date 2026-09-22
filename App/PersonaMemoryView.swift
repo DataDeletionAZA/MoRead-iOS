@@ -15,10 +15,7 @@ struct PersonaMemorySettingsView: View {
         Form {
             Section {
                 Toggle("启用角色长期记忆", isOn: field(\.enabled)).accessibilityIdentifier("persona-memory-enabled")
-                Picker("记忆整理服务商", selection: field(\.providerID)) {
-                    Text("请选择").tag(UUID?.none)
-                    ForEach(companion.settings.providers) { Text("\($0.name) · \($0.model)").tag(Optional($0.id)) }
-                }
+                ModelAssignmentPicker(task: .memory, title: "记忆整理服务商")
                 NavigationLink("向量服务商与模型") { VectorMemoryView() }
                 Toggle("阅读时允许跨书回忆", isOn: field(\.crossBook))
             } footer: { Text("开启后，聊天会自动提炼有用信息并按意思回忆。对话与候选记忆会发送给所选整理服务商，记忆文本和检索问题会发送给向量服务商，可能产生 API 费用。关闭后保留本机记忆，停止整理和调用。") }

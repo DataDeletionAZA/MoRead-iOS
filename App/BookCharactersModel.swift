@@ -44,11 +44,7 @@ extension CompanionModel {
     private func validateCharacterPlan(_ plan: CharacterGenerationPlan, library: LibraryModel) throws {
         try Task.checkCancellation()
         guard !library.maintenance, library.books.contains(where: { book in book.id == plan.source.bookID && !book.removed && book.hasBody && (plan.source.sourceThrough.map { through in through <= book.readThrough } ?? true) }) else { throw CancellationError() }
-        #if DEBUG
-        if !simulatedCharacters && !settings.providers.contains(plan.provider) { throw MoReadError.invalid("整理服务商设置已变化，请重新确认。") }
-        #else
-        guard settings.providers.contains(plan.provider) else { throw MoReadError.invalid("整理服务商设置已变化，请重新确认。") }
-        #endif
+        guard try knowledgeProvider() == plan.provider else { throw MoReadError.invalid("整理模型已变化，请重新确认。") }
         library.flush()
     }
     private func characterReply(provider: AIProvider, key: String, messages: [ChatMessage], tool: ChatTool, exchanges: [ChatToolExchange]) async throws -> ChatToolRound {

@@ -52,6 +52,7 @@
 		C0E75704636F767B384B6757 /* THIRD_PARTY_LICENSES.txt in Resources */ = {isa = PBXBuildFile; fileRef = 26D7FFD20FA49397BE6BBFD0 /* THIRD_PARTY_LICENSES.txt */; };
 		C8DA5A8022B9593A149F589F /* ProactiveCompanion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5868308952DB53DF46DE561A /* ProactiveCompanion.swift */; };
 		C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */; };
+		CA7EB234670DC312ED289A17 /* ModelAssignmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12ACB5E65FF1D1A3EF772D3A /* ModelAssignmentsView.swift */; };
 		D2A3F338980736D1EF1739F8 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */; };
 		D9FA2B3028C57412A1F776F8 /* BookCharactersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBFE530A257E457150FA832 /* BookCharactersView.swift */; };
 		DA76CE3F28D08E3FE95FEB25 /* StorageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F48B66B02BAA67D887F3A7 /* StorageView.swift */; };
@@ -81,6 +82,7 @@
 		0B2065DE60076241DE16C071 /* SpeechControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechControls.swift; sourceTree = "<group>"; };
 		0BBFE530A257E457150FA832 /* BookCharactersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCharactersView.swift; sourceTree = "<group>"; };
 		10876F211B91CB27519F3138 /* FontLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontLibraryView.swift; sourceTree = "<group>"; };
+		12ACB5E65FF1D1A3EF772D3A /* ModelAssignmentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAssignmentsView.swift; sourceTree = "<group>"; };
 		153247B56B294E5613324D91 /* MoRead-iOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "MoRead-iOS"; path = .; sourceTree = SOURCE_ROOT; };
 		19BD21C3358729CF22FAB2EE /* ThemeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeView.swift; sourceTree = "<group>"; };
 		1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationPreview.swift; sourceTree = "<group>"; };
@@ -168,6 +170,7 @@
 				4F1C7E35F6BA22FAB8ED449F /* Info.plist */,
 				B12B808B9926C791C07C1201 /* KeychainStore.swift */,
 				1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */,
+				12ACB5E65FF1D1A3EF772D3A /* ModelAssignmentsView.swift */,
 				1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */,
 				4E65C5E6B968E1CC36B04714 /* PagedTextReader.swift */,
 				37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */,
@@ -392,6 +395,7 @@
 				7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */,
 				24BE19737D07CA5C65B7F2A0 /* LibraryOrganizationPreview.swift in Sources */,
 				EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */,
+				CA7EB234670DC312ED289A17 /* ModelAssignmentsView.swift in Sources */,
 				116F8C245B899EE9BE56335E /* PagedTextReader.swift in Sources */,
 				29AEA22D98DF5F68D70521C5 /* PersonaMemoryModel.swift in Sources */,
 				1F0FE229B25D7B15718CE296 /* PersonaMemoryView.swift in Sources */,

@@ -7,6 +7,68 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testModelAssignmentsRouteKnowledgePreserveChatAndCancelChangedJobs() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        var chat = "主对话测试 · chat-fixture"
+        let batch = "批量测试 · batch-fixture"
+        func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-model-roles", "--simulate-knowledge"] + extra; app.launch() }
+        func tap(_ id: String) { let button = app.buttons[id]; for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }; XCTAssertTrue(button.exists && button.isHittable, id); button.tap() }
+        func models() { app.tabBars.buttons["设置"].tap(); if !app.navigationBars["模型分工"].exists { tap("模型分工") }; app.swipeDown(); app.swipeDown() }
+        func select(_ task: String, _ option: String) { tap("model-role-" + task); app.buttons[option].tap() }
+        func saveProvider() {
+            app.buttons["保存"].tap()
+            let later = app.buttons.matching(NSPredicate(format: "label IN %@", ["稍後再說", "稍后再说", "Not Now"])).firstMatch
+            if later.waitForExistence(timeout: 3) {
+                later.tap()
+                XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: later)], timeout: 5), .completed)
+            }
+            let back = app.navigationBars["AI 服务商"].buttons.element(boundBy: 0)
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in back.isHittable }, object: nil)], timeout: 5), .completed)
+            back.tap()
+            XCTAssertTrue(app.navigationBars["模型分工"].waitForExistence(timeout: 5))
+        }
+        func openKnowledge() {
+            app.tabBars.buttons["书架"].tap()
+            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+            XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10)); tap("目录"); tap("章节提纲")
+        }
+        func closeKnowledge() { app.navigationBars["章节提纲"].buttons.element(boundBy: 0).tap(); tap("完成"); app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap() }
+        func preview(_ model: String) {
+            tap("knowledge-generate-0"); XCTAssertTrue(app.navigationBars["确认章节整理"].waitForExistence(timeout: 5))
+            let label = app.descendants(matching: .any).matching(identifier: "knowledge-preview-model").firstMatch
+            XCTAssertTrue((label.label + (label.value as? String ?? "")).contains(model))
+        }
+        launch(["--reset-test-library"]); XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 10)); app.buttons["add-sample"].tap()
+        models(); select("batch", batch)
+        XCTAssertTrue(app.staticTexts["model-effective-chat"].label.contains(chat))
+        XCTAssertTrue(app.staticTexts["model-effective-knowledge"].label.contains(batch))
+        select("knowledge", chat)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Model-assignments"; shot.lifetime = .keepAlways; add(shot)
+        openKnowledge(); preview(chat); tap("取消")
+        select("knowledge", "使用默认模型"); preview(batch); tap("knowledge-confirm")
+        XCTAssertTrue(app.staticTexts["knowledge-outline-0"].waitForExistence(timeout: 15)); XCTAssertTrue(app.staticTexts[batch].exists)
+        closeKnowledge(); models(); tap("管理 AI 服务商")
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "批量测试")).firstMatch.tap()
+        saveProvider()
+        app.swipeDown(); app.swipeDown(); XCTAssertTrue(app.staticTexts["model-effective-chat"].label.contains(chat))
+        app.terminate(); launch(["--knowledge-slow"]); models()
+        XCTAssertTrue(app.staticTexts["model-effective-batch"].label.contains(batch)); XCTAssertTrue(app.staticTexts["model-effective-chat"].label.contains(chat))
+        openKnowledge(); preview(batch); tap("knowledge-confirm"); closeKnowledge(); models(); select("batch", chat)
+        openKnowledge()
+        XCTAssertTrue(app.staticTexts["已停止，可重新生成。"].waitForExistence(timeout: 10)); XCTAssertTrue(app.staticTexts[batch].exists)
+        preview(chat); tap("knowledge-confirm"); closeKnowledge(); models(); tap("管理 AI 服务商")
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "主对话测试")).firstMatch.tap()
+        let model = app.textFields["模型名称"]; model.tap(); model.typeText("-v2")
+        let changed = model.value as? String ?? ""; XCTAssertNotEqual(changed, "chat-fixture"); chat = "主对话测试 · " + changed
+        saveProvider()
+        openKnowledge(); XCTAssertTrue(app.staticTexts["已停止，可重新生成。"].waitForExistence(timeout: 10)); XCTAssertTrue(app.staticTexts[batch].exists)
+        app.terminate(); launch(); openKnowledge()
+        preview(chat); tap("knowledge-confirm")
+        XCTAssertTrue(app.staticTexts[chat].waitForExistence(timeout: 20)); XCTAssertTrue(app.staticTexts["knowledge-outline-0"].exists)
+        app.terminate(); launch(); models()
+        XCTAssertTrue(app.staticTexts["model-effective-batch"].label.contains(chat)); XCTAssertTrue(app.staticTexts["model-effective-knowledge"].label.contains(chat))
+    }
     func testGlobalPresetsEditToggleRequestCopiesRetryDeleteAndRelaunch() {
         executionTimeAllowance = 300
         let app = XCUIApplication()

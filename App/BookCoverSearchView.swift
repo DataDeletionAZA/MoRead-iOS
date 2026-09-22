@@ -9,7 +9,6 @@ struct BookCoverSearchView: View {
     @State private var title: String
     @State private var author: String
     @State private var optimize = false
-    @State private var providerID: UUID?
     @State private var result: BookCoverSearchResult?
     @State private var status: String?
     @State private var busy = false
@@ -26,10 +25,7 @@ struct BookCoverSearchView: View {
                 TextField("作者", text: $author).focused($inputFocused)
                 Toggle("AI 优化搜索词", isOn: $optimize).disabled(companion.settings.providers.isEmpty || !policy.enabled)
                 if optimize && policy.enabled {
-                    Picker("优化服务商", selection: $providerID) {
-                        Text("选择服务商").tag(nil as UUID?)
-                        ForEach(companion.settings.providers) { Text($0.name).tag(Optional($0.id)) }
-                    }
+                    ModelAssignmentPicker(task: .coverQuery, title: "优化服务商")
                 }
                 Button("搜索封面") { search() }.disabled(busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } footer: {
@@ -65,9 +61,9 @@ struct BookCoverSearchView: View {
             }
         }.navigationTitle("网络封面")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { stop(); dismiss() } } }
-            .onAppear { if providerID == nil { providerID = companion.settings.selectedProvider } }
             .onDisappear { stop() }
             .onChange(of: policy) { _, _ in stop(); result = nil }
+            .onChange(of: companion.settings.resolvedProvider(for: .coverQuery)) { _, _ in stop(); result = nil }
     }
     private func stop() { activeID = nil; task?.cancel(); task = nil; busy = false }
     private func run(_ operation: @escaping @MainActor () async throws -> Void) {
@@ -80,7 +76,7 @@ struct BookCoverSearchView: View {
     private func search() {
         inputFocused = false
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines), author = author.trimmingCharacters(in: .whitespacesAndNewlines), policy = policy
-        let provider = optimize && policy.enabled ? companion.settings.providers.first { $0.id == providerID } : nil
+        let provider = optimize && policy.enabled ? companion.settings.resolvedProvider(for: .coverQuery) : nil
         result = nil
         run {
             _ = try BookCoverSearch.queries(title: title, author: author)

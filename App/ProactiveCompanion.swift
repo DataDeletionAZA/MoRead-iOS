@@ -14,7 +14,7 @@ extension CompanionModel {
               let chapterIndex = book.chapters.indices.last(where: { $0 <= book.position.chapter && ReadingPosition(chapter: $0, offset: book.chapters[$0].length) <= book.readThrough }),
               let libraryStore = library.store else { return }
         annotationBookID = bookID
-        guard let provider = settings.providers.first(where: { $0.id == (policy.providerID ?? settings.selectedProvider) }) else { annotationStatus = "请先为随读段评选择 AI 服务商。"; return }
+        guard let provider = settings.resolvedProvider(for: .annotation) else { annotationStatus = "请先为随读段评选择 AI 服务商。"; return }
         let ids = policy.characterIDs.isEmpty ? [settings.selectedCharacter].compactMap { $0 } : policy.characterIDs
         let cards = characters.filter { ids.contains($0.id) }
         guard !cards.isEmpty else { annotationStatus = "请先选择参与段评的角色。"; return }
@@ -121,7 +121,7 @@ extension CompanionModel {
     }
     private func annotationAllowed(book: Book, card: CharacterCard, provider: AIProvider, policy: ProactiveSettings, identity: ChatIdentity, library: LibraryModel) -> Bool {
         annotationReaderID == book.id && !library.maintenance && (settings.proactive ?? ProactiveSettings()).validated() == policy && settings.currentIdentity == identity &&
-        (policy.characterIDs.isEmpty ? settings.selectedCharacter == card.id : policy.characterIDs.contains(card.id)) && characters.contains(card) && settings.providers.first(where: { $0.id == (policy.providerID ?? settings.selectedProvider) }) == provider &&
+        (policy.characterIDs.isEmpty ? settings.selectedCharacter == card.id : policy.characterIDs.contains(card.id)) && characters.contains(card) && settings.resolvedProvider(for: .annotation) == provider &&
         library.books.contains { $0.id == book.id && !$0.removed && $0.hasBody && $0.readThrough >= book.readThrough && $0.chapters.map(\.revision) == book.chapters.map(\.revision) }
     }
 }

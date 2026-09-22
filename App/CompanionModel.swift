@@ -124,7 +124,7 @@ final class CompanionModel: ObservableObject {
         guard !library.maintenance else { return }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, task == nil, let index = conversations.firstIndex(where: { $0.id == id }),
-              let provider = settings.providers.first(where: { $0.id == settings.selectedProvider }),
+              let provider = settings.resolvedProvider(for: .chat),
               let card = characters.first(where: { $0.id == conversations[index].characterID }),
               let root = library.store?.root else { error = "请先在设置中添加 AI 服务商并选择模型。"; return }
         do {

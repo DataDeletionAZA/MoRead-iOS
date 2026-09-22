@@ -16,10 +16,7 @@ struct ProactiveSettingsView: View {
                 Toggle("自动随读段评", isOn: field(\.enabled)).accessibilityIdentifier("proactive-enabled")
             } footer: { Text("读完一章后，让角色为其中的段落写评论。开启后会自动将已读原文与角色资料发给所选服务商，按服务商规则计费。") }
             Section("模型") {
-                Picker("段评服务商", selection: field(\.providerID)) {
-                    Text("跟随聊天服务商").tag(UUID?.none)
-                    ForEach(companion.settings.providers) { Text("\($0.name) · \($0.model)").tag(Optional($0.id)) }
-                }
+                ModelAssignmentPicker(task: .annotation, title: "段评服务商")
                 NavigationLink("管理 AI 服务商") { AISettingsView() }
             }
             Section {

@@ -31,10 +31,7 @@ struct BookCharactersView: View {
                     Text("读到此处").tag(true)
                     Text("全书").tag(false)
                 }.pickerStyle(.segmented).disabled(busy).accessibilityIdentifier("characters-scope")
-                Picker("整理模型", selection: Binding(get: { companion.settings.knowledgeProvider }, set: { companion.settings.knowledgeProvider = $0; companion.saveSettings() })) {
-                    Text("使用当前聊天模型").tag(nil as UUID?)
-                    ForEach(companion.settings.providers) { Text($0.name + " · " + $0.model).tag(Optional($0.id)) }
-                }.disabled(busy)
+                ModelAssignmentPicker(task: .knowledge, title: "整理模型").disabled(busy)
                 if busy {
                     Button("停止提取", role: .destructive) { companion.stopKnowledge(job) }.accessibilityIdentifier("characters-stop")
                 } else {

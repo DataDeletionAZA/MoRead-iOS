@@ -19,10 +19,7 @@ struct ChapterKnowledgeView: View {
                 let visible = entries.filter { $0.visible(in: book, revision: revision) }
                 let eligible = book.chapters.filter { $0.length > 0 && ($0.id < book.readThrough.chapter || ($0.id == book.readThrough.chapter && book.readThrough.offset > 0)) }
                 Section {
-                    Picker("整理模型", selection: Binding(get: { companion.settings.knowledgeProvider }, set: { companion.settings.knowledgeProvider = $0; companion.saveSettings() })) {
-                        Text("使用当前聊天模型").tag(nil as UUID?)
-                        ForEach(companion.settings.providers) { Text($0.name + " · " + $0.model).tag(Optional($0.id)) }
-                    }
+                    ModelAssignmentPicker(task: .knowledge, title: "整理模型")
                     HStack {
                         Button("展开全部") { expanded = Set(eligible.map(\.id)) }
                         Spacer()
@@ -77,7 +74,7 @@ struct ChapterKnowledgeView: View {
                         LabeledContent("章节", value: value.source.chapterTitle)
                         LabeledContent("整理范围", value: value.source.partial ? "本章已读部分" : "完整章节")
                         LabeledContent("原文长度", value: "\(value.source.text.utf16.count) 字")
-                        LabeledContent("模型", value: value.provider.name + " · " + value.provider.model)
+                        LabeledContent("模型", value: value.provider.name + " · " + value.provider.model).accessibilityElement(children: .combine).accessibilityIdentifier("knowledge-preview-model")
                         LabeledContent("预计调用", value: "\(value.source.requestCount) 次，含纠错最多 \(value.source.maximumRequests) 次")
                         Text("将以上范围内的原文发送给所选 AI 服务商，按服务商规则计费。生成失败或停止时保留旧提纲。")
                         Button("开始生成") { companion.startKnowledge(value, library: library); plan = nil }.accessibilityIdentifier("knowledge-confirm")

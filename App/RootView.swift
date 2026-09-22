@@ -20,6 +20,12 @@ struct RootView: View {
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
         .task {
             #if DEBUG
+            if companion.simulatedModelRoles, companion.settings.providers.isEmpty {
+                var chat = AIProvider(); chat.name = "主对话测试"; chat.model = "chat-fixture"; chat.baseURL = "https://example.invalid/v1"
+                var batch = AIProvider(); batch.name = "批量测试"; batch.model = "batch-fixture"; batch.baseURL = "https://example.invalid/v1"
+                companion.perform { for provider in [chat, batch] { try KeychainStore.save("fixture-only", for: provider.id) } }
+                companion.settings.providers = [chat, batch]; companion.settings.selectedProvider = chat.id; companion.saveSettings()
+            }
             if companion.simulatedHybrid, companion.conversations.isEmpty, let card = companion.characters.first {
                 companion.perform {
                     var provider = AIProvider(); provider.name = "本地检索测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"
@@ -355,6 +361,7 @@ struct SettingsView: View {
                 Section("伴读") {
                     NavigationLink("我的身份") { UserMaskSettingsView() }
                     NavigationLink("AI 服务商") { AISettingsView() }
+                    NavigationLink("模型分工") { ModelAssignmentsView() }
                     NavigationLink("全局提示词预设") { GlobalPromptView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("原文相关性排序") { RerankSettingsView() }

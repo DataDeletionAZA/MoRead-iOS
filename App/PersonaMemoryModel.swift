@@ -11,7 +11,7 @@ extension CompanionModel {
             guard try MemoryBatch.plan(conversation, checkpoint: memory.checkpoint(id), onClose: onClose) != nil else {
                 if explain { personaMemoryStatus = "这段对话尚无足够的新内容可整理。" }; return
             }
-            guard let provider = settings.providers.first(where: { $0.id == policy.providerID }) else { throw MoReadError.invalid("请在长期记忆设置中选择整理服务商。") }
+            guard let provider = settings.resolvedProvider(for: .memory) else { throw MoReadError.invalid("请在长期记忆设置中选择整理服务商。") }
             let key = try memoryChatKey(provider)
             let (embedding, embeddingKey, fingerprint) = try memoryEmbeddingConnection()
             _ = try ChatRequest.make(provider: provider, key: key, messages: [.init(role: "user", content: "记忆配置检查")])
@@ -64,7 +64,7 @@ extension CompanionModel {
         } catch { if explain { personaMemoryStatus = error.localizedDescription } }
     }
     private func memoryConfigurationMatches(_ policy: PersonaMemorySettings, provider: AIProvider, embedding: AIProvider, library: LibraryModel) -> Bool {
-        guard !library.maintenance, (settings.personaMemory ?? PersonaMemorySettings()) == policy, settings.providers.contains(provider),
+        guard !library.maintenance, (settings.personaMemory ?? PersonaMemorySettings()) == policy, settings.resolvedProvider(for: .memory) == provider,
               var current = settings.providers.first(where: { $0.id == settings.embeddingProvider }) else { return false }
         current.model = (settings.embeddingModel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return current == embedding

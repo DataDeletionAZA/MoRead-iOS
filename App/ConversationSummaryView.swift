@@ -14,10 +14,7 @@ struct SummarySettingsView: View {
         Form {
             Section("前情提要") {
                 Toggle("启用前情提要", isOn: field(\.enabled)).accessibilityIdentifier("summary-enabled")
-                Picker("整理服务商", selection: field(\.providerID)) {
-                    Text("请选择服务商").tag(UUID?.none)
-                    ForEach(companion.settings.providers) { Text("\($0.name) · \($0.model)").tag(Optional($0.id)) }
-                }.accessibilityIdentifier("summary-provider")
+                ModelAssignmentPicker(task: .summary, title: "整理服务商", identifier: "summary-provider")
                 Text("选择服务商后，较长的对话会自动整理成最多 600 字的提要，供后续回复参考。整理会发送对话内容并按服务商规则计费，原始聊天记录会保留。").font(.caption).foregroundStyle(.secondary)
             }
             NavigationLink("管理 AI 服务商") { AISettingsView() }
@@ -68,7 +65,7 @@ extension CompanionModel {
         let policy = settings.summarySettings ?? SummarySettings()
         guard summaryTask == nil, !library.maintenance, policy.enabled,
               let conversation = conversations.first(where: { $0.id == id }) else { return }
-        guard let provider = settings.providers.first(where: { $0.id == policy.providerID }) else {
+        guard let provider = settings.resolvedProvider(for: .summary) else {
             if explain { summaryStatus = "请先在对话记忆设置中选择整理服务商。" }; return
         }
         guard let work = RollingSummary.plan(messages: conversation.messages, summary: conversation.summary) else {
@@ -90,7 +87,7 @@ extension CompanionModel {
                     let raw = try await self.summaryReply(provider: provider, key: key, messages: work.messages)
                     try Task.checkCancellation()
                     guard !library.maintenance, (self.settings.summarySettings ?? SummarySettings()) == policy,
-                          self.settings.providers.contains(provider), let index = self.conversations.firstIndex(where: { $0.id == id }),
+                          self.settings.resolvedProvider(for: .summary) == provider, let index = self.conversations.firstIndex(where: { $0.id == id }),
                           RollingSummary.fingerprint(self.conversations[index].messages, through: work.throughMessageID) == work.sourceFingerprint else { throw CancellationError() }
                     try self.conversations[index].validateSources(books: library.books)
                     var copy = self.conversations[index]

@@ -18,9 +18,9 @@ extension CompanionModel {
         return .init(source: source, provider: provider)
     }
     func knowledgeProvider() throws -> AIProvider {
-        var provider = settings.providers.first { $0.id == (settings.knowledgeProvider ?? settings.selectedProvider) }
+        var provider = settings.resolvedProvider(for: .knowledge)
         #if DEBUG
-        if simulatedKnowledge || simulatedCharacters {
+        if (simulatedKnowledge || simulatedCharacters) && !simulatedModelRoles {
             var mock = AIProvider(); mock.id = UUID(uuidString: "E8153D1B-25AC-45F3-AECB-47CD20F93C0C")!; mock.name = "本地模拟"
             mock.model = ProcessInfo.processInfo.arguments.contains("--characters-new-model") ? "本地模拟二" : "本地模拟"; provider = mock
         }
@@ -76,17 +76,13 @@ extension CompanionModel {
         try Task.checkCancellation()
         guard !library.maintenance, let storage = library.store,
               library.books.contains(where: { $0.id == plan.source.bookID && !$0.removed && $0.hasBody && ReadingScope(through: $0.readThrough).allows(chapter: plan.source.chapter, range: NSRange(location: 0, length: plan.source.text.utf16.count)) }) else { throw CancellationError() }
-        #if DEBUG
-        if !simulatedKnowledge && !settings.providers.contains(plan.provider) { throw MoReadError.invalid("整理服务商设置已变化，请重新生成。") }
-        #else
-        guard settings.providers.contains(plan.provider) else { throw MoReadError.invalid("整理服务商设置已变化，请重新生成。") }
-        #endif
+        guard try knowledgeProvider() == plan.provider else { throw MoReadError.invalid("整理模型已变化，请重新确认。") }
         library.flush(); try storage.validateKnowledgeSource(plan.source)
     }
     private func knowledgeReply(plan: KnowledgePlan, key: String, messages: [ChatMessage], tool: ChatTool, exchanges: [ChatToolExchange]) async throws -> ChatToolRound {
         #if DEBUG
         if simulatedKnowledge {
-            try await Task.sleep(nanoseconds: ProcessInfo.processInfo.arguments.contains("--knowledge-slow") ? 8_000_000_000 : 2_000_000_000)
+            try await Task.sleep(nanoseconds: ProcessInfo.processInfo.arguments.contains("--knowledge-slow") ? 60_000_000_000 : 2_000_000_000)
             if ProcessInfo.processInfo.arguments.contains("--knowledge-fail") { throw MoReadError.invalid("整理服务暂不可用。") }
             let quote = TextBoundary.prefix(plan.source.parts[0].text.trimmingCharacters(in: .whitespacesAndNewlines), end: 14)
             let raw = try JSONSerialization.data(withJSONObject: ["outline": "林遥推开书店的大门，开始了这一天的阅读。", "summary": [["text": "林遥走进书店。", "quote": quote]]])
