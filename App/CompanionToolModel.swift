@@ -169,6 +169,17 @@ extension CompanionModel {
         _ = try ChatRequest.make(provider: provider, key: key, messages: messages, tools: specs, exchanges: exchanges)
         try await Task.sleep(for: .milliseconds(200))
         let calls: [ChatToolCall]
+        if ProcessInfo.processInfo.arguments.contains("--simulate-presets") {
+            if exchanges.isEmpty { return try mockToolCalls([.init(id: "preset-catalog", name: "list_chapters", arguments: "{}")]) }
+            func names(_ role: String) -> String {
+                let content = role == "system" ? messages.first { $0.role == role }?.content : messages.last { $0.role == role }?.content
+                let values = (content ?? "").components(separatedBy: "\n").filter { $0.hasPrefix("【全局预设·") }.map { String($0.dropFirst("【全局预设·".count).dropLast()) }
+                return values.isEmpty ? "无" : values.joined(separator: "、")
+            }
+            let answer = "本地请求核对：系统=\(names("system"))；用户=\(names("user"))；工具续接=\(exchanges.count)"
+            append(answer, to: conversationID, messageID: responseID)
+            return ChatToolRound(text: answer, calls: [], replay: Data("{}".utf8))
+        }
         if ProcessInfo.processInfo.arguments.contains("--simulate-web") {
             if !specs.contains(where: { $0.name == "web_search" }) {
                 let answer = messages.last?.content.contains("again") == true ? "联网已关闭，这次也未请求网页。" : "联网已关闭，本轮未请求网页。"; append(answer, to: conversationID, messageID: responseID)

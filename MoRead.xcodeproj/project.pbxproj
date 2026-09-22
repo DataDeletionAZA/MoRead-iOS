@@ -31,6 +31,7 @@
 		51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2065DE60076241DE16C071 /* SpeechControls.swift */; };
 		52738148631EA877B77BD5FE /* CloudSpeechView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E54F24B111A9E8E571CD2D /* CloudSpeechView.swift */; };
 		5D70A84D46807CB252198B38 /* WebSearchSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */; };
+		673ADEA9197EEC5B7E307995 /* GlobalPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946AD37116378D50E6B49695 /* GlobalPromptView.swift */; };
 		6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */; };
 		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
 		75AD0A5C70524BD568EEF9F3 /* BookCoverEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08188C57F9403EDB541C9DC8 /* BookCoverEditor.swift */; };
@@ -103,6 +104,7 @@
 		84C880FD0E398C652F62F267 /* VectorMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorMemoryView.swift; sourceTree = "<group>"; };
 		86A54F6F92AE038D4FAE8616 /* ProactiveSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProactiveSettingsView.swift; sourceTree = "<group>"; };
 		87E493AC9E9897EB9D669FEF /* TextImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextImportView.swift; sourceTree = "<group>"; };
+		946AD37116378D50E6B49695 /* GlobalPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalPromptView.swift; sourceTree = "<group>"; };
 		9710D70B97A3A946E9FAED25 /* EPUBReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReader.swift; sourceTree = "<group>"; };
 		9B830F2AED127F80997D8521 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9CB4AB0E592A32B4110298DE /* NotoSerifSC.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = NotoSerifSC.ttf; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				B78640EA394FFDF481CA5C41 /* ConversationSummaryView.swift */,
 				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
 				10876F211B91CB27519F3138 /* FontLibraryView.swift */,
+				946AD37116378D50E6B49695 /* GlobalPromptView.swift */,
 				4F1C7E35F6BA22FAB8ED449F /* Info.plist */,
 				B12B808B9926C791C07C1201 /* KeychainStore.swift */,
 				1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */,
@@ -385,6 +388,7 @@
 				8F5AC1875E8422A2BF6DC7E6 /* ConversationSummaryView.swift in Sources */,
 				99C20F79F0C8718AE75035B9 /* EPUBReader.swift in Sources */,
 				3363F5D260EF8FD6F95EC143 /* FontLibraryView.swift in Sources */,
+				673ADEA9197EEC5B7E307995 /* GlobalPromptView.swift in Sources */,
 				7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */,
 				24BE19737D07CA5C65B7F2A0 /* LibraryOrganizationPreview.swift in Sources */,
 				EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */,

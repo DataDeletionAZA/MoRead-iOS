@@ -129,6 +129,8 @@ final class CompanionModel: ObservableObject {
               let root = library.store?.root else { error = "请先在设置中添加 AI 服务商并选择模型。"; return }
         do {
             try conversations[index].validateUserText(text)
+            let presets = settings.resolvedGlobalPrompts
+            try GlobalPromptPreset.validate(presets)
             let key: String
             #if DEBUG
             key = (simulatedIdentities || simulatedMemory || simulatedRerank || simulatedTools || simulatedHybrid) ? "local-test" : try KeychainStore.read(provider.id)
@@ -209,7 +211,8 @@ final class CompanionModel: ObservableObject {
                     let organization = LibraryOrganizationPlan.context(conversation: snapshot, shelf: library.organization)
                     let system = rules + snapshot.libraryContext(books: books) + recap + remembered + organization + "\n\n" + persona + "\n\n" + identity.prompt + "\n\n以下为本次可用原文：\n" + (context.text.isEmpty ? "暂无可用的已读原文。" : context.text)
                     let history = snapshot.messages.filter { $0.status == "complete" && ["user", "assistant"].contains($0.role) }.suffix(30).map(\.withIdentityLabel)
-                    try await self.streamReply(provider: provider, key: key, messages: [ChatMessage(role: "system", content: system)] + history, conversationID: id, responseID: responseID, library: library, books: books, card: card)
+                    let messages = try GlobalPromptInjector.inject([ChatMessage(role: "system", content: system)] + history, presets: presets)
+                    try await self.streamReply(provider: provider, key: key, messages: messages, conversationID: id, responseID: responseID, library: library, books: books, card: card)
                     try self.conversations.first(where: { $0.id == id })?.validateSources(books: library.books)
                     self.finish(id, messageID: responseID, status: "complete")
                     self.refreshSummary(id, library: library)

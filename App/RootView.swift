@@ -355,6 +355,7 @@ struct SettingsView: View {
                 Section("伴读") {
                     NavigationLink("我的身份") { UserMaskSettingsView() }
                     NavigationLink("AI 服务商") { AISettingsView() }
+                    NavigationLink("全局提示词预设") { GlobalPromptView() }
                     NavigationLink("向量记忆") { VectorMemoryView() }
                     NavigationLink("原文相关性排序") { RerankSettingsView() }
                     NavigationLink("联网搜索") { WebSearchSettingsView() }

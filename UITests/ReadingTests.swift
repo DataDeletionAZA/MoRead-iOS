@@ -7,6 +7,60 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(row.exists && row.isHittable); row.tap()
     }
+    func testGlobalPresetsEditToggleRequestCopiesRetryDeleteAndRelaunch() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        func launch(_ reset: Bool = false) { app.launchArguments = ["--ui-testing", "--simulate-tools", "--simulate-presets"] + (reset ? ["--reset-test-library"] : []); app.launch() }
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<6 { if element.exists && element.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(element.exists && element.isHittable)
+        }
+        func tap(_ id: String) { let button = app.buttons[id]; reveal(button); button.tap() }
+        func toggle(_ name: String) { let control = app.switches["preset-toggle-" + name]; reveal(control); control.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
+        func settings() {
+            app.tabBars.buttons["设置"].tap()
+            if !app.navigationBars["全局提示词预设"].exists { tap("全局提示词预设") }
+            app.swipeDown(); app.swipeDown()
+        }
+        func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
+        func send(_ text: String) { let input = app.descendants(matching: .any).matching(identifier: "chat-input").firstMatch; input.tap(); input.typeText(text); app.buttons["发送"].tap() }
+        func reply(_ system: String, _ user: String) -> XCUIElement { app.staticTexts["本地请求核对：系统=\(system)；用户=\(user)；工具续接=1"] }
+        launch(true); settings()
+        XCTAssertEqual(app.switches["preset-toggle-自然表达"].value as? String, "0")
+        tap("preset-edit-自然表达"); app.buttons["preset-position"].tap(); app.buttons["系统提示词之前"].tap(); app.buttons["保存"].tap()
+        toggle("自然表达"); toggle("沉浸式角色扮演"); toggle("简洁回答")
+        tap("添加自定义预设")
+        XCTAssertFalse(app.buttons["保存"].isEnabled)
+        app.textFields["preset-name"].tap(); app.textFields["preset-name"].typeText("Discarded")
+        app.buttons["取消"].tap(); XCTAssertFalse(app.buttons["preset-edit-Discarded"].exists)
+        tap("添加自定义预设")
+        app.textFields["preset-name"].tap(); app.textFields["preset-name"].typeText("Ending")
+        app.buttons["preset-position"].tap(); app.buttons["最近一条用户消息之后"].tap()
+        app.textViews["preset-content"].tap(); app.textViews["preset-content"].typeText("End with a question.")
+        app.buttons["保存"].tap()
+        let ending = app.switches["preset-toggle-Ending"]; reveal(ending); XCTAssertEqual(ending.value as? String, "1")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Global-prompt-presets"; shot.lifetime = .keepAlways; add(shot)
+        openChat(); send("Keep my words.")
+        XCTAssertTrue(reply("自然表达、沉浸式角色扮演", "简洁回答、Ending").waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Keep my words."].exists)
+        app.buttons["返回"].tap(); settings(); toggle("简洁回答")
+        let edit = app.buttons["preset-edit-Ending"]; reveal(edit); edit.swipeLeft()
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["删除", "Delete"])).firstMatch.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: edit)], timeout: 5), .completed)
+        openChat(); app.buttons["重新生成"].tap()
+        XCTAssertTrue(reply("自然表达、沉浸式角色扮演", "无").waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Keep my words."].exists)
+        app.terminate(); launch(); settings()
+        XCTAssertEqual(app.switches["preset-toggle-自然表达"].value as? String, "1")
+        XCTAssertEqual(app.switches["preset-toggle-沉浸式角色扮演"].value as? String, "1")
+        tap("preset-edit-自然表达"); XCTAssertTrue(app.buttons["preset-position"].label.contains("系统提示词之前")); app.buttons["取消"].tap()
+        toggle("自然表达"); toggle("沉浸式角色扮演")
+        reveal(app.switches["preset-toggle-简洁回答"]); XCTAssertEqual(app.switches["preset-toggle-简洁回答"].value as? String, "0")
+        XCTAssertFalse(app.buttons["preset-edit-Ending"].exists)
+        openChat(); XCTAssertTrue(app.staticTexts["Keep my words."].waitForExistence(timeout: 5)); send("Next words.")
+        XCTAssertTrue(reply("无", "无").waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Next words."].exists)
+    }
     func testBookCharactersScopePreviewResumeSearchCacheAndStop() {
         executionTimeAllowance = 300
         let app = XCUIApplication()

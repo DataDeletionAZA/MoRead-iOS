@@ -1,6 +1,7 @@
 import Foundation
 
 public struct CompanionSettings: Codable {
+    public var globalPrompts: [GlobalPromptPreset]?
     public var knowledgeProvider: UUID?
     public var toolsEnabled: Bool?
     public var webSearch: WebSearchSettings?
@@ -71,9 +72,14 @@ public final class CompanionStore {
     }
     public func settings() throws -> CompanionSettings {
         let url = root.appendingPathComponent("settings.json")
-        return manager.fileExists(atPath: url.path) ? try decoder.decode(CompanionSettings.self, from: Data(contentsOf: url)) : CompanionSettings()
+        let value = manager.fileExists(atPath: url.path) ? try decoder.decode(CompanionSettings.self, from: Data(contentsOf: url)) : CompanionSettings()
+        try GlobalPromptPreset.validate(value.resolvedGlobalPrompts)
+        return value
     }
-    public func save(_ settings: CompanionSettings) throws { try encoder.encode(settings).write(to: root.appendingPathComponent("settings.json"), options: .atomic) }
+    public func save(_ settings: CompanionSettings) throws {
+        try GlobalPromptPreset.validate(settings.resolvedGlobalPrompts)
+        try encoder.encode(settings).write(to: root.appendingPathComponent("settings.json"), options: .atomic)
+    }
     public func characters() throws -> [CharacterCard] {
         try manager.contentsOfDirectory(at: root.appendingPathComponent("characters"), includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" }.map { try decoder.decode(CharacterCard.self, from: Data(contentsOf: $0)) }.sorted { $0.name < $1.name }
