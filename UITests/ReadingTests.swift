@@ -1269,7 +1269,9 @@ final class ReadingTests: XCTestCase {
         word(UInt16(1)); word(UInt16(1)); word(UInt32(8000)); word(UInt32(16000)); word(UInt16(2)); word(UInt16(16))
         wave.append(Data("data".utf8)); word(UInt32(samples * 2))
         for index in 0..<samples { word(Int16(sin(Double(index) * 2 * .pi * 220 / 8000) * 100)) }
+        for service in ["openAI", "gemini"] {
         let app = XCUIApplication()
+        app.launchEnvironment["MOREAD_TEST_SPEECH_SERVICE"] = service
         app.launchArguments = ["--ui-testing", "--reset-test-library"]
         app.launchEnvironment["MOREAD_TEST_SPEECH_AUDIO"] = wave.base64EncodedString()
         app.launch()
@@ -1294,7 +1296,34 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["speech-stop-reason"].waitForExistence(timeout: 40))
         XCTAssertEqual(app.staticTexts["speech-stop-reason"].label, "定时结束")
         XCTAssertFalse(app.alerts["需要处理"].exists)
-        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = service + "-cached-speech"; attachment.lifetime = .keepAlways; add(attachment)
+        app.terminate()
+        }
+    }
+    func testGeminiSpeechSettingsAndVoicePersist() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
+        let enabled = app.switches["cloud-speech-enabled"]
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10)); enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["cloud-speech-service"].tap(); app.buttons["Gemini TTS"].tap()
+        XCTAssertEqual(app.textFields["cloud-speech-model"].value as? String, "gemini-3.8-flash-tts")
+        let presets = app.buttons["gemini-voice-presets"]; revealListElement(presets, in: app); presets.tap()
+        let kore = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Kore")).firstMatch
+        XCTAssertTrue(kore.waitForExistence(timeout: 5)); kore.tap()
+        let voice = app.textFields["cloud-speech-voice"]; revealListElement(voice, in: app)
+        XCTAssertEqual(voice.value as? String, "Kore")
+        let key = app.secureTextFields["cloud-speech-key"]; revealListElement(key, in: app); key.tap(); key.typeText("gemini-local-test-key")
+        app.buttons["完成"].tap()
+        let save = app.buttons["save-cloud-speech"]; revealListElement(save, in: app); save.tap()
+        XCTAssertTrue(app.staticTexts["cloud-speech-saved"].waitForExistence(timeout: 5))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
+        XCTAssertTrue(app.buttons["cloud-speech-service"].label.contains("Gemini TTS"))
+        XCTAssertEqual(enabled.value as? String, "1")
+        revealListElement(voice, in: app); XCTAssertEqual(voice.value as? String, "Kore")
+        revealListElement(key, in: app); XCTAssertEqual((key.value as? String)?.count, "gemini-local-test-key".count)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Gemini-voice-settings"; shot.lifetime = .keepAlways; add(shot)
     }
     func testCloudSpeechSettingsPersist() {
         let app = XCUIApplication()

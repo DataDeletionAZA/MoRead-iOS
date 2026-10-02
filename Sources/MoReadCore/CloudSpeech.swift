@@ -2,8 +2,8 @@ import Foundation
 import CryptoKit
 
 public enum SpeechService: String, Codable, CaseIterable, Sendable {
-    case openAI, miniMax, gmi
-    public var label: String { switch self { case .openAI: return "OpenAI 兼容"; case .miniMax: return "MiniMax"; case .gmi: return "GMI Cloud" } }
+    case openAI, miniMax, gmi, gemini
+    public var label: String { switch self { case .openAI: return "OpenAI 兼容"; case .miniMax: return "MiniMax"; case .gmi: return "GMI Cloud"; case .gemini: return "Gemini TTS" } }
 }
 
 public struct CloudSpeechSettings: Codable, Equatable, Sendable {
@@ -28,6 +28,7 @@ public struct CloudSpeechSettings: Codable, Equatable, Sendable {
         case .openAI: baseURL = "https://api.openai.com/v1"; model = "gpt-4o-mini-tts"; voice = "alloy"
         case .miniMax: baseURL = "https://api.minimax.io/v1"; model = "speech-2.8-hd"; voice = "English_expressive_narrator"
         case .gmi: baseURL = "https://console.gmicloud.ai"; model = "minimax-tts-speech-2.8-hd"; voice = "English_expressive_narrator"
+        case .gemini: baseURL = "https://generativelanguage.googleapis.com/v1beta"; model = "gemini-3.8-flash-tts"; voice = "Sulafat"
         }
     }
     public func validated() -> Self {
@@ -66,6 +67,17 @@ public enum CloudSpeechClient {
             body = ["model": s.model, "text": text, "stream": false, "output_format": "hex", "voice_setting": voice,
                     "audio_setting": ["format": "mp3", "sample_rate": 32000, "bitrate": 128000, "channel": 1]]
             if !s.groupID.isEmpty { url.queryItems = [URLQueryItem(name: "GroupId", value: s.groupID)] }
+        case .gemini:
+            endpoint = "interactions"
+            guard s.model != "models/" else { throw MoReadError.invalid("请填写 Gemini 语音模型名称。") }
+            body = GeminiSpeech.body(settings: s, text: text)
+            var path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if path == "interactions" { path = "" }
+            if path.hasSuffix("/interactions") { path.removeLast("/interactions".count) }
+            if path == "v1" || path == "v1beta" { path = "" }
+            else if path.hasSuffix("/v1") { path.removeLast(3) }
+            else if path.hasSuffix("/v1beta") { path.removeLast(7) }
+            url.path = "/" + (path.isEmpty ? "v1beta" : path + "/v1beta")
         case .gmi:
             endpoint = "api/v1/ie/requestqueue/apikey/requests"
             var payload: [String: Any] = ["text": text, "voice_id": s.voice, "speed": String(s.speed), "vol": String(s.volume), "pitch": String(s.pitch), "format": "mp3", "language_boost": "auto", "audio_sample_rate": "32000", "bitrate": "128000", "channel": "2"]
@@ -82,7 +94,8 @@ public enum CloudSpeechClient {
         var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"; request.timeoutInterval = 120
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
-        request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
+        if s.service == .gemini { request.setValue(key, forHTTPHeaderField: "x-goog-api-key") }
+        else { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return request
     }
@@ -168,10 +181,12 @@ public enum CloudSpeechClient {
             }
             return data
         }
-        var data = try await fetch(original, limit: settings.service == .openAI ? maximumAudioBytes : maximumAudioBytes * 2 + 65536)
+        let limit = settings.service == .openAI ? maximumAudioBytes : settings.service == .gemini ? maximumAudioBytes * 4 / 3 + 65536 : maximumAudioBytes * 2 + 65536
+        var data = try await fetch(original, limit: limit)
         switch settings.service {
         case .openAI: return try validateAudio(data)
         case .miniMax: return try decodeMiniMax(data)
+        case .gemini: return try GeminiSpeech.decode(data)
         case .gmi:
             var requestID: String?
             for attempt in 0..<80 {

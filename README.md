@@ -17,7 +17,7 @@
 - 沉浸阅读隐藏状态栏与工具栏，轻点正文中间恢复；EPUB 支持左右翻页、上下滚动。
 - 自选应用主题色、阅读背景与正文颜色；照片背景支持浓度调整，图片随完整备份保存。
 - 系统连续听书、当前文字高亮、锁屏播放控制，声音搜索与试听，保存语速和音调。
-- OpenAI 兼容、MiniMax 和 GMI 云端听书，连续播放、按声音参数复用本机音频及缓存空间管理。
+- OpenAI 兼容、MiniMax、GMI 和 Gemini 云端听书，连续播放、按声音参数复用本机音频及缓存空间管理。
 - 按播放分钟数或自然读完章节数的睡眠定时，暂停时暂停计时，支持章节切换和章内定位。
 - 自填服务商地址、模型与密钥，支持 OpenAI 兼容、Responses、Claude、Gemini 四种聊天接口。
 - 模型分工：集中选择主对话、批量整理及各项任务模型，显示实际使用的模型，独立选择优先；可进入向量、重排与听书配置。
@@ -81,6 +81,10 @@
 自选字体从「设置 → 字体库」或阅读页的「排版 → 字体与段落 → 管理与导入字体」导入，单个文件上限 64 MB，也可以从其他应用分享打开。导入后设为正文字体；EPUB 关闭“保留原书排版”后应用。删除正在使用的字体会恢复内置字体。
 
 云端声音在「设置 → 云端声音与缓存」中配置。开启后，朗读片段会发送给所选语音服务商，并按其规则计费；已生成音频保存在本机，纳入完整备份。缓存达到设置上限时，先清理最久没有播放的音频。
+
+Gemini TTS 可选择 30 个预设音色，或手动填写自定义声音 ID；默认模型为 `gemini-3.8-flash-tts`，支持自填 HTTPS 服务地址与模型。朗读要求、情绪、语速、音量和音调作为声音表现指令发送，与正文分开；实际效果由模型决定。请求关闭服务端交互存储，音频接受 WAV 或单声道 16 位 PCM，并复用连续听书、缓存和睡眠定时。接口格式参考 [Gemini 语音生成](https://ai.google.dev/gemini-api/docs/speech-generation)。
+
+Gemini 核心检查覆盖请求地址、密钥传递、正文与声音指令分离、音频解码、错误响应拒绝和缓存。模拟器使用本地音频检查连续播放、暂停、跳章与章节定时，并检查音色选择、保存和重启恢复；真实服务商合成及真机播放仍需验收。
 
 <p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/paged-reading.png" alt="TXT 分页阅读" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"> <img src="docs/screenshots/import-preview.png" alt="TXT 导入预览" width="260"> <img src="docs/screenshots/listening.png" alt="听书与睡眠定时" width="260"></p>
 

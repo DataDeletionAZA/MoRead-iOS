@@ -29,6 +29,12 @@ struct CloudSpeechView: View {
                     field("Group ID（可选）", text: $settings.groupID, id: "cloud-speech-group")
                 }
                 field("语音模型", text: $settings.model, id: "cloud-speech-model")
+                if settings.service == .gemini {
+                    Picker("Gemini 预设音色", selection: $settings.voice) {
+                        if !GeminiSpeech.voices.contains(where: { $0.id == settings.voice }) { Text("自定义：" + settings.voice).tag(settings.voice) }
+                        ForEach(GeminiSpeech.voices, id: \.id) { Text($0.id + " · " + $0.style).tag($0.id) }
+                    }.pickerStyle(.navigationLink).accessibilityIdentifier("gemini-voice-presets")
+                }
                 field("声音 ID", text: $settings.voice, id: "cloud-speech-voice")
                 SecureField("API 密钥", text: Binding(get: { key }, set: { key = $0; keyLoaded = true })).textInputAutocapitalization(.never).autocorrectionDisabled().focused($focusedField, equals: "cloud-speech-key").accessibilityIdentifier("cloud-speech-key").disabled(loadingKey)
                 Text("声音 ID 请填写服务商提供的名称。密钥保存在这台设备的系统钥匙串中。").font(.caption).foregroundStyle(.secondary)
@@ -39,7 +45,12 @@ struct CloudSpeechView: View {
                 if settings.service == .openAI {
                     TextField("朗读要求（可选）", text: $settings.instructions, axis: .vertical).lineLimit(2...5).focused($focusedField, equals: "instructions")
                     Text("tts-1 和 tts-1-hd 只使用声音与语速；其他支持朗读要求的模型还会收到上面的描述。").font(.caption).foregroundStyle(.secondary)
-                } else {
+                }
+                if settings.service != .openAI {
+                    if settings.service == .gemini {
+                        TextField("朗读要求（可选）", text: $settings.instructions, axis: .vertical).lineLimit(2...5).focused($focusedField, equals: "instructions")
+                        Text("语速、音量、音调和情绪作为声音表现要求发送，由模型决定实际效果。也可填写服务商提供的自定义声音 ID。").font(.caption).foregroundStyle(.secondary)
+                    }
                     LabeledContent("音量", value: settings.volume.formatted(.number.precision(.fractionLength(1))))
                     Slider(value: $settings.volume, in: 0...10, step: 0.1).accessibilityLabel("云端音量")
                     Stepper("音调 \(settings.pitch)", value: $settings.pitch, in: -12...12)
@@ -68,6 +79,7 @@ struct CloudSpeechView: View {
             .disabled(library.maintenance || clearing)
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focusedField = nil } } }
             .task {
+                guard loadingKey else { return }
                 settings = speech.cloudSettings; loadingKey = true; keyLoaded = false
                 do { key = try await KeychainStore.readAsync(settings.id); keyLoaded = true }
                 catch is CancellationError { return } catch { library.error = error.localizedDescription }

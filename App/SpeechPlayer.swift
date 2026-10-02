@@ -48,7 +48,9 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
             UserDefaults.standard.removeObject(forKey: "speech.cloud")
             if ProcessInfo.processInfo.environment["MOREAD_TEST_SPEECH_AUDIO"] != nil {
-                var settings = CloudSpeechSettings(); settings.enabled = true; settings.baseURL = "https://example.invalid/v1"
+                var settings = CloudSpeechSettings()
+                settings.preset(SpeechService(rawValue: ProcessInfo.processInfo.environment["MOREAD_TEST_SPEECH_SERVICE"] ?? "") ?? .openAI)
+                settings.enabled = true; settings.baseURL = "https://example.invalid/v1"
                 UserDefaults.standard.set(try? JSONEncoder().encode(settings), forKey: "speech.cloud")
             }
         }
