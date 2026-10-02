@@ -15,6 +15,9 @@ struct ReaderView: View {
     @AppStorage("reader.pageMode") private var pageMode = "scroll"
     @AppStorage("reader.typography") private var typographyData = Data()
     private var typography: ReaderTypography { ReaderTypography(data: typographyData) }
+    @AppStorage("reader.autoRead") private var autoReadData = Data()
+    @StateObject private var autoRead = AutoReadSession()
+    @State private var pendingAutoRead: AutoReadSettings?
     @State private var immersive = false
     @State private var chapter: Chapter?
     @State private var translatedText = TranslatedText(source: "")
@@ -44,7 +47,7 @@ struct ReaderView: View {
     }
     private var paperColor: Color { (paper == "custom" || paper == "image") ? Color(rgb: typography.backgroundRGB ?? 0xF7F2E3) : paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
-    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech; var id: String { rawValue } }
+    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead; var id: String { rawValue } }
 
     var body: some View {
         Group {
@@ -53,10 +56,10 @@ struct ReaderView: View {
             } else if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                        EPUBReader(autoRead: autoRead, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage in selectionIsTranslation = false; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
+                        }, onSelection: { passage in selectionIsTranslation = false; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
@@ -83,6 +86,7 @@ struct ReaderView: View {
                     .statusBarHidden(immersive)
                     .persistentSystemOverlays(immersive ? .hidden : .automatic)
                     .toolbar {
+                        ToolbarItem(placement: .primaryAction) { Button("自动阅读", systemImage: "play.rectangle") { sheet = .autoRead }.accessibilityIdentifier("auto-read-open") }
                         ToolbarItem(placement: .primaryAction) { Button("伴读", systemImage: "bubble.left.and.bubble.right") { openChat() } }
                         ToolbarItem(placement: .primaryAction) { Button("听书", systemImage: "headphones") { sheet = .speech } }
                         ToolbarItemGroup(placement: .bottomBar) {
@@ -112,7 +116,7 @@ struct ReaderView: View {
                         refreshReadingTime()
                         companion.setAnnotationReader(bookID, library: model)
                     }
-                    .sheet(item: $sheet) { kind in readerSheet(kind, book: book) }
+                    .sheet(item: $sheet, onDismiss: startPendingAutoRead) { kind in readerSheet(kind, book: book) }
                     .sheet(item: $chat) { target in NavigationStack { CompanionChat(conversationID: target.id, selection: chatSelection) } }
                     .sheet(item: $selection) { passage in
                         NavigationStack {
@@ -145,19 +149,64 @@ struct ReaderView: View {
         .onChange(of: model.recordsRevision) { _, _ in
             if let book { model.perform { if let value = try model.store?.records(for: book) { records = value }; refreshTranslations() } }
         }
-        .onDisappear { companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
+        .overlay { autoReadOverlay }
+        .onDisappear { autoRead.stop(); companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { refreshReadingTime(); companion.setAnnotationReader(bookID, library: model) } else { companion.setAnnotationReader(nil, library: model); recordTime(); model.flush() }
+            if phase == .active { refreshReadingTime(); companion.setAnnotationReader(bookID, library: model) } else { autoRead.pause("离开阅读页后已暂停"); companion.setAnnotationReader(nil, library: model); recordTime(); model.flush() }
         }
         .onChange(of: sheet) { _, value in
+            if value != nil { autoRead.pause("操作面板打开，已暂停") }
             refreshReadingTime()
             if value == .contents, book?.format == "epub" { NotificationCenter.default.post(name: .epubCapturePage, object: bookID) }
         }
-        .onChange(of: selection) { _, _ in refreshReadingTime() }
-        .onChange(of: chat?.id) { _, _ in refreshReadingTime() }
+        .onChange(of: selection) { _, value in if value != nil { autoRead.pause("操作面板打开，已暂停") }; refreshReadingTime() }
+        .onChange(of: chat?.id) { _, value in if value != nil { autoRead.pause("操作面板打开，已暂停") }; refreshReadingTime() }
+        .onChange(of: speech.isPlaying || speech.isPreparing) { _, active in if active { autoRead.pause("听书或语音播放期间暂停") } }
+        .onChange(of: typographyData) { _, _ in autoRead.pause("排版改变，已暂停") }
+        .onChange(of: fontSize) { _, _ in autoRead.pause("排版改变，已暂停") }
+        .onChange(of: lineSpacing) { _, _ in autoRead.pause("排版改变，已暂停") }
+        .onChange(of: pageMode) { _, _ in autoRead.pause("排版改变，已暂停") }
         .onChange(of: speech.location) { _, location in
             guard let location, location.bookID == bookID, book?.format == "txt", chapter?.id != location.chapter else { return }
             loadChapter(location.chapter, offset: location.range.location)
+        }
+    }
+
+    private func startPendingAutoRead() {
+        guard let settings = pendingAutoRead else { return }
+        pendingAutoRead = nil
+        guard scenePhase == .active, selection == nil, chat == nil, !speech.isPlaying, !speech.isPreparing else { return }
+        autoRead.start(settings)
+    }
+    @ViewBuilder private var autoReadOverlay: some View {
+        if autoRead.phase != .off {
+            GeometryReader { geometry in
+                if autoRead.settings.mode == .scroll, autoRead.settings.showGuide {
+                    Rectangle().fill(Color.accentColor.opacity(0.5)).frame(height: 1)
+                        .padding(.horizontal, 20).position(x: geometry.size.width / 2, y: geometry.size.height * 0.36)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+                VStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Text(autoRead.label).font(.caption).accessibilityIdentifier("auto-read-status")
+                        HStack(spacing: 20) {
+                        Button(autoRead.engaged ? "暂停" : "继续") {
+                            if autoRead.engaged { autoRead.pause() }
+                            else if !speech.isPlaying, !speech.isPreparing, scenePhase == .active {
+                                var settings = autoRead.settings
+                                let scrolling = book?.format == "epub" ? (typography.epubScroll ?? false) : pageMode == "scroll"
+                                settings.mode = scrolling ? .scroll : .page
+                                autoReadData = settings.encoded(); autoRead.start(settings)
+                            }
+                        }.disabled(!autoRead.engaged && (speech.isPlaying || speech.isPreparing)).accessibilityIdentifier("auto-read-toggle")
+                        Button("设置") { sheet = .autoRead }.accessibilityIdentifier("auto-read-settings")
+                        Button("退出") { autoRead.stop() }.accessibilityIdentifier("auto-read-stop")
+                        }
+                    }.font(.subheadline).padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .padding(.horizontal, 12).padding(.bottom, immersive ? 12 : (book?.format == "txt" ? 112 : 20))
+                }.frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -165,6 +214,18 @@ struct ReaderView: View {
         NavigationStack {
             Group {
                 switch kind {
+                case .autoRead:
+                    AutoReadSettingsView(settings: AutoReadSettings(data: autoReadData), speechActive: speech.isPlaying || speech.isPreparing) { settings in
+                        autoReadData = settings.encoded()
+                        if book.format == "epub" {
+                            var value = typography; value.epubScroll = settings.mode == .scroll; typographyData = value.encoded()
+                        } else {
+                            requestedOffset = self.book?.position.offset ?? 0; navigationID = UUID()
+                            if settings.mode == .scroll { pageMode = "scroll" }
+                            else if pageMode == "scroll" { pageMode = "slide" }
+                        }
+                        pendingAutoRead = settings; sheet = nil
+                    }
                 case .speech:
                     SpeechControls(book: book)
                 case .contents:
@@ -271,7 +332,10 @@ struct ReaderView: View {
         }
     }
     private func textContent(book: Book, chapter: Chapter) -> TextReader {
-        TextReader(presentation: translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
+        TextReader(autoRead: autoRead, onAutoNext: {
+            guard chapter.id + 1 < book.chapters.count else { return false }
+            loadChapter(chapter.id + 1, automatic: true); return true
+        }, presentation: translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, onToggleControls: { immersive.toggle() },
@@ -290,7 +354,8 @@ struct ReaderView: View {
             selection = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range))
         })
     }
-    private func loadChapter(_ index: Int, offset: Int = 0) {
+    private func loadChapter(_ index: Int, offset: Int = 0, automatic: Bool = false) {
+        if !automatic { autoRead.pause("阅读位置改变，已暂停") }
         guard let book, book.chapters.indices.contains(index) else { return }
         model.perform {
             chapter = try model.store?.chapter(index, in: book)
@@ -392,6 +457,8 @@ struct ReaderView: View {
 }
 
 struct TextReader: UIViewRepresentable {
+    let autoRead: AutoReadSession
+    let onAutoNext: () -> Bool
     let presentation: TranslatedText
     var text: String { presentation.text }
     var speechDisplayRanges: [NSRange] { speechRange.map { presentation.displayRanges(forSource: $0) } ?? [] }
@@ -414,7 +481,7 @@ struct TextReader: UIViewRepresentable {
     let onSelection: (NSRange) -> Void
     let onTranslation: (NSRange) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    static func dismantleUIView(_ view: UITextView, coordinator: Coordinator) { coordinator.active = false; view.delegate = nil }
+    static func dismantleUIView(_ view: UITextView, coordinator: Coordinator) { coordinator.active = false; coordinator.parent.autoRead.detach(coordinator.autoReadOwner); view.delegate = nil }
     func makeUIView(context: Context) -> UITextView {
         let storage = NSTextStorage()
         let manager = AnnotationLayoutManager()
@@ -425,6 +492,12 @@ struct TextReader: UIViewRepresentable {
         view.isEditable = false; view.isSelectable = true
         view.textContainerInset = typography.insets
         view.delegate = context.coordinator
+        view.addGestureRecognizer(AutoReadTouch(autoRead))
+        let coordinator = context.coordinator
+        autoRead.attach(coordinator.autoReadOwner) { [weak coordinator, weak view] distance in
+            guard let coordinator, let view else { return .waiting }
+            return coordinator.advance(view, distance: distance)
+        }
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.toggleControls(_:)))
         tap.cancelsTouchesInView = false; tap.delegate = context.coordinator; view.addGestureRecognizer(tap)
         view.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "显示或收起阅读工具", actionHandler: { _ in context.coordinator.parent.onToggleControls(); return true })]
@@ -439,6 +512,7 @@ struct TextReader: UIViewRepresentable {
         let needsLayout = view.text != text || previous.presentation != presentation || previous.font != font || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.ink != ink || previous.annotations != annotations
         coordinator.parent = self
         (view as? ReaderTextView)?.setPaper(paper, image: backgroundImage, opacity: typography.backgroundOpacity ?? 0.25)
+        if needsLayout, !navigationChanged { autoRead.pause("排版改变，已暂停") }
         if needsLayout {
             view.textContainerInset = typography.insets
             let value = attributedText
@@ -495,11 +569,30 @@ struct TextReader: UIViewRepresentable {
     }
     final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var parent: TextReader
+        let autoReadOwner = UUID()
+        var waitingNavigation: UUID?
+        var autoReadSize = CGSize.zero
         var active = true
         var navigationID: UUID?
         var lastPosition = 0
         var baseText = NSAttributedString(string: "")
         init(_ parent: TextReader) { self.parent = parent }
+        func advance(_ view: UITextView, distance: Double) -> AutoReadSession.Result {
+            defer { autoReadSize = view.bounds.size }
+            if parent.autoRead.phase == .running, autoReadSize != .zero, autoReadSize != view.bounds.size {
+                parent.autoRead.pause("排版改变，已暂停"); return .waiting
+            }
+            guard active, parent.isReading, navigationID == parent.navigationID, waitingNavigation != parent.navigationID,
+                  view.bounds.height > 0, !view.text.isEmpty else { return .waiting }
+            guard distance > 0 else { return .ready }
+            let bottom = max(-view.adjustedContentInset.top, view.contentSize.height - view.bounds.height + view.adjustedContentInset.bottom)
+            if view.contentOffset.y >= bottom - 0.5 {
+                guard parent.onAutoNext() else { return .end }
+                waitingNavigation = parent.navigationID; return .waiting
+            }
+            view.setContentOffset(CGPoint(x: view.contentOffset.x, y: min(bottom, view.contentOffset.y + distance)), animated: false)
+            report(view); return .ready
+        }
         func scrollViewDidScroll(_ scrollView: UIScrollView) { if let view = scrollView as? UITextView { report(view) } }
         func report(_ view: UITextView) {
             guard active, parent.isReading, view.bounds.height > 0, !view.text.isEmpty else { return }

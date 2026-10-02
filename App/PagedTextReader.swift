@@ -43,6 +43,8 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     private var laidOutSize = CGSize.zero
     private var generation = UUID()
     private var pagination: Task<Void, Never>?
+    private let autoReadOwner = UUID()
+    private var waitingNavigation: UUID?
     private var active = true
     private var transitioning = false
     private var needsPagination = true
@@ -51,10 +53,19 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
 
     init(_ parent: PagedTextReader) { parentReader = parent; anchor = parent.content.presentation.displayOffset(forSource: parent.content.offset); super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    func deactivate() { active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
+    func deactivate() { parentReader.content.autoRead.detach(autoReadOwner); active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
     func cancel() { generation = UUID(); pagination?.cancel(); pagination = nil }
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.addGestureRecognizer(AutoReadTouch(parentReader.content.autoRead))
+        parentReader.content.autoRead.attach(autoReadOwner) { [weak self] amount in
+            guard let self, active, parentReader.content.isReading, !needsPagination, pagination == nil, !transitioning,
+                  waitingNavigation != parentReader.content.navigationID, ranges.indices.contains(pageIndex) else { return .waiting }
+            guard amount > 0 else { return .ready }
+            if pageIndex + 1 < ranges.count { display(pageIndex + 1, animated: parentReader.mode != .none); return .moved }
+            guard parentReader.content.onAutoNext() else { return .end }
+            waitingNavigation = parentReader.content.navigationID; return .waiting
+        }
         view.backgroundColor = parentReader.content.paper
         pageHost.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(pageHost)
@@ -93,6 +104,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         pager?.view.frame = pageHost.bounds
         if !transitioning { visible?.view.frame = pageHost.bounds }
         guard pageHost.bounds.width > 100, pageHost.bounds.height > 100 else { return }
+        if laidOutSize != .zero, laidOutSize != pageHost.bounds.size { parentReader.content.autoRead.pause("排版改变，已暂停") }
         if laidOutSize != pageHost.bounds.size || needsPagination { repaginate() }
     }
     func update(_ parent: PagedTextReader) {
@@ -228,7 +240,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     }
     @objc private func back() { turn(-1) }
     @objc private func forward() { turn(1) }
-    private func turn(_ direction: Int) { display(pageIndex + direction, animated: parentReader.mode != .none) }
+    private func turn(_ direction: Int) { parentReader.content.autoRead.pause("阅读位置改变，已暂停"); display(pageIndex + direction, animated: parentReader.mode != .none) }
     func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? { (viewController as? TextPageController).flatMap { page($0.index - 1) } }
     func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? { (viewController as? TextPageController).flatMap { page($0.index + 1) } }
     func pageViewController(_ pageViewController: UIPageViewController, willTransitionTo pendingViewControllers: [UIViewController]) { transitioning = true }

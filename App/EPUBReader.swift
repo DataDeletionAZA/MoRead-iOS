@@ -93,6 +93,7 @@ final class EPUBService {
 }
 
 struct EPUBReader: UIViewControllerRepresentable {
+    let autoRead: AutoReadSession
     let book: Book
     let initialPassage: SourcePassage?
     let fontSize: Double
@@ -108,7 +109,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage)
+        EPUBHostController(autoRead: autoRead, book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
@@ -120,6 +121,9 @@ struct EPUBReader: UIViewControllerRepresentable {
 
 @MainActor
 final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
+    private let autoRead: AutoReadSession
+    private let autoReadOwner = UUID()
+    private var closed = false
     private let bookID: UUID
     private let initialPassage: SourcePassage?
     private let model: LibraryModel
@@ -140,7 +144,8 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
 
-    init(book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
+    init(autoRead: AutoReadSession, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
+        self.autoRead = autoRead
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage
         self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage
@@ -149,6 +154,11 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.addGestureRecognizer(AutoReadTouch(autoRead))
+        autoRead.attach(autoReadOwner) { [weak self] amount in
+            guard let self else { return .waiting }
+            return await advanceAutomatically(amount)
+        }
         let spinner = UIActivityIndicatorView(style: .large)
         spinner.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(spinner)
         NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
@@ -264,9 +274,48 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             Task { if let locator = try? Locator(jsonString: anchor.locator) { _ = await navigator?.go(to: locator) } }
         }
     }
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        autoRead.pause("排版改变，已暂停")
+        super.viewWillTransition(to: size, with: coordinator)
+    }
     func close() {
+        closed = true; autoRead.detach(autoReadOwner)
         openTask?.cancel(); locationTask?.cancel(); selectionTask?.cancel()
         NotificationCenter.default.removeObserver(self)
+    }
+    private func advanceAutomatically(_ amount: Double) async -> AutoReadSession.Result {
+        guard !closed, !Task.isCancelled, let navigator, let location = navigator.currentLocation else { return .waiting }
+        let scrolling = navigator.settings.scroll
+        guard autoRead.settings.mode != .scroll || scrolling else { return .waiting }
+        // Readium reloads resources asynchronously when the scroll preference changes.
+        let probe = await navigator.evaluateJavaScript("document.readyState === 'complete' && !!document.scrollingElement && window.innerHeight > 0 && (document.documentElement.style.getPropertyValue('--USER__view').trim() === 'readium-scroll-on') === \(scrolling)")
+        guard !closed, !Task.isCancelled, (try? probe.get()) as? Bool == true else { return .waiting }
+        guard amount > 0 else { return .ready }
+        if autoRead.settings.mode == .scroll {
+            let script = """
+            (() => {
+                const e = document.scrollingElement;
+                const vertical = getComputedStyle(document.documentElement).writingMode.startsWith('vertical');
+                const limit = Math.max(0, vertical ? e.scrollWidth - innerWidth : e.scrollHeight - innerHeight);
+                const position = vertical ? Math.abs(e.scrollLeft) : e.scrollTop;
+                if (position >= limit - 0.5) return false;
+                if (vertical) e.scrollLeft = -Math.min(limit, position + \(amount));
+                else e.scrollTop = Math.min(limit, position + \(amount));
+                return true;
+            })()
+            """
+            let result = await navigator.evaluateJavaScript(script)
+            guard !closed, !Task.isCancelled else { return .waiting }
+            guard let moved = (try? result.get()) as? Bool else { return .waiting }
+            if moved { return .ready }
+            let links = navigator.publication.readingOrder
+            guard let index = links.firstIndex(where: { $0.url().string.components(separatedBy: "#")[0] == location.href.string.components(separatedBy: "#")[0] }) else { return .waiting }
+            guard index + 1 < links.count else { return .end }
+            return await navigator.go(to: links[index + 1], options: .init()) ? .moved : .waiting
+        }
+        if await navigator.goForward(options: .init()) { return .moved }
+        guard !Task.isCancelled else { return .waiting }
+        return navigator.publication.readingOrder.last?.url().string.components(separatedBy: "#")[0] == location.href.string.components(separatedBy: "#")[0] ? .end : .waiting
     }
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
         model.perform { onLocation(try JSONSerialization.data(withJSONObject: locator.json)) }
@@ -341,6 +390,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     }
     @objc private func jump(_ notification: Notification) {
         guard let jump = notification.object as? EPUBJump, jump.bookID == bookID else { return }
+        autoRead.pause("阅读位置改变，已暂停")
         Task {
             do {
                 let locator: Locator?
@@ -358,6 +408,6 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         guard abs(point.x - view.bounds.midX) < view.bounds.width / 6 else { return }
         onToggleControls()
     }
-    func navigator(_ navigator: Navigator, presentError error: NavigatorError) { model.error = "阅读操作失败，请重新打开这本书。" }
-    func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: RelativeURL, withError error: ReadError) { model.error = "书内资源无法读取，请检查 EPUB 文件是否完整。" }
+    func navigator(_ navigator: Navigator, presentError error: NavigatorError) { autoRead.pause("正文暂不可用，已暂停"); model.error = "阅读操作失败，请重新打开这本书。" }
+    func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: RelativeURL, withError error: ReadError) { autoRead.pause("正文暂不可用，已暂停"); model.error = "书内资源无法读取，请检查 EPUB 文件是否完整。" }
 }
