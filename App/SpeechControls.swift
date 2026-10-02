@@ -135,7 +135,7 @@ private struct SpeechVoicePicker: View {
                     }
                 }
             }
-        }.navigationTitle("系统声音").searchable(text: $query, prompt: "搜索名称或语言")
+        }.navigationTitle("系统声音").searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索名称或语言")
             .toolbar { Button(speech.isPreviewing ? "停止试听" : "试听") { if speech.isPreviewing { speech.stopPreview() } else { speech.preview(library: library) } } }
             .onDisappear { speech.stopPreview() }
     }
