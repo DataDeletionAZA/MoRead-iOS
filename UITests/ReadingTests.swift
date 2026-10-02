@@ -97,7 +97,9 @@ final class ReadingTests: XCTestCase {
         for title in ["阅读趋势", "阅读时间段", "阅读时间线", "阅读排行", "标签云", "作者云"] {
             reveal(app.staticTexts[title].firstMatch)
             if title == "阅读时间段" {
-                reveal(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "凌晨 00–06")).firstMatch)
+                let band = app.descendants(matching: .any).matching(identifier: "stats-hour-band-0").firstMatch
+                reveal(band)
+                XCTAssertTrue(band.label.contains("凌晨 00–06")); XCTAssertTrue(band.label.contains("1 小时 30 分钟"))
                 shot("statistics-hours")
             }
         }
@@ -1511,17 +1513,23 @@ final class ReadingTests: XCTestCase {
     }
     func testSpeechPreferencesAndChapterSleepTimer() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--english-speech-sample"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         XCTAssertTrue(app.buttons["听书"].waitForExistence(timeout: 10)); app.buttons["听书"].tap()
         let rate = app.sliders["speech-rate"]
         XCTAssertTrue(rate.waitForExistence(timeout: 10)); rate.adjust(toNormalizedSliderPosition: 0.3)
         let savedRate = rate.value as? String; XCTAssertNotNil(savedRate)
+        app.buttons["speech-voice-picker"].tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("en-US\n")
+        let voice = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "speech-voice-en-US-")).firstMatch
+        XCTAssertTrue(voice.waitForExistence(timeout: 10)); let voiceName = voice.label; voice.tap()
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         app.buttons["听书"].tap()
         XCTAssertTrue(rate.waitForExistence(timeout: 10)); XCTAssertEqual(rate.value as? String, savedRate)
+        XCTAssertTrue(app.buttons["speech-voice-picker"].label.contains(voiceName))
         app.buttons["speech-start"].tap()
         let playback = app.buttons["speech-play-pause"]
         XCTAssertTrue(playback.waitForExistence(timeout: 15))
@@ -1559,6 +1567,26 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["speech-stop-reason"].label, "定时结束")
         XCTAssertTrue(app.buttons["speech-start"].exists)
         XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+    func testUnavailableSystemVoiceStopsPlaybackAndPreview() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-unavailable-system-voice"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["听书"].tap(); app.buttons["speech-start"].tap()
+        let error = app.alerts["需要处理"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10))
+        XCTAssertTrue(error.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "没有可用的中文朗读声音")).firstMatch.exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "unavailable-system-voice"; shot.lifetime = .keepAlways; add(shot)
+        error.buttons["好"].tap()
+        if !app.buttons["speech-start"].waitForExistence(timeout: 2) { app.buttons["听书"].tap() }
+        XCTAssertTrue(app.buttons["speech-start"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["speech-play-pause"].exists)
+        let preview = app.buttons["试听声音"]
+        revealListElement(preview, in: app); preview.tap()
+        XCTAssertTrue(error.waitForExistence(timeout: 5)); error.buttons["好"].tap()
+        if !preview.waitForExistence(timeout: 2) { app.buttons["听书"].tap() }
+        revealListElement(preview, in: app)
+        XCTAssertTrue(preview.exists); XCTAssertFalse(app.buttons["停止试听"].exists)
     }
     func testVectorMemoryOptInAndModelSurviveRelaunch() {
         let app = XCUIApplication()

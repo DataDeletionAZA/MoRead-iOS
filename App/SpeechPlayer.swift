@@ -93,14 +93,29 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func refreshVoices() {
         voices = AVSpeechSynthesisVoice.speechVoices().sorted { $0.language == $1.language ? $0.name < $1.name : $0.language < $1.language }
     }
-    func preview() {
+    private func utterance(_ text: String) throws -> AVSpeechUtterance {
+        var available = voices
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-unavailable-system-voice") { available = [] }
+        #endif
+        let settings = preferences.validated()
+        let preferred = AVSpeechSynthesisVoice(language: "zh-CN")
+        guard let voice = available.first(where: { $0.identifier == settings.voiceIdentifier })
+            ?? available.first(where: { $0.identifier == preferred?.identifier && $0.language.hasPrefix("zh") })
+            ?? available.first(where: { $0.language == "zh-CN" }) else {
+            throw MoReadError.invalid("没有可用的中文朗读声音。请在 iPhone 的辅助功能中下载中文声音，或在「系统声音」选择已安装的声音。")
+        }
+        let value = AVSpeechUtterance(string: text)
+        value.rate = settings.rate; value.pitchMultiplier = settings.pitch; value.voice = voice
+        return value
+    }
+    func preview(library: LibraryModel) {
         if isPlaying || isPreparing { pause() }
         stopPreview()
-        let utterance = AVSpeechUtterance(string: "雨停了，书页轻轻翻过。我们继续读这个故事。")
-        let settings = preferences.validated()
-        utterance.rate = settings.rate; utterance.pitchMultiplier = settings.pitch
-        utterance.voice = AVSpeechSynthesisVoice(identifier: settings.voiceIdentifier) ?? AVSpeechSynthesisVoice(language: "zh-CN")
-        previewUtterance = utterance; isPreviewing = true; previewSynthesizer.speak(utterance)
+        do {
+            let value = try utterance("雨停了，书页轻轻翻过。我们继续读这个故事。")
+            previewUtterance = value; isPreviewing = true; previewSynthesizer.speak(value)
+        } catch { library.error = error.localizedDescription }
     }
     func stopPreview() { previewUtterance = nil; isPreviewing = false; previewSynthesizer.stopSpeaking(at: .immediate) }
     func setTimer(_ value: ListeningTimer?) {
@@ -203,10 +218,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 if let chapter, let next = SpeechText.next(in: chapter.text, from: position.offset, maximumLength: cloudSettings.enabled ? cloudSettings.maximumCharacters : 1000) {
                     segment = next
                     if cloudSettings.enabled { playCloud(next, book: book, store: store); return }
-                    let utterance = AVSpeechUtterance(string: next.text)
-                    let settings = preferences.validated()
-                    utterance.rate = settings.rate; utterance.pitchMultiplier = settings.pitch
-                    utterance.voice = AVSpeechSynthesisVoice(identifier: settings.voiceIdentifier) ?? AVSpeechSynthesisVoice(language: "zh-CN")
+                    let utterance = try utterance(next.text)
                     current = utterance; isPlaying = false; isPreparing = true
                     synthesizer.speak(utterance); updateNowPlaying(); return
                 }

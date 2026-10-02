@@ -104,6 +104,7 @@ struct StatisticsView: View {
             bars(stats.hourlySeconds.enumerated().map { ReadingBar(label: String($0.offset), seconds: $0.element) })
             ForEach(0..<4) { band in
                 LabeledContent(["凌晨 00–06", "上午 06–12", "下午 12–18", "夜晚 18–24"][band], value: duration(stats.hourlySeconds[(band * 6)..<(band * 6 + 6)].reduce(0, +)))
+                    .accessibilityElement(children: .combine).accessibilityIdentifier("stats-hour-band-\(band)")
             }
             if stats.unassignedHourlySeconds > 0 { Text("另有 \(duration(stats.unassignedHourlySeconds)) 历史时长未记录小时。").font(.caption).foregroundStyle(.secondary) }
         case .timeline:

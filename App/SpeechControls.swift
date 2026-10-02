@@ -54,13 +54,13 @@ struct SpeechControls: View {
             Section("声音") {
                 NavigationLink {
                     SpeechVoicePicker()
-                } label: { LabeledContent("系统声音", value: speech.voices.first { $0.identifier == speech.preferences.voiceIdentifier }?.name ?? "中文默认声音") }
+                } label: { LabeledContent("系统声音", value: speech.voices.first { $0.identifier == speech.preferences.voiceIdentifier }?.name ?? "中文默认声音") }.accessibilityIdentifier("speech-voice-picker")
                 LabeledContent("语速", value: abs(speech.preferences.rate - 0.45) < 0.01 ? "标准" : speech.preferences.rate < 0.45 ? "偏慢" : "偏快")
                 Slider(value: $speech.preferences.rate, in: 0...1, step: 0.05) { Text("语速") } minimumValueLabel: { Text("慢") } maximumValueLabel: { Text("快") }.accessibilityIdentifier("speech-rate")
                 LabeledContent("音调", value: abs(speech.preferences.pitch - 1) < 0.01 ? "自然" : speech.preferences.pitch < 1 ? "低沉" : "明亮")
                 Slider(value: $speech.preferences.pitch, in: 0.5...2, step: 0.05) { Text("音调") } minimumValueLabel: { Text("低") } maximumValueLabel: { Text("高") }.accessibilityIdentifier("speech-pitch")
                 speechButton(speech.isPreviewing ? "停止试听" : "试听声音", systemImage: speech.isPreviewing ? "stop.circle" : "speaker.wave.2") {
-                    if speech.isPreviewing { speech.stopPreview() } else { speech.preview() }
+                    if speech.isPreviewing { speech.stopPreview() } else { speech.preview(library: library) }
                 }
                 Button("恢复默认声音设置") { speech.preferences = SpeechPreferences() }
                 if !speech.preferences.voiceIdentifier.isEmpty, !speech.voices.contains(where: { $0.identifier == speech.preferences.voiceIdentifier }) {
@@ -116,6 +116,7 @@ private struct SpeechTimerSheet: View {
 
 private struct SpeechVoicePicker: View {
     @EnvironmentObject private var speech: SpeechPlayer
+    @EnvironmentObject private var library: LibraryModel
     @State private var query = ""
     private var voices: [AVSpeechSynthesisVoice] {
         speech.voices.filter { query.isEmpty || "\($0.name) \($0.language) \(Locale.current.localizedString(forIdentifier: $0.language) ?? "")".localizedStandardContains(query) }
@@ -130,12 +131,12 @@ private struct SpeechVoicePicker: View {
                     ForEach(voices.filter { $0.language == language }, id: \.identifier) { voice in
                         Button { speech.preferences.voiceIdentifier = voice.identifier } label: {
                             HStack { Text(voice.name); Spacer(); if speech.preferences.voiceIdentifier == voice.identifier { Image(systemName: "checkmark") } }
-                        }
+                        }.accessibilityIdentifier("speech-voice-" + voice.language + "-" + voice.identifier)
                     }
                 }
             }
         }.navigationTitle("系统声音").searchable(text: $query, prompt: "搜索名称或语言")
-            .toolbar { Button(speech.isPreviewing ? "停止试听" : "试听") { if speech.isPreviewing { speech.stopPreview() } else { speech.preview() } } }
+            .toolbar { Button(speech.isPreviewing ? "停止试听" : "试听") { if speech.isPreviewing { speech.stopPreview() } else { speech.preview(library: library) } } }
             .onDisappear { speech.stopPreview() }
     }
 }
