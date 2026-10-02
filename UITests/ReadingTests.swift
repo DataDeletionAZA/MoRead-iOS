@@ -71,13 +71,7 @@ final class ReadingTests: XCTestCase {
             let row = app.descendants(matching: .any).matching(identifier: "stats-total").firstMatch
             XCTAssertTrue(NSPredicate(format: "label CONTAINS %@", text).evaluate(with: row) || XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", text), object: row)], timeout: 10) == .completed)
         }
-        func reveal(_ element: XCUIElement) {
-            for _ in 0..<35 {
-                if element.exists && element.isHittable && app.frame.insetBy(dx: 0, dy: 90).contains(element.frame) { return }
-                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.50)))
-            }
-            XCTFail("Missing statistics control: \(element)")
-        }
+        func reveal(_ element: XCUIElement) { revealListElement(element, in: app) }
         func shot(_ name: String) { let image = XCTAttachment(screenshot: app.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image) }
         total("1 小时 30 分钟"); XCTAssertFalse(app.buttons["stats-next"].isEnabled)
         app.buttons["stats-previous"].tap(); total("2 小时 0 分钟")
@@ -396,6 +390,19 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["插图廊"].waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, 1)
     }
     override func setUp() { super.setUp(); continueAfterFailure = false }
+    private func revealListElement(_ element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<35 {
+            let top = app.navigationBars.firstMatch.exists ? app.navigationBars.firstMatch.frame.maxY + 8 : app.frame.minY + 60
+            let bottom = app.tabBars.firstMatch.exists ? app.tabBars.firstMatch.frame.minY - 8 : app.frame.maxY - 40
+            let frame = element.exists ? element.frame : .zero
+            if !frame.isEmpty && frame.minY >= top && frame.maxY <= bottom && element.isHittable { return }
+            let dy: CGFloat = !frame.isEmpty && frame.minY < top ? 0.16 : -0.16
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5 + dy)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
+        XCTFail("List element not visible: \(element)")
+    }
     private func tapSettingsRow(_ title: String, in app: XCUIApplication) {
         let row = app.buttons[title]
         for _ in 0..<6 { if row.exists && row.isHittable { break }; app.swipeUp() }
@@ -447,10 +454,8 @@ final class ReadingTests: XCTestCase {
         func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-model-roles", "--simulate-knowledge"] + extra; app.launch() }
         func tap(_ id: String) {
             let button = app.buttons[id]
-            for _ in 0..<12 {
-                if button.exists && button.isHittable { break }
-                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
-            }
+            let navigation = app.navigationBars.buttons[id].firstMatch, toolbar = app.toolbars.buttons[id].firstMatch
+            if !(navigation.exists && navigation.isHittable) && !(toolbar.exists && toolbar.isHittable) { revealListElement(button, in: app) }
             XCTAssertTrue(button.exists && button.isHittable, id); button.tap()
         }
         func models() { app.tabBars.buttons["设置"].tap(); if !app.navigationBars["模型分工"].exists { tap("模型分工") }; app.swipeDown(); app.swipeDown() }
