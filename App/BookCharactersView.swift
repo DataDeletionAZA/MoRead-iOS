@@ -22,10 +22,18 @@ struct BookCharactersView: View {
         var id: UUID { card.id }
     }
     @State private var extracted: CardDraft?
+    private struct ProfileDraft: Identifiable {
+        let id = UUID()
+        let guide: BookCharacterGuide?
+        let person: BookCharacter?
+    }
+    @State private var editing: ProfileDraft?
     private var job: KnowledgeJobKey { .init(bookID: bookID, chapter: nil) }
     private var busy: Bool { companion.knowledgeTasks[job] != nil }
     private var book: Book? { library.books.first { $0.id == bookID && !$0.removed && $0.hasBody } }
-    private var visible: BookCharacterGuide? { saved.flatMap { guide in book.map { guide.visible(in: $0) } == true ? guide : nil } }
+    private var displayed: [BookCharacter] { book.flatMap { saved?.displayedCharacters(in: $0) } ?? [] }
+    private var sourceCurrent: Bool { book.map { saved?.visible(in: $0) == true } ?? false }
+    private var visible: BookCharacterGuide? { sourceCurrent || !displayed.isEmpty ? saved : nil }
     private var unfinished: BookCharactersCheckpoint? {
         guard let book, let checkpoint, checkpoint.generationID != saved?.generationID,
               checkpoint.sourceRevision == MemoryBookScope.fingerprint(book.chapters.map(\.revision)) else { return nil }
@@ -34,6 +42,8 @@ struct BookCharactersView: View {
     var body: some View {
         List {
             Section {
+                Button("新增人物") { editing = ProfileDraft(guide: saved, person: nil) }
+                    .disabled(book == nil || library.maintenance).accessibilityIdentifier("characters-add")
                 Picker("整理范围", selection: $progressBounded) {
                     Text("读到此处").tag(true)
                     Text("全书").tag(false)
@@ -47,7 +57,7 @@ struct BookCharactersView: View {
                 }
                 if let status = companion.knowledgeStates[job] { Text(status).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("characters-status") }
                 if let unfinished, !busy { Text("已保存 \(unfinished.completedParts) 段提取进度，核对原文和模型后可复用。").font(.caption).foregroundStyle(.secondary) }
-                if saved != nil, visible == nil { Text("正文或已读范围已变化，请重新提取人物。").foregroundStyle(.secondary) }
+                if saved != nil, !sourceCurrent { Text("正文或已读范围已变化；手动资料保留，可重新提取原文资料。").foregroundStyle(.secondary) }
                 if saved != nil || checkpoint != nil {
                     Button("删除人物资料", role: .destructive) { deleting = true }.disabled(busy).accessibilityIdentifier("characters-delete")
                 }
@@ -57,20 +67,21 @@ struct BookCharactersView: View {
             if let message { Text(message).foregroundStyle(.red) }
             if let guide = visible {
                 Section {
-                    Text(guide.progressBounded ? "\(guide.characters.count) 位人物 · 覆盖已读的 \(guide.scannedChapters) 章" : "\(guide.characters.count) 位人物 · 全书 \(guide.scannedChapters) 章")
+                    Text(!sourceCurrent || guide.scannedChapters == 0 ? "\(displayed.count) 位人物 · 手动整理" : guide.progressBounded ? "\(displayed.count) 位人物 · 覆盖已读的 \(guide.scannedChapters) 章" : "\(displayed.count) 位人物 · 全书 \(guide.scannedChapters) 章")
                         .accessibilityIdentifier("characters-summary")
-                    Text(guide.modelLabel).font(.caption).foregroundStyle(.secondary)
+                    if sourceCurrent { Text(guide.modelLabel).font(.caption).foregroundStyle(.secondary) }
                     HStack {
                         TextField("查找书中人物", text: $query).autocorrectionDisabled().submitLabel(.search).accessibilityIdentifier("characters-search")
                         if !query.isEmpty { Button("清除搜索", systemImage: "xmark.circle.fill") { query = "" }.labelStyle(.iconOnly).buttonStyle(.borderless) }
                     }
                 }
-                let people = guide.characters.filter { query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.name.localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                let people = displayed.filter { query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || [$0.name, $0.id].contains(where: { $0.localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespacesAndNewlines)) }) }
                 if people.isEmpty {
                     ContentUnavailableView(query.isEmpty ? "未提取到人物" : "没有找到这个人物", systemImage: "person.text.rectangle", description: Text(query.isEmpty ? "本次扫描没有发现可核对的人物资料。" : "试试原文中的姓名或称呼。"))
                 }
                 ForEach(people) { person in
                     Section(person.name) {
+                        Button("编辑人物") { editing = ProfileDraft(guide: guide, person: person) }.accessibilityIdentifier("characters-edit-" + person.id)
                         Button("提取为伴读角色卡") {
                             do {
                                 guard !library.maintenance, let storage = library.store else { return }
@@ -79,8 +90,12 @@ struct BookCharactersView: View {
                                 extracted = CardDraft(guide: guide, card: draft)
                             } catch { message = error.localizedDescription }
                         }.accessibilityIdentifier("characters-card-" + person.name)
-                        Text("依据来自 \(Set(person.evidence.map(\.chapter)).count) 章").font(.caption).foregroundStyle(.secondary)
-                        ForEach(Array((expanded.contains(person.name) ? person.evidence : Array(person.evidence.prefix(1))).enumerated()), id: \.offset) { index, evidence in
+                        if let description = person.manualDescription {
+                            Text("手动整理").font(.caption).foregroundStyle(.secondary)
+                            Text(description).lineLimit(expanded.contains(person.id) ? nil : 4).accessibilityIdentifier("characters-description-" + person.id)
+                        }
+                        if !person.evidence.isEmpty { Text("依据来自 \(Set(person.evidence.map(\.chapter)).count) 章").font(.caption).foregroundStyle(.secondary) }
+                        ForEach(Array((expanded.contains(person.id) ? person.evidence : person.manualDescription == nil ? Array(person.evidence.prefix(1)) : []).enumerated()), id: \.offset) { index, evidence in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(evidence.fact.text)
                                 Text("“\(evidence.fact.quote)”").font(.callout).foregroundStyle(.secondary)
@@ -88,9 +103,9 @@ struct BookCharactersView: View {
                                 Button("核对原文") { locate(guide, evidence: evidence) }.buttonStyle(.borderless).accessibilityIdentifier("characters-locate-\(person.name)-\(index)")
                             }.padding(.vertical, 6)
                         }
-                        if person.evidence.count > 1 {
-                            Button(expanded.contains(person.name) ? "收起人物资料" : "展开其余 \(person.evidence.count - 1) 条资料") {
-                                if expanded.contains(person.name) { expanded.remove(person.name) } else { expanded.insert(person.name) }
+                        if person.evidence.count > 1 || person.manualDescription != nil {
+                            Button(expanded.contains(person.id) ? "收起人物资料" : person.manualDescription != nil ? "展开资料与原文依据" : "展开其余 \(person.evidence.count - 1) 条资料") {
+                                if expanded.contains(person.id) { expanded.remove(person.id) } else { expanded.insert(person.id) }
                             }
                         }
                     }
@@ -103,6 +118,9 @@ struct BookCharactersView: View {
             .onChange(of: library.recordsRevision) { _, _ in reload() }
             .sheet(item: $extracted) { draft in
                 ExtractedCharacterEditor(guide: draft.guide, originalName: draft.card.name, draft: draft.card)
+            }
+            .sheet(item: $editing) { draft in
+                BookCharacterEditor(bookID: bookID, expected: draft.guide, person: draft.person)
             }
             .sheet(item: $plan) { value in
                 NavigationStack {
@@ -149,6 +167,48 @@ struct BookCharactersView: View {
             guard !library.maintenance, let storage = library.store else { return }
             library.flush(); onLocate(try BookCharactersStore(library: storage, bookID: bookID).locate(guide, evidence: evidence))
         } catch { message = error.localizedDescription }
+    }
+}
+
+private struct BookCharacterEditor: View {
+    let bookID: UUID
+    let expected: BookCharacterGuide?
+    let originalIdentity: String?
+    @State private var name: String
+    @State private var description: String
+    @State private var error: String?
+    @EnvironmentObject private var library: LibraryModel
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Bool
+    init(bookID: UUID, expected: BookCharacterGuide?, person: BookCharacter?) {
+        self.bookID = bookID; self.expected = expected; originalIdentity = person?.id
+        _name = State(initialValue: person?.name ?? ""); _description = State(initialValue: person?.editableDescription ?? "")
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("姓名", text: $name).focused($focused).accessibilityIdentifier("character-profile-name")
+                Section {
+                    TextEditor(text: $description).frame(minHeight: 220).focused($focused).accessibilityLabel("人物资料")
+                        .accessibilityIdentifier("character-profile-description")
+                } footer: { Text("手写资料独立保存，重新提取会保留。原文依据仍由提取结果更新；改名后也可按原名查找。") }
+                if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("character-profile-error") }
+            }.navigationTitle(originalIdentity == nil ? "新增人物" : "编辑人物").scrollDismissesKeyboard(.interactively)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") {
+                            do {
+                                guard !library.maintenance, let storage = library.store else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
+                                focused = false; library.flush()
+                                try BookCharactersStore(library: storage, bookID: bookID).saveCharacter(expected: expected, originalIdentity: originalIdentity, name: name, description: description)
+                                library.recordsRevision = UUID(); dismiss()
+                            } catch { self.error = error.localizedDescription }
+                        }.disabled(library.maintenance || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("character-profile-save")
+                    }
+                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focused = false } }
+                }
+        }
     }
 }
 

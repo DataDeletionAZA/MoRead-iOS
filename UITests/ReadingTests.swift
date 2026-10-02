@@ -569,6 +569,54 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(reply("无", "无").waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Next words."].exists)
     }
+    func testManualCharacterProfilesEditRegenerateAndRestart() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        func tap(_ id: String) {
+            let button = app.buttons[id]
+            if !button.exists || !button.isHittable { revealListElement(button, in: app) }
+            XCTAssertTrue(button.isHittable); button.tap()
+        }
+        func openPeople() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
+            XCTAssertTrue(app.buttons["目录"].waitForExistence(timeout: 5)); app.buttons["目录"].tap(); tap("书中人物")
+        }
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-characters"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap(); openPeople()
+        tap("characters-add")
+        let name = app.textFields["character-profile-name"], description = app.textViews["character-profile-description"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["character-profile-save"].isEnabled)
+        name.tap(); name.typeText("取消的人物"); app.buttons["取消"].tap()
+        XCTAssertFalse(app.staticTexts["characters-summary"].exists)
+        tap("characters-add"); XCTAssertEqual(name.value as? String, "姓名")
+        name.tap(); name.typeText("林遥"); app.buttons["完成"].tap()
+        description.tap(); description.typeText("喜欢雨声。"); app.buttons["完成"].tap(); app.buttons["character-profile-save"].tap()
+        XCTAssertTrue(app.staticTexts["characters-summary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["characters-summary"].label.contains("手动整理"))
+        tap("characters-generate"); tap("characters-confirm")
+        XCTAssertTrue(app.staticTexts["已保存 1 位人物。"].waitForExistence(timeout: 15))
+        tap("characters-edit-林遥"); XCTAssertEqual(name.value as? String, "林遥")
+        XCTAssertEqual(description.value as? String, "喜欢雨声。")
+        name.tap(); name.typeText("同伴"); app.buttons["完成"].tap()
+        description.tap(); description.typeText("轻声说话。")
+        let editedDescription = description.value as? String ?? ""
+        XCTAssertTrue(editedDescription.contains("喜欢雨声。")); XCTAssertTrue(editedDescription.contains("轻声说话。"))
+        app.buttons["完成"].tap(); app.buttons["character-profile-save"].tap()
+        tap("characters-generate"); tap("characters-confirm")
+        XCTAssertTrue(app.staticTexts["已保存 1 位人物。"].waitForExistence(timeout: 15))
+        tap("characters-card-林遥同伴")
+        XCTAssertEqual(app.textFields["extracted-card-name"].value as? String, "林遥同伴")
+        XCTAssertEqual(app.textViews["extracted-card-description"].value as? String, editedDescription)
+        app.buttons["关闭"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-characters"]; app.launch(); openPeople()
+        let search = app.textFields["characters-search"]; revealListElement(search, in: app); search.tap(); search.typeText("林遥\n")
+        tap("characters-edit-林遥")
+        XCTAssertEqual(name.value as? String, "林遥同伴"); XCTAssertEqual(description.value as? String, editedDescription)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Manual-character-profile"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["取消"].tap(); tap("展开资料与原文依据"); tap("characters-locate-林遥同伴-0")
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+    }
     func testExtractedCharacterCardEditingExportCancelSaveAndRestart() {
         executionTimeAllowance = 240
         let app = XCUIApplication()
@@ -590,10 +638,11 @@ final class ReadingTests: XCTestCase {
         name.tap(); name.typeText("同伴"); app.buttons["完成"].tap()
         description.tap(); description.typeText("\n轻声说话。"); app.buttons["完成"].tap()
         let export = app.buttons["extracted-card-export"]; revealListElement(export, in: app); export.tap()
-        let exportSave = app.buttons["DOCPicker.actionButton"]
+        let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        let exportSave = picker.buttons.matching(NSPredicate(format: "identifier == %@ OR label IN %@", "DOCPicker.actionButton", ["Move", "Save", "移动", "移動", "保存", "存储", "儲存"])).firstMatch
         let localFiles = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["我的iPhone", "我的 iPhone", "On My iPhone"])).firstMatch
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in exportSave.exists || localFiles.exists }, object: nil)], timeout: 40), .completed)
-        if !exportSave.exists { localFiles.tap() }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in (exportSave.exists && exportSave.isEnabled) || localFiles.exists }, object: nil)], timeout: 40), .completed)
+        if !exportSave.exists || !exportSave.isEnabled { localFiles.tap() }
         XCTAssertTrue(exportSave.waitForExistence(timeout: 10)); exportSave.tap()
         let replacement = NSPredicate(format: "label IN %@", ["取代", "替换", "Replace"])
         let replace = app.buttons.matching(replacement).firstMatch
@@ -605,9 +654,8 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["extracted-card-status"].label.contains("已导出"))
         revealListElement(export, in: app); export.tap()
         let cancel = app.buttons.matching(NSPredicate(format: "label IN %@", ["取消", "Cancel"])).firstMatch
-        let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        if !cancel.exists { picker.buttons["BackButton"].tap() }
+        if !cancel.exists { picker.buttons.matching(NSPredicate(format: "identifier == %@ OR label IN %@", "BackButton", ["Browse", "瀏覽", "浏览"])).firstMatch.tap() }
         XCTAssertTrue(cancel.waitForExistence(timeout: 10)); cancel.tap()
         XCTAssertTrue(app.navigationBars["提取角色卡"].waitForExistence(timeout: 5))
         XCTAssertEqual(name.value as? String, "林遥同伴")

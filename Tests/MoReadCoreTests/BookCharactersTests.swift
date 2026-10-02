@@ -163,6 +163,63 @@ import XCTest
         XCTAssertTrue(try store.preview(modelFingerprint: model, modelLabel: "本地", progressBounded: false).resuming)
         try store.delete(); XCTAssertNil(try store.checkpoint())
     }
+    func testManualProfilesSurviveGenerationRenamingBackupAndSourceChanges() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = try LibraryStore(root: root)
+        var book = try library.importBook(title: "灯塔", chapters: [.init(id: 0, title: "一", text: "阿翎来到灯塔。")])
+        book.readThrough = .init(offset: 7); try library.save(book)
+        let store = BookCharactersStore(library: library, bookID: book.id)
+        let manual = try store.saveCharacter(expected: nil, originalIdentity: nil, name: " 阿翎 ", description: " 手写人设 ")
+        XCTAssertEqual(manual.scannedChapters, 0)
+        XCTAssertEqual(try store.extractedCard(from: manual, named: "阿翎").characterCard().description, "手写人设")
+        try store.validateBackup()
+        XCTAssertThrowsError(try store.saveCharacter(expected: nil, originalIdentity: nil, name: "新人物", description: "过期编辑"))
+        XCTAssertThrowsError(try store.saveCharacter(expected: manual, originalIdentity: nil, name: "阿翎", description: "重名"))
+        XCTAssertThrowsError(try store.saveCharacter(expected: manual, originalIdentity: nil, name: "a" + String(repeating: "\u{0301}", count: 80), description: ""))
+        XCTAssertThrowsError(try store.saveCharacter(expected: manual, originalIdentity: nil, name: "新人物", description: String(repeating: "字", count: 24_001)))
+        let generated = try await generate(store, plan: store.preview(modelFingerprint: model, modelLabel: "本地"), replies: Replies())
+        XCTAssertEqual(generated.characters[0].manualDescription, "手写人设"); XCTAssertEqual(generated.characters[0].evidence.count, 1)
+        let renamed = try store.saveCharacter(expected: generated, originalIdentity: "阿翎", name: "灯塔主人", description: "温柔的朋友")
+        XCTAssertEqual(renamed.characters[0].id, "阿翎"); try store.validateBackup()
+        XCTAssertThrowsError(try store.saveCharacter(expected: renamed, originalIdentity: nil, name: "阿翎", description: "重名"))
+        let archive = root.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".zip")
+        defer { try? FileManager.default.removeItem(at: archive) }
+        _ = try await BackupArchive.create(root: root, output: archive)
+        let restored = try await BackupArchive.prepare(archive, beside: root)
+        defer { try? FileManager.default.removeItem(at: restored.directory) }
+        XCTAssertEqual(try BookCharactersStore(library: LibraryStore(root: restored.directory), bookID: book.id).guide(), renamed)
+        let updated = try await generate(store, plan: store.preview(modelFingerprint: model, modelLabel: "本地"), replies: Replies())
+        XCTAssertEqual(updated.characters, renamed.characters)
+        book.readThrough = .init(); try library.save(book)
+        XCTAssertEqual(updated.displayedCharacters(in: book).first?.evidence, [])
+        XCTAssertEqual(try store.extractedCard(from: updated, named: "灯塔主人").description, "温柔的朋友")
+        let changed = Chapter(id: 0, title: "一", text: "小岚坐在窗边。")
+        try JSONEncoder().encode(changed).write(to: library.directory(book.id).appendingPathComponent("chapter-0.json"), options: .atomic)
+        book.chapters = [ChapterInfo(changed)]; book.readThrough = .init(offset: 7); try library.save(book)
+        let replaced = try await generate(store, plan: store.preview(modelFingerprint: model, modelLabel: "本地"), replies: Replies())
+        XCTAssertEqual(replaced.characters.map(\.name), ["小岚", "灯塔主人"])
+        XCTAssertEqual(replaced.characters.last?.evidence, []); XCTAssertEqual(replaced.characters.last?.manualDescription, "温柔的朋友")
+        try store.validateBackup(); try store.delete(); XCTAssertNil(try store.guide())
+    }
+    func testManualEditDuringExtractionAndLegacyGuideDecoding() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = try LibraryStore(root: root)
+        let book = try library.importBook(title: "灯塔", chapters: [.init(id: 0, title: "一", text: "阿翎来到灯塔。")])
+        let store = BookCharactersStore(library: library, bookID: book.id), replies = Replies()
+        let plan = try store.preview(modelFingerprint: model, modelLabel: "本地", progressBounded: false)
+        let generated = try await store.generate(plan, stream: { messages, tool, _ in
+            try await MainActor.run { _ = try store.saveCharacter(expected: nil, originalIdentity: nil, name: "阿翎", description: "提取时写入") }
+            return try await replies.reply(messages, tool: tool)
+        }, validate: {})
+        XCTAssertEqual(generated.characters.first?.manualDescription, "提取时写入")
+        XCTAssertEqual(generated.characters.first?.evidence.count, 1)
+        let legacy = try JSONDecoder().decode(BookCharacter.self, from: Data(#"{"name":"阿翎","evidence":[]}"#.utf8))
+        XCTAssertNil(legacy.manualDescription); XCTAssertNil(legacy.sourceName); XCTAssertEqual(legacy.id, "阿翎")
+        let merged = BookCharacterGuide.mergingManual([.init(name: "阿翎", evidence: []), .init(name: "灯塔主人", evidence: [])], previous: [.init(name: "灯塔主人", evidence: [], manualDescription: "保留", sourceName: "阿翎")])
+        XCTAssertEqual(merged.count, 1); XCTAssertEqual(merged.first?.id, "阿翎")
+    }
     func testExtractedCardRoundTripBackupEditsAndStaleSourceRejection() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), root = folder.appendingPathComponent("library")
         defer { try? FileManager.default.removeItem(at: folder) }

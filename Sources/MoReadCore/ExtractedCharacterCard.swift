@@ -25,12 +25,10 @@ public struct ExtractedCharacterCard: Identifiable, Sendable {
 
 extension BookCharactersStore {
     public func extractedCard(from guide: BookCharacterGuide, named name: String) throws -> ExtractedCharacterCard {
-        guard try self.guide() == guide, let person = guide.characters.first(where: { $0.name == name }) else {
+        guard let person = try displayedCharacters(from: guide).first(where: { $0.name == name }) else {
             throw MoReadError.invalid("人物资料已变化，请关闭草稿后重新提取角色卡。")
         }
-        for evidence in person.evidence { _ = try locate(guide, evidence: evidence) }
-        return .init(name: person.name, description: person.evidence.map {
-            "\($0.fact.text)\n（第 \($0.chapter + 1) 章依据：\($0.fact.quote)）"
-        }.joined(separator: "\n\n"))
+        if person.manualDescription == nil { for evidence in person.evidence { _ = try locate(guide, evidence: evidence) } }
+        return .init(name: person.name, description: person.editableDescription)
     }
 }
