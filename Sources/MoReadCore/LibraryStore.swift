@@ -29,6 +29,7 @@ public struct Bookmark: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct BookRecords: Codable, Sendable {
+    public var translationsVisible: Bool?
     public var chapterKnowledge: [ChapterKnowledgeEntry]?
     public var notes: [ReadingNote]?
     public var annotationAttempts: [String: ProactiveAttempt]?

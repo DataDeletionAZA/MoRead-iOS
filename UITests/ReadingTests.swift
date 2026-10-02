@@ -1,6 +1,54 @@
 import XCTest
 
 final class ReadingTests: XCTestCase {
+    func testChapterTranslationsReuseHideDeleteStopAndRestart() {
+        executionTimeAllowance = 420
+        let app = XCUIApplication()
+        func launch(_ extra: [String] = []) {
+            app.launchArguments = ["--ui-testing", "--simulate-translations", "--simulate-model-roles", "--translation-sample"] + extra
+            app.launch()
+        }
+        func tap(_ id: String) {
+            let button = app.buttons[id]
+            if !button.exists || !button.isHittable { revealListElement(button, in: app) }
+            button.tap()
+        }
+        func open() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+            app.buttons["目录"].tap(); tap("中英对照")
+            XCTAssertTrue(app.buttons["translations-start"].waitForExistence(timeout: 10))
+        }
+        func status(_ text: String) {
+            let row = app.staticTexts["translations-status"]
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", text), object: row)], timeout: 15), .completed)
+        }
+        func replace() { tap("translations-replace"); app.buttons["重新翻译"].tap() }
+        launch(["--reset-test-library"])
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap(); open()
+        tap("model-role-translation"); app.buttons["批量测试 · batch-fixture"].tap()
+        tap("translations-start"); status("译文已保存")
+        let first = app.staticTexts["translation-text-0"]
+        revealListElement(first, in: app); XCTAssertTrue(first.label.contains("本地译文：After the rain"))
+        tap("translation-toggle-0"); XCTAssertFalse(first.exists)
+        tap("translation-toggle-0"); XCTAssertTrue(first.exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "paragraph-translation"; shot.lifetime = .keepAlways; add(shot)
+        tap("translation-delete-0"); XCTAssertFalse(first.exists)
+        tap("translations-start"); status("译文已保存")
+        app.terminate(); launch(["--translations-fail"]); open()
+        XCTAssertTrue(app.staticTexts["model-effective-translation"].label.contains("batch-fixture"))
+        tap("translations-start"); status("译文已保存")
+        replace(); status("翻译服务暂不可用")
+        revealListElement(first, in: app); XCTAssertTrue(first.label.contains("本地译文：After the rain"))
+        let visible = app.switches["translations-visible"]
+        revealListElement(visible, in: app); visible.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(visible.value as? String, "0")
+        app.terminate(); launch(["--translations-slow"]); open()
+        XCTAssertEqual(visible.value as? String, "0")
+        replace(); XCTAssertTrue(app.buttons["translations-stop"].waitForExistence(timeout: 5)); tap("translations-stop"); status("已停止")
+        tap("translation-toggle-0"); XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
     func testSettingsRemainNavigableWhileCredentialsLoad() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-slow-credentials"]; app.launch()

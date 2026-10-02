@@ -11,9 +11,9 @@ struct ModelAssignmentsView: View {
                 Text("批量模型供下方选择“使用默认模型”的任务共用。对话提要和长期记忆仍由各自开关控制，开启后会发送相关内容并按服务商规则计费。")
             }
             Section {
-                ForEach([ModelTask.knowledge, .summary, .memory, .annotation, .coverQuery, .suggestion], id: \.self) { ModelAssignmentPicker(task: $0) }
+                ForEach([ModelTask.knowledge, .summary, .memory, .annotation, .coverQuery, .suggestion, .translation], id: \.self) { ModelAssignmentPicker(task: $0) }
             } header: { Text("各项任务") } footer: {
-                Text("未分配批量模型时，章节、人物、段评、封面搜索词和建议回复沿用主对话模型。更换整理模型会停止对应的整理任务，已有结果保留；对话从下一条回复生效。")
+                Text("未分配批量模型时，章节、人物、段评、封面搜索词、建议回复和翻译沿用主对话模型。更换整理模型会停止对应的整理任务，已有结果保留；对话从下一条回复生效。")
             }
             Section {
                 ModelAssignmentPicker(task: .image)
@@ -65,6 +65,7 @@ extension CompanionModel {
         try store.save(next); settings = next
         if previous.imageConnection != next.imageConnection || previous.imageGeneration?.companionEnabled != next.imageGeneration?.companionEnabled { stopReply() }
         if previous.resolvedProvider(for: .knowledge) != next.resolvedProvider(for: .knowledge) { for job in knowledgeTasks.values { job.cancel() } }
+        if previous.resolvedProvider(for: .translation) != next.resolvedProvider(for: .translation) { for job in translationTasks.values { job.cancel() } }
         if previous.resolvedProvider(for: .summary) != next.resolvedProvider(for: .summary) { summaryTask?.cancel() }
         if previous.resolvedProvider(for: .memory) != next.resolvedProvider(for: .memory) { personaMemoryTask?.cancel() }
         if previous.resolvedProvider(for: .annotation) != next.resolvedProvider(for: .annotation) { stopAnnotations() }

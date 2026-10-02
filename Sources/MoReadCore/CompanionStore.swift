@@ -5,6 +5,7 @@ public struct CompanionSettings: Codable {
     public var imageGeneration: ImageGenerationSettings?
     public var suggestionRepliesEnabled: Bool?
     public var suggestionProvider: UUID?
+    public var translationProvider: UUID?
     public var batchProvider: UUID?
     public var coverQueryProvider: UUID?
     public var globalPrompts: [GlobalPromptPreset]?

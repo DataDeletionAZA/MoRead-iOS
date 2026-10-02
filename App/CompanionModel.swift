@@ -10,6 +10,9 @@ final class CompanionModel: ObservableObject {
     var suggestionTask: Task<Void, Never>?
     @Published var knowledgeStates: [KnowledgeJobKey: String] = [:]
     var knowledgeTasks: [KnowledgeJobKey: Task<Void, Never>] = [:]
+    @Published var translationStates: [UUID: String] = [:]
+    @Published var translatingBooks: Set<UUID> = []
+    var translationTasks: [UUID: Task<Void, Never>] = [:]
     @Published var settings = CompanionSettings()
     @Published var characters: [CharacterCard] = []
     @Published var conversations: [Conversation] = []
@@ -82,6 +85,8 @@ final class CompanionModel: ObservableObject {
     func stopAndWait() async {
         let suggestions = suggestionTask; dismissSuggestions()
         let knowledge = Array(knowledgeTasks.values)
+        let translations = Array(translationTasks.values)
+        for job in translations { job.cancel() }
         for job in knowledge { job.cancel() }
         task?.cancel(); annotationTask?.cancel(); summaryTask?.cancel(); personaMemoryTask?.cancel()
         if let task { await task.value }
@@ -90,6 +95,7 @@ final class CompanionModel: ObservableObject {
         if let personaMemoryTask { await personaMemoryTask.value }
         await suggestions?.value
         for job in knowledge { await job.value }
+        for job in translations { await job.value }
     }
     func embeddingConnection() throws -> (AIProvider, String, String) {
         guard var provider = settings.providers.first(where: { $0.id == settings.embeddingProvider }),

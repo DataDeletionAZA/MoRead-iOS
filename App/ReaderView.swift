@@ -115,6 +115,7 @@ struct ReaderView: View {
                         NavigationStack {
                             Form {
                                 Section("原文") { Text(passage.text).textSelection(.enabled) }
+                                NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
                                 NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
                                 Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
                                 Button("和角色聊这一段", systemImage: "bubble.left.and.bubble.right") {
@@ -159,6 +160,7 @@ struct ReaderView: View {
                     List {
                         NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
+                        NavigationLink("中英对照") { ParagraphTranslationView(bookID: bookID, chapter: chapter?.id ?? book.position.chapter) }
                         NavigationLink("书中人物") {
                             BookCharactersView(bookID: book.id) { passage in
                                 if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
