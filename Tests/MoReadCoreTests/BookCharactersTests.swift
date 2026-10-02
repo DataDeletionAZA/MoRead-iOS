@@ -163,6 +163,85 @@ import XCTest
         XCTAssertTrue(try store.preview(modelFingerprint: model, modelLabel: "本地", progressBounded: false).resuming)
         try store.delete(); XCTAssertNil(try store.checkpoint())
     }
+    private func profileFixture() -> (first: String, second: String, replies: [String: String]) {
+        let first = "阿翎又名小翎，是二十岁的女店主，穿着蓝衣。小岚是阿翎的师父。", second = "小翎打开灯塔的大门。江舟向小翎递出了信。"
+        let one = #"{"characters":[{"name":"阿翎","facts":[{"text":"经营店铺","quote":"阿翎又名小翎，是二十岁的女店主，穿着蓝衣。"}],"attributes":[{"kind":"ALIAS","value":"小翎","quote":"阿翎又名小翎，是二十岁的女店主，穿着蓝衣。"},{"kind":"AGE","value":"二十岁","quote":"阿翎又名小翎，是二十岁的女店主，穿着蓝衣。"},{"kind":"GENDER","value":"女","quote":"阿翎又名小翎，是二十岁的女店主，穿着蓝衣。"},{"kind":"IDENTITY","value":"店主","quote":"阿翎又名小翎，是二十岁的女店主，穿着蓝衣。"},{"kind":"APPEARANCE","value":"蓝衣","quote":"阿翎又名小翎，是二十岁的女店主，穿着蓝衣。"}],"relationships":[{"target":"小岚","relation":"徒弟","quote":"小岚是阿翎的师父。"}]}]}"#
+        let two = #"{"characters":[{"name":"小翎","facts":[{"text":"打开灯塔","quote":"小翎打开灯塔的大门。"}]},{"name":"江舟","facts":[{"text":"送来信件","quote":"江舟向小翎递出了信。"}],"relationships":[{"target":"小翎","relation":"送信人","quote":"江舟向小翎递出了信。"}]}]}"#
+        return (first, second, [first: one, second: two])
+    }
+    private actor ProfileReplies {
+        let replies: [String: String]
+        var sources: [String] = []
+        init(_ replies: [String: String]) { self.replies = replies }
+        func reply(_ messages: [ChatMessage], tool: ChatTool) throws -> ChatToolRound {
+            let source = messages.last!.content.components(separatedBy: "<source>\n").last!.components(separatedBy: "\n</source>").first!
+            sources.append(source)
+            guard let raw = replies[source] else { throw MoReadError.invalid("Unexpected test source") }
+            return .init(text: "", calls: [.init(id: UUID().uuidString, name: tool.name, arguments: raw)], replay: Data("{}".utf8))
+        }
+    }
+    func testStructuredCharacterParsingAliasesAndAmbiguousNames() throws {
+        let fixture = profileFixture(), raw = fixture.replies[fixture.first]!, part = KnowledgePart(start: 0, text: fixture.first)
+        let first = try ChapterKnowledge.parseCharacters(raw, part: part)
+        XCTAssertEqual(first[0].attributes.map(\.kind), [.alias, .age, .gender, .identity, .appearance])
+        XCTAssertEqual(first[0].relationships.first?.relation, "徒弟"); try ChapterKnowledge.validateCharacters(first, part: part)
+        for invalid in [raw.replacingOccurrences(of: "\"AGE\"", with: "\"UNKNOWN\""),
+                        raw.replacingOccurrences(of: "\"value\":\"小翎\"", with: "\"value\":\"小岚\""),
+                        raw.replacingOccurrences(of: "\"target\":\"小岚\"", with: "\"target\":\"阿翎\""),
+                        raw.replacingOccurrences(of: "\"value\":\"二十岁\"", with: "\"value\":\"" + String(repeating: "字", count: 81) + "\"")] {
+            XCTAssertThrowsError(try ChapterKnowledge.parseCharacters(invalid, part: part))
+        }
+        var accumulator = BookCharacterAccumulator(); accumulator.add(chapter: 0, characters: first)
+        accumulator.add(chapter: 1, characters: try ChapterKnowledge.parseCharacters(fixture.replies[fixture.second]!, part: .init(start: 0, text: fixture.second)))
+        XCTAssertEqual(accumulator.characters.map(\.name), ["阿翎", "江舟"])
+        XCTAssertEqual(accumulator.characters[0].evidence.map(\.chapter), [0, 1])
+        XCTAssertEqual(accumulator.characters[1].relationships.first?.target, "阿翎")
+        XCTAssertEqual(accumulator.characters[1].relationships.first?.sourceTarget, "小翎")
+        let shared = #"{"characters":[{"name":"小岚","facts":[{"text":"有共同称呼","quote":"小岚又名小翎。"}],"attributes":[{"kind":"ALIAS","value":"小翎","quote":"小岚又名小翎。"}]}]}"#
+        accumulator.add(chapter: 2, characters: try ChapterKnowledge.parseCharacters(shared, part: .init(start: 0, text: "小岚又名小翎。")))
+        XCTAssertEqual(accumulator.characters.map(\.name), ["阿翎", "小翎", "江舟", "小岚"])
+        var cycle = BookCharacterAccumulator()
+        let cyclic = #"{"characters":[{"name":"甲","facts":[{"text":"称呼甲","quote":"甲又名乙。"}],"attributes":[{"kind":"ALIAS","value":"乙","quote":"甲又名乙。"}]},{"name":"乙","facts":[{"text":"称呼乙","quote":"乙又名甲。"}],"attributes":[{"kind":"ALIAS","value":"甲","quote":"乙又名甲。"}]}]}"#
+        cycle.add(chapter: 0, characters: try ChapterKnowledge.parseCharacters(cyclic, part: .init(start: 0, text: "甲又名乙。乙又名甲。")))
+        XCTAssertEqual(cycle.characters.map(\.name), ["甲", "乙"])
+        let legacy = try JSONDecoder().decode(KnowledgeCharacter.self, from: Data(#"{"name":"阿翎","facts":[]}"#.utf8))
+        XCTAssertTrue(legacy.attributes.isEmpty); XCTAssertTrue(legacy.relationships.isEmpty)
+    }
+    func testStructuredProfilesScopeCacheUpgradeBackupAndManualEditing() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), root = folder.appendingPathComponent("library")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let fixture = profileFixture(), replies = ProfileReplies(fixture.replies), library = try LibraryStore(root: root)
+        var book = try library.importBook(title: "灯塔", chapters: [.init(id: 0, title: "一", text: fixture.first), .init(id: 1, title: "二", text: fixture.second)])
+        book.readThrough = .init(offset: fixture.first.utf16.count); try library.save(book)
+        let store = BookCharactersStore(library: library, bookID: book.id)
+        func generate() async throws -> BookCharacterGuide {
+            try await store.generate(store.preview(modelFingerprint: model, modelLabel: "本地"), stream: { messages, tool, _ in try await replies.reply(messages, tool: tool) }, validate: {})
+        }
+        let first = try await generate()
+        XCTAssertEqual(first.characters.map(\.name), ["阿翎"]); XCTAssertEqual(first.characters[0].attributes.count, 5)
+        XCTAssertEqual(try store.locate(first, evidence: first.characters[0].attributes[1].evidence).chapter, 0)
+        let cache = store.directory.appendingPathComponent("part-0-0.json")
+        var legacyCache = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: cache)) as? [String: Any]); legacyCache["promptVersion"] = 1
+        try JSONSerialization.data(withJSONObject: legacyCache).write(to: cache, options: .atomic)
+        _ = try await generate(); let retried = await replies.sources; XCTAssertEqual(retried, [fixture.first, fixture.first])
+        book.readThrough = .init(chapter: 1, offset: fixture.second.utf16.count); try library.save(book)
+        let full = try await generate(); let sent = await replies.sources; XCTAssertEqual(sent.count, 3)
+        XCTAssertEqual(full.characters.map(\.name), ["阿翎", "江舟"]); try store.validateBackup()
+        XCTAssertEqual(try store.locate(full, evidence: full.characters[1].relationships[0].evidence).chapter, 1)
+        let edited = try store.saveCharacter(expected: full, originalIdentity: "阿翎", name: "灯塔主人", description: "手写内容")
+        XCTAssertEqual(edited.characters[0].attributes.count, 5)
+        let card = try store.extractedCard(from: edited, named: "灯塔主人").characterCard()
+        XCTAssertTrue(card.description.contains("外貌：蓝衣")); XCTAssertTrue(card.description.contains("小岚：徒弟")); XCTAssertTrue(card.description.contains("手写内容"))
+        let archive = folder.appendingPathComponent("profile.zip"); _ = try await BackupArchive.create(root: root, output: archive)
+        let restored = try await BackupArchive.prepare(archive, beside: root)
+        defer { try? FileManager.default.removeItem(at: restored.directory) }
+        XCTAssertEqual(try BookCharactersStore(library: LibraryStore(root: restored.directory), bookID: book.id).guide(), edited)
+        book.readThrough = .init(); try library.save(book)
+        let visible = edited.displayedCharacters(in: book)
+        XCTAssertEqual(visible.count, 1); XCTAssertTrue(visible[0].attributes.isEmpty); XCTAssertTrue(visible[0].relationships.isEmpty)
+        XCTAssertEqual(try store.extractedCard(from: edited, named: "灯塔主人").description, "手写内容")
+        XCTAssertThrowsError(try store.locate(edited, evidence: edited.characters[0].attributes[0].evidence))
+    }
     func testManualProfilesSurviveGenerationRenamingBackupAndSourceChanges() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

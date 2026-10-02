@@ -28,7 +28,7 @@ extension BookCharactersStore {
         guard let person = try displayedCharacters(from: guide).first(where: { $0.name == name }) else {
             throw MoReadError.invalid("人物资料已变化，请关闭草稿后重新提取角色卡。")
         }
-        if person.manualDescription == nil { for evidence in person.evidence { _ = try locate(guide, evidence: evidence) } }
-        return .init(name: person.name, description: person.editableDescription)
+        for evidence in person.manualDescription == nil ? person.allEvidence : person.profileEvidence { _ = try locate(guide, evidence: evidence) }
+        return .init(name: person.name, description: person.cardDescription)
     }
 }

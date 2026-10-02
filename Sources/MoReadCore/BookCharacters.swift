@@ -4,17 +4,48 @@ public struct CharacterEvidence: Codable, Hashable, Sendable {
     public let chapter: Int
     public let fact: KnowledgeFact
 }
+public struct BookCharacterAttribute: Codable, Hashable, Sendable {
+    public let kind: CharacterAttributeKind
+    public let value: String
+    public let evidence: CharacterEvidence
+}
+public struct BookCharacterRelationship: Codable, Hashable, Sendable {
+    public let target: String
+    public var sourceTarget: String? = nil
+    public let relation: String
+    public let evidence: CharacterEvidence
+}
 public struct BookCharacter: Codable, Equatable, Identifiable, Sendable {
     public var id: String { sourceName ?? name }
     public let name: String
     public let evidence: [CharacterEvidence]
     public var manualDescription: String? = nil
     public var sourceName: String? = nil
+    public var attributes: [BookCharacterAttribute] = []
+    public var relationships: [BookCharacterRelationship] = []
+    public var aliases: [String] { attributes.filter { $0.kind == .alias }.map(\.value) }
+    var verifiedNames: [String] { [id] + aliases }
+    var profileEvidence: [CharacterEvidence] { attributes.map(\.evidence) + relationships.map(\.evidence) }
+    var allEvidence: [CharacterEvidence] { evidence + profileEvidence }
+    var cardDescription: String {
+        let profile = attributes.map { ("\($0.kind.title)：\($0.value)", $0.evidence) } + relationships.map { ("\(name) → \($0.target)：\($0.relation)", $0.evidence) }
+        return (profile.map { "\($0.0)\n（第 \($0.1.chapter + 1) 章依据：\($0.1.fact.quote)）" } + [editableDescription]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
     public var editableDescription: String {
         manualDescription ?? evidence.map { "\($0.fact.text)\n（第 \($0.chapter + 1) 章依据：\($0.fact.quote)）" }.joined(separator: "\n\n")
     }
 }
+extension BookCharacter {
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name); evidence = try values.decode([CharacterEvidence].self, forKey: .evidence)
+        manualDescription = try values.decodeIfPresent(String.self, forKey: .manualDescription); sourceName = try values.decodeIfPresent(String.self, forKey: .sourceName)
+        attributes = try values.decodeIfPresent([BookCharacterAttribute].self, forKey: .attributes) ?? []
+        relationships = try values.decodeIfPresent([BookCharacterRelationship].self, forKey: .relationships) ?? []
+    }
+}
 public struct BookCharacterGuide: Codable, Equatable, Sendable {
+    static let currentPromptVersion = 2
     public let bookID: UUID
     public let generationID: UUID
     public let sourceRevision: String
@@ -39,7 +70,7 @@ public struct BookCharacterGuide: Codable, Equatable, Sendable {
         }
     }
     func validate() throws {
-        guard promptVersion == 1, ChapterKnowledgeEntry.validHash(sourceRevision), ChapterKnowledgeEntry.validHash(modelFingerprint),
+        guard (1...BookCharacterGuide.currentPromptVersion).contains(promptVersion), ChapterKnowledgeEntry.validHash(sourceRevision), ChapterKnowledgeEntry.validHash(modelFingerprint),
               !modelLabel.isEmpty, modelLabel.utf16.count <= 500,
               (scannedChapters > 0 && sourceCharacters > 0) || (scannedChapters == 0 && sourceCharacters == 0 && characters.allSatisfy { $0.manualDescription != nil }),
               sourceThrough.map({ $0.chapter >= 0 && $0.offset >= 0 }) ?? true,
@@ -51,7 +82,15 @@ public struct BookCharacterGuide: Codable, Equatable, Sendable {
                   !person.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, person.id.utf16.count <= 80,
                   person.manualDescription.map({ $0.utf16.count <= 24_000 }) ?? (ChapterKnowledge.validName(person.name) && !person.evidence.isEmpty),
                   person.sourceName == nil || person.manualDescription != nil, person.evidence.count <= 16 else { throw MoReadError.invalid("人物资料的名称、描述或依据数量无效。") }
-            for evidence in person.evidence {
+            for attribute in person.attributes {
+                try KnowledgeCharacterAttribute(kind: attribute.kind, value: attribute.value, fact: attribute.evidence.fact).validate(names: person.verifiedNames)
+            }
+            for relationship in person.relationships {
+                let targetNames = [relationship.sourceTarget ?? relationship.target]
+                guard targetNames.allSatisfy(ChapterKnowledge.validName) else { throw MoReadError.invalid("人物关系中的原名称无效。") }
+                try KnowledgeCharacterRelationship(target: relationship.target, relation: relationship.relation, fact: relationship.evidence.fact).validate(names: person.verifiedNames, targetNames: targetNames)
+            }
+            for evidence in person.allEvidence {
                 try evidence.fact.validate(sourceEnd: Int.max)
                 guard evidence.chapter >= 0, sourceThrough.map({ ReadingScope(through: $0).allows(chapter: evidence.chapter, range: NSRange(location: evidence.fact.start, length: evidence.fact.end - evidence.fact.start)) }) ?? true else {
                     throw MoReadError.invalid("人物依据超出资料的阅读范围。")
@@ -63,7 +102,7 @@ public struct BookCharacterGuide: Codable, Equatable, Sendable {
         let edits = previous.filter { $0.manualDescription != nil }
         var result = generated.compactMap { person -> BookCharacter? in
             if let edit = edits.first(where: { $0.id == person.id }) {
-                return BookCharacter(name: edit.name, evidence: person.evidence, manualDescription: edit.manualDescription, sourceName: edit.id)
+                return BookCharacter(name: edit.name, evidence: person.evidence, manualDescription: edit.manualDescription, sourceName: edit.id, attributes: person.attributes, relationships: person.relationships)
             }
             return edits.contains(where: { $0.name.caseInsensitiveCompare(person.name) == .orderedSame }) ? nil : person
         }
@@ -77,18 +116,43 @@ public struct BookCharacterGuide: Codable, Equatable, Sendable {
 
 struct BookCharacterAccumulator {
     private var names: [String] = []
-    private var people: [String: [CharacterEvidence]] = [:]
+    private var people: [String: BookCharacter] = [:]
+    private static func distinct<T, Key: Hashable>(_ values: [T], by key: (T) -> Key) -> [T] {
+        var seen: Set<Key> = []; return values.filter { seen.insert(key($0)).inserted }
+    }
+    private static func retained(_ values: [CharacterEvidence]) -> [CharacterEvidence] {
+        let sorted = distinct(values, by: { $0.fact.text }).sorted { $0.chapter == $1.chapter ? $0.fact.start < $1.fact.start : $0.chapter < $1.chapter }
+        return sorted.count <= 16 ? sorted : Array(sorted.prefix(4)) + sorted.suffix(12)
+    }
     mutating func add(chapter: Int, characters: [KnowledgeCharacter]) {
         for person in characters {
-            if people[person.name] == nil { names.append(person.name) }
-            var texts: Set<String> = []
-            let values = ((people[person.name] ?? []) + person.facts.map { CharacterEvidence(chapter: chapter, fact: $0) })
-                .filter { texts.insert($0.fact.text).inserted }
-                .sorted { $0.chapter == $1.chapter ? $0.fact.start < $1.fact.start : $0.chapter < $1.chapter }
-            people[person.name] = values.count <= 16 ? values : Array(values.prefix(4)) + values.suffix(12)
+            let previous = people[person.name]
+            if previous == nil { names.append(person.name) }
+            people[person.name] = BookCharacter(name: person.name,
+                evidence: Self.retained((previous?.evidence ?? []) + person.facts.map { .init(chapter: chapter, fact: $0) }),
+                attributes: Array(Self.distinct((previous?.attributes ?? []) + person.attributes.map { .init(kind: $0.kind, value: $0.value, evidence: .init(chapter: chapter, fact: $0.fact)) }, by: { [$0.kind.rawValue, $0.value] }).suffix(48)),
+                relationships: Array(Self.distinct((previous?.relationships ?? []) + person.relationships.map { .init(target: $0.target, relation: $0.relation, evidence: .init(chapter: chapter, fact: $0.fact)) }, by: { [$0.target, $0.relation] }).suffix(96)))
         }
     }
-    var characters: [BookCharacter] { names.map { .init(name: $0, evidence: people[$0] ?? []) } }
+    var characters: [BookCharacter] {
+        var owners: [String: Set<String>] = [:]
+        for person in people.values { for alias in person.aliases { owners[alias, default: []].insert(person.name) } }
+        let canonical = Dictionary(uniqueKeysWithValues: names.map { name in
+            let owner = owners[name]?.count == 1 ? owners[name]?.first : nil
+            return (name, owner.flatMap { $0 != name && owners[$0] == nil ? $0 : nil } ?? name)
+        })
+        let ordered = Self.distinct(names.map { canonical[$0] ?? $0 }, by: { $0 })
+        let grouped = Dictionary(grouping: names.compactMap { people[$0] }, by: { canonical[$0.name] ?? $0.name })
+        return ordered.map { name in
+            let rows = grouped[name] ?? []
+            let relationships = rows.flatMap(\.relationships).map { item in
+                BookCharacterRelationship(target: canonical[item.target] ?? item.target, sourceTarget: canonical[item.target].flatMap { $0 != item.target ? item.target : nil }, relation: item.relation, evidence: item.evidence)
+            }.filter { $0.target != name }
+            return BookCharacter(name: name, evidence: Self.retained(rows.flatMap(\.evidence)),
+                attributes: Self.distinct(rows.flatMap(\.attributes), by: { [$0.kind.rawValue, $0.value] }),
+                relationships: Self.distinct(relationships, by: { [$0.target, $0.relation] }))
+        }
+    }
 }
 
 public struct BookCharactersCheckpoint: Codable, Sendable {
@@ -100,7 +164,7 @@ public struct BookCharactersCheckpoint: Codable, Sendable {
     public let promptVersion: Int
     public var completedParts: Int
     func validate() throws {
-        guard promptVersion == 1, completedParts >= 0, ChapterKnowledgeEntry.validHash(sourceRevision), ChapterKnowledgeEntry.validHash(modelFingerprint),
+        guard (1...BookCharacterGuide.currentPromptVersion).contains(promptVersion), completedParts >= 0, ChapterKnowledgeEntry.validHash(sourceRevision), ChapterKnowledgeEntry.validHash(modelFingerprint),
               sourceThrough.map({ $0.chapter >= 0 && $0.offset >= 0 }) ?? true else { throw MoReadError.invalid("人物提取进度无效。") }
     }
 }
@@ -133,13 +197,15 @@ private struct CharacterPartCache: Codable {
     let characters: [KnowledgeCharacter]
     var fileName: String { "part-\(chapter)-\(start).json" }
     func validate() throws {
-        guard chapter >= 0, start >= 0, end > start, end - start <= 10_000, promptVersion == 1,
+        guard chapter >= 0, start >= 0, end > start, end - start <= 10_000, (1...BookCharacterGuide.currentPromptVersion).contains(promptVersion),
               ChapterKnowledgeEntry.validHash(sourceRevision), ChapterKnowledgeEntry.validHash(sourceHash), ChapterKnowledgeEntry.validHash(modelFingerprint), characters.count <= 24 else {
             throw MoReadError.invalid("人物分段缓存的来源记录无效。")
         }
         for person in characters {
             guard ChapterKnowledge.validName(person.name), (1...4).contains(person.facts.count) else { throw MoReadError.invalid("人物缓存内容无效。") }
-            for fact in person.facts { try fact.validate(sourceEnd: end); guard fact.start >= start else { throw MoReadError.invalid("人物依据超出分段范围。") } }
+            guard person.attributes.count <= 12, person.relationships.count <= 12 else { throw MoReadError.invalid("人物属性或关系过多。") }
+            try person.validateProfile()
+            for fact in person.allFacts { try fact.validate(sourceEnd: end); guard fact.start >= start else { throw MoReadError.invalid("人物依据超出分段范围。") } }
         }
     }
 }
@@ -172,12 +238,12 @@ public final class BookCharactersStore {
         let original = originalIdentity.flatMap { id in current?.displayedCharacters(in: book).first { $0.id == id } }
         guard originalIdentity == nil || original != nil else { throw MoReadError.invalid("人物来源已变化，请重新提取或新建人物。") }
         var result = current ?? BookCharacterGuide(bookID: bookID, generationID: UUID(), sourceRevision: MemoryBookScope.fingerprint(book.chapters.map(\.revision)),
-            modelFingerprint: ChapterKnowledgeEntry.hash("manual"), modelLabel: "手动整理", promptVersion: 1, sourceThrough: book.readThrough,
+            modelFingerprint: ChapterKnowledgeEntry.hash("manual"), modelLabel: "手动整理", promptVersion: BookCharacterGuide.currentPromptVersion, sourceThrough: book.readThrough,
             scannedChapters: 0, sourceCharacters: 0, characters: [], createdAt: Date())
         guard !result.characters.contains(where: { person in
             person.id != originalIdentity && (person.name.caseInsensitiveCompare(name) == .orderedSame || person.id.caseInsensitiveCompare(name) == .orderedSame)
         }) else { throw MoReadError.invalid("已有同名人物，请编辑已有资料。") }
-        let value = BookCharacter(name: name, evidence: original?.evidence ?? [], manualDescription: description, sourceName: original?.id ?? name)
+        let value = BookCharacter(name: name, evidence: original?.evidence ?? [], manualDescription: description, sourceName: original?.id ?? name, attributes: original?.attributes ?? [], relationships: original?.relationships ?? [])
         if let index = result.characters.firstIndex(where: { $0.id == originalIdentity }) { result.characters[index] = value }
         else { result.characters.append(value) }
         try result.validate(); try write(result, name: "guide.json", limit: 128 * 1024 * 1024)
@@ -203,7 +269,7 @@ public final class BookCharactersStore {
         }
         let revision = MemoryBookScope.fingerprint(book.chapters.map(\.revision)), saved = try guide(), checkpoint = try checkpoint()
         let resume = checkpoint.flatMap { value in
-            value.generationID != saved?.generationID && value.sourceRevision == revision && value.modelFingerprint == modelFingerprint && value.sourceThrough == through ? value : nil
+            value.promptVersion == BookCharacterGuide.currentPromptVersion && value.generationID != saved?.generationID && value.sourceRevision == revision && value.modelFingerprint == modelFingerprint && value.sourceThrough == through ? value : nil
         }
         return .init(bookID: book.id, bookTitle: book.title, chapters: chapters, sourceRevision: revision, sourceThrough: through,
                      modelFingerprint: modelFingerprint, modelLabel: modelLabel, generationID: resume?.generationID ?? UUID(), completedParts: resume?.completedParts ?? 0,
@@ -228,7 +294,7 @@ public final class BookCharactersStore {
             throw MoReadError.invalid("人物资料已变化，请重新确认。")
         }
         var checkpoint = BookCharactersCheckpoint(bookID: bookID, generationID: plan.generationID, sourceRevision: plan.sourceRevision,
-                                                 modelFingerprint: plan.modelFingerprint, sourceThrough: plan.sourceThrough, promptVersion: 1, completedParts: 0)
+                                                 modelFingerprint: plan.modelFingerprint, sourceThrough: plan.sourceThrough, promptVersion: BookCharacterGuide.currentPromptVersion, completedParts: 0)
         try write(checkpoint, name: "checkpoint.json", limit: 16 * 1024)
         var accumulator = BookCharacterAccumulator()
         for (index, chapter) in plan.chapters.enumerated() {
@@ -252,7 +318,7 @@ public final class BookCharactersStore {
                     try await validate(); try validatePlan(plan, active: true)
                     if cached == nil {
                         let row = CharacterPartCache(bookID: bookID, chapter: chapter.id, start: part.start, end: part.start + part.text.utf16.count,
-                                                     sourceRevision: plan.sourceRevision, sourceHash: hash, modelFingerprint: plan.modelFingerprint, promptVersion: 1, characters: people)
+                                                     sourceRevision: plan.sourceRevision, sourceHash: hash, modelFingerprint: plan.modelFingerprint, promptVersion: BookCharacterGuide.currentPromptVersion, characters: people)
                         try row.validate(); try write(row, name: row.fileName, limit: 512 * 1024)
                     }
                     accumulator.add(chapter: chapter.id, characters: people)
@@ -263,7 +329,7 @@ public final class BookCharactersStore {
         }
         try await validate(); try validatePlan(plan, active: true)
         let result = BookCharacterGuide(bookID: bookID, generationID: plan.generationID, sourceRevision: plan.sourceRevision,
-                                        modelFingerprint: plan.modelFingerprint, modelLabel: plan.modelLabel, promptVersion: 1, sourceThrough: plan.sourceThrough,
+                                        modelFingerprint: plan.modelFingerprint, modelLabel: plan.modelLabel, promptVersion: BookCharacterGuide.currentPromptVersion, sourceThrough: plan.sourceThrough,
                                         scannedChapters: plan.chapters.count, sourceCharacters: plan.sourceCharacters,
                                         characters: BookCharacterGuide.mergingManual(accumulator.characters, previous: try guide()?.characters ?? []), createdAt: Date())
         try result.validate(); try write(result, name: "guide.json", limit: 128 * 1024 * 1024)
@@ -275,13 +341,13 @@ public final class BookCharactersStore {
     private func cachedCharacters(chapter: Int, part: KnowledgePart, plan: BookCharactersPlan, hash: String) throws -> [KnowledgeCharacter]? {
         guard let row: CharacterPartCache = try read("part-\(chapter)-\(part.start).json", limit: 512 * 1024), row.bookID == bookID, row.chapter == chapter,
               row.start == part.start, row.end == part.start + part.text.utf16.count, row.sourceRevision == plan.sourceRevision,
-              row.sourceHash == hash, row.modelFingerprint == plan.modelFingerprint else { return nil }
+              row.sourceHash == hash, row.modelFingerprint == plan.modelFingerprint, row.promptVersion == BookCharacterGuide.currentPromptVersion else { return nil }
         try row.validate(); try ChapterKnowledge.validateCharacters(row.characters, part: part)
         return row.characters
     }
     public func locate(_ guide: BookCharacterGuide, evidence: CharacterEvidence) throws -> SourcePassage {
         let book = try library.book(bookID)
-        guard guide.bookID == bookID, guide.visible(in: book), guide.characters.contains(where: { $0.evidence.contains(evidence) }) else {
+        guard guide.bookID == bookID, guide.visible(in: book), guide.characters.contains(where: { $0.allEvidence.contains(evidence) }) else {
             throw MoReadError.invalid("人物资料的来源范围已变化，请重新提取。")
         }
         let chapter = try library.chapter(evidence.chapter, in: book)
@@ -329,9 +395,9 @@ public final class BookCharactersStore {
         if let saved, saved.visible(in: book) {
             let scope = saved.sourceThrough.map(ReadingScope.init(through:)) ?? .wholeBook
             for person in saved.characters {
-                for evidence in person.evidence {
+                for evidence in person.allEvidence {
                     let text = scope.readableText(try chapter(evidence.chapter))
-                    guard evidence.fact.matches(text), (text as NSString).range(of: person.id, options: .literal).location != NSNotFound else { throw MoReadError.invalid("人物资料与原文不一致。") }
+                    guard evidence.fact.matches(text), person.verifiedNames.contains(where: { (text as NSString).range(of: $0, options: .literal).location != NSNotFound }) else { throw MoReadError.invalid("人物资料与原文不一致。") }
                 }
             }
         }

@@ -569,6 +569,46 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(reply("无", "无").waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Next words."].exists)
     }
+    func testStructuredCharacterAttributesAliasesRelationsAndRestart() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        func tap(_ id: String) {
+            let button = app.buttons[id]
+            if !button.exists || !button.isHittable { revealListElement(button, in: app) }
+            XCTAssertTrue(button.isHittable); button.tap()
+        }
+        func openBook() {
+            let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+            XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
+        }
+        func openPeople() { tap("目录"); tap("书中人物") }
+        func search(_ text: String) {
+            let field = app.textFields["characters-search"]; revealListElement(field, in: app)
+            field.tap(); field.typeText(text + "\n")
+        }
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-characters", "--characters-profile"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap(); openBook(); openPeople()
+        tap("characters-generate"); tap("characters-confirm")
+        XCTAssertTrue(app.staticTexts["已保存 2 位人物。"].waitForExistence(timeout: 15))
+        search("小遥")
+        let age = app.buttons["characters-attribute-林遥-AGE-1"]
+        revealListElement(age, in: app); XCTAssertTrue(age.label.contains("二十岁"))
+        XCTAssertFalse(app.buttons["characters-edit-小遥"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Character-attributes-and-alias"; shot.lifetime = .keepAlways; add(shot)
+        age.tap(); XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("二十岁"))
+        openPeople(); tap("全书"); tap("characters-generate"); tap("characters-confirm")
+        XCTAssertTrue(app.staticTexts["已保存 2 位人物。"].waitForExistence(timeout: 15))
+        search("江舟"); tap("characters-relation-江舟-0")
+        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("江舟是林遥的老师。"))
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-characters", "--characters-profile"]; app.launch(); openBook(); openPeople()
+        search("小遥"); tap("characters-card-林遥")
+        let description = app.textViews["extracted-card-description"]
+        XCTAssertTrue(description.waitForExistence(timeout: 5))
+        let text = description.value as? String ?? ""
+        for expected in ["别名：小遥", "年龄：二十岁", "性别：女", "身份：店主", "外貌：蓝衣", "第 2 章依据："] { XCTAssertTrue(text.contains(expected), expected) }
+    }
     func testManualCharacterProfilesEditRegenerateAndRestart() {
         executionTimeAllowance = 240
         let app = XCUIApplication()

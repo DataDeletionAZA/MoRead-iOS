@@ -31,25 +31,73 @@ public struct KnowledgeFact: Codable, Hashable, Sendable {
             throw MoReadError.invalid("提纲的原文依据无效。")
         }
     }
+    func mentions(_ name: String) -> Bool { (quote as NSString).range(of: name, options: .literal).location != NSNotFound }
     func matches(_ source: String) -> Bool {
         start >= 0 && end > start && end <= source.utf16.count && TextBoundary.floor(start, in: source) == start && TextBoundary.floor(end, in: source) == end &&
         (source as NSString).substring(with: NSRange(location: start, length: end - start)).utf16.elementsEqual(quote.utf16)
     }
 }
 
+public enum CharacterAttributeKind: String, Codable, CaseIterable, Sendable {
+    case alias = "ALIAS", age = "AGE", gender = "GENDER", identity = "IDENTITY", appearance = "APPEARANCE"
+    public var title: String {
+        switch self { case .alias: "别名"; case .age: "年龄"; case .gender: "性别"; case .identity: "身份"; case .appearance: "外貌" }
+    }
+}
+public struct KnowledgeCharacterAttribute: Codable, Hashable, Sendable {
+    public let kind: CharacterAttributeKind
+    public let value: String
+    public let fact: KnowledgeFact
+    func validate(names: [String]) throws {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, value.utf16.count <= 80,
+              names.contains(where: { fact.mentions($0) }),
+              kind != .alias || (fact.mentions(value) && value != names.first) else { throw MoReadError.invalid("人物属性需有包含人物称呼的原文依据，别名需在同一引文中明确关联。") }
+    }
+}
+public struct KnowledgeCharacterRelationship: Codable, Hashable, Sendable {
+    public let target: String
+    public let relation: String
+    public let fact: KnowledgeFact
+    func validate(names: [String], targetNames: [String]? = nil) throws {
+        guard ChapterKnowledge.validName(target), !relation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, relation.utf16.count <= 80,
+              target != names.first, names.contains(where: { fact.mentions($0) }),
+              (targetNames ?? [target]).contains(where: { fact.mentions($0) }) else { throw MoReadError.invalid("人物关系需有包含双方姓名或稳定称呼的原文依据。") }
+    }
+}
 public struct KnowledgeCharacter: Codable, Hashable, Sendable {
     public let name: String
     public let facts: [KnowledgeFact]
+    public var attributes: [KnowledgeCharacterAttribute] = []
+    public var relationships: [KnowledgeCharacterRelationship] = []
+    var allFacts: [KnowledgeFact] { facts + attributes.map(\.fact) + relationships.map(\.fact) }
+    func validateProfile() throws {
+        for attribute in attributes { try attribute.validate(names: [name]) }
+        for relationship in relationships { try relationship.validate(names: [name]) }
+    }
+}
+extension KnowledgeCharacter {
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name); facts = try values.decode([KnowledgeFact].self, forKey: .facts)
+        attributes = try values.decodeIfPresent([KnowledgeCharacterAttribute].self, forKey: .attributes) ?? []
+        relationships = try values.decodeIfPresent([KnowledgeCharacterRelationship].self, forKey: .relationships) ?? []
+    }
 }
 
 public struct ChapterKnowledge: Codable, Equatable, Sendable {
     public let outline: String
     public let summary: [KnowledgeFact]
     public let characters: [KnowledgeCharacter]
-    public var facts: [KnowledgeFact] { summary + characters.flatMap(\.facts) }
+    public var facts: [KnowledgeFact] { summary + characters.flatMap(\.allFacts) }
     private struct Draft: Decodable {
         struct Fact: Decodable { let text: String; let quote: String }
-        struct Character: Decodable { let name: String; let facts: [Fact] }
+        struct Attribute: Decodable { let kind: CharacterAttributeKind; let value: String; let quote: String }
+        struct Relationship: Decodable { let target: String; let relation: String; let quote: String }
+        struct Character: Decodable {
+            let name: String; let facts: [Fact]
+            var attributes: [Attribute]? = nil
+            var relationships: [Relationship]? = nil
+        }
         let outline: String
         let summary: [Fact]
         let characters: [Character]?
@@ -105,12 +153,28 @@ public struct ChapterKnowledge: Codable, Equatable, Sendable {
             guard validName(name), (1...4).contains(character.facts.count), (part.text as NSString).range(of: name, options: .literal).location != NSNotFound else {
                 throw MoReadError.invalid("人物名称或原文依据无效，请使用原文中的人名或稳定称呼。")
             }
-            return KnowledgeCharacter(name: name, facts: try character.facts.map { try verify($0, part: part) })
+            guard (character.attributes ?? []).count <= 12, (character.relationships ?? []).count <= 12 else { throw MoReadError.invalid("单个人物的属性或关系过多。") }
+            var attributeKeys: Set<[String]> = [], relationshipKeys: Set<[String]> = []
+            let attributes = try (character.attributes ?? []).map { item in
+                let value = item.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                let result = KnowledgeCharacterAttribute(kind: item.kind, value: value, fact: try verify(.init(text: value, quote: item.quote), part: part))
+                try result.validate(names: [name]); return result
+            }.filter { attributeKeys.insert([$0.kind.rawValue, $0.value]).inserted }
+            let relationships = try (character.relationships ?? []).map { item in
+                let target = item.target.trimmingCharacters(in: .whitespacesAndNewlines), relation = item.relation.trimmingCharacters(in: .whitespacesAndNewlines)
+                let result = KnowledgeCharacterRelationship(target: target, relation: relation, fact: try verify(.init(text: "\(name) → \(target)：\(relation)", quote: item.quote), part: part))
+                try result.validate(names: [name]); return result
+            }.filter { relationshipKeys.insert([$0.target, $0.relation]).inserted }
+            return KnowledgeCharacter(name: name, facts: try character.facts.map { try verify($0, part: part) }, attributes: attributes, relationships: relationships)
         }
     }
     static func validateCharacters(_ characters: [KnowledgeCharacter], part: KnowledgePart) throws {
         guard characters.count <= 24 else { throw MoReadError.invalid("单段人物条目过多。") }
-        let drafts = characters.map { Draft.Character(name: $0.name, facts: $0.facts.map { Draft.Fact(text: $0.text, quote: $0.quote) }) }
+        let drafts = characters.map { person in
+            Draft.Character(name: person.name, facts: person.facts.map { .init(text: $0.text, quote: $0.quote) },
+                attributes: person.attributes.map { .init(kind: $0.kind, value: $0.value, quote: $0.fact.quote) },
+                relationships: person.relationships.map { .init(target: $0.target, relation: $0.relation, quote: $0.fact.quote) })
+        }
         guard try verifyCharacters(drafts, part: part) == characters else { throw MoReadError.invalid("缓存中的人物依据与原文不一致。") }
     }
     public static func merge(_ parts: [Self], outline: String? = nil) throws -> Self {
@@ -119,17 +183,21 @@ public struct ChapterKnowledge: Codable, Equatable, Sendable {
         func unique<T: Hashable>(_ values: [T]) -> [T] { var seen: Set<T> = []; return values.filter { seen.insert($0).inserted } }
         let names = unique(parts.flatMap { $0.characters.map(\.name) })
         return Self(outline: try validateOutline(outline ?? parts[0].outline), summary: unique(parts.flatMap(\.summary)),
-                    characters: names.map { name in KnowledgeCharacter(name: name, facts: unique(parts.flatMap(\.characters).filter { $0.name == name }.flatMap(\.facts))) })
+                    characters: names.map { name in
+                        let people = parts.flatMap(\.characters).filter { $0.name == name }
+                        return KnowledgeCharacter(name: name, facts: unique(people.flatMap(\.facts)), attributes: unique(people.flatMap(\.attributes)), relationships: unique(people.flatMap(\.relationships)))
+                    })
     }
     static func validName(_ name: String) -> Bool {
-        (1...60).contains(name.utf16.count) && !["他", "她", "我", "你", "他们", "她们", "旁白"].contains(name)
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (1...60).contains(name.utf16.count) && !["他", "她", "我", "你", "他们", "她们", "旁白"].contains(name)
     }
     func validate(sourceEnd: Int) throws {
         _ = try Self.validateOutline(outline)
         guard (1...96).contains(summary.count), characters.count <= 192,
-              characters.allSatisfy({ Self.validName($0.name) && (1...48).contains($0.facts.count) }) else {
+              characters.allSatisfy({ Self.validName($0.name) && (1...48).contains($0.facts.count) && $0.attributes.count <= 144 && $0.relationships.count <= 144 }) else {
             throw MoReadError.invalid("章节提纲条目数量或人物格式无效。")
         }
+        for person in characters { try person.validateProfile() }
         for fact in facts { try fact.validate(sourceEnd: sourceEnd) }
     }
 }

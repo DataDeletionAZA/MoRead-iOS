@@ -54,7 +54,16 @@ extension CompanionModel {
             if ProcessInfo.processInfo.arguments.contains("--characters-fail") { throw MoReadError.invalid("人物整理服务暂不可用。") }
             let source = messages.last?.content.components(separatedBy: "<source>\n").last?.components(separatedBy: "\n</source>").first ?? ""
             let quote = TextBoundary.prefix(source.trimmingCharacters(in: .whitespacesAndNewlines), end: 40)
-            let people: [[String: Any]] = ["林遥", "江舟"].filter { source.contains($0) }.map { ["name": $0, "facts": [["text": "\($0)出现在这段原文中。", "quote": quote]]] }
+            let profile = ProcessInfo.processInfo.arguments.contains("--characters-profile")
+            let people: [[String: Any]] = (profile ? ["林遥", "江舟", "小遥"] : ["林遥", "江舟"]).filter { source.contains($0) }.map { name in
+                var person: [String: Any] = ["name": name, "facts": [["text": profile ? quote : "\(name)出现在这段原文中。", "quote": quote]]]
+                let details = "林遥又名小遥，是二十岁的女店主，穿着蓝衣。", relation = "江舟是林遥的老师。"
+                if profile, name == "林遥", source.contains(details) {
+                    person["attributes"] = [("ALIAS", "小遥"), ("AGE", "二十岁"), ("GENDER", "女"), ("IDENTITY", "店主"), ("APPEARANCE", "蓝衣")].map { ["kind": $0.0, "value": $0.1, "quote": details] }
+                }
+                if profile, name == "江舟", source.contains(relation) { person["relationships"] = [["target": "林遥", "relation": "老师", "quote": relation]] }
+                return person
+            }
             let raw = String(decoding: try JSONSerialization.data(withJSONObject: ["characters": people]), as: UTF8.self)
             return .init(text: "", calls: [.init(id: UUID().uuidString, name: tool.name, arguments: raw)], replay: Data("{}".utf8))
         }

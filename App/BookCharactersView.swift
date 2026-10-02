@@ -75,7 +75,7 @@ struct BookCharactersView: View {
                         if !query.isEmpty { Button("清除搜索", systemImage: "xmark.circle.fill") { query = "" }.labelStyle(.iconOnly).buttonStyle(.borderless) }
                     }
                 }
-                let people = displayed.filter { query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || [$0.name, $0.id].contains(where: { $0.localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespacesAndNewlines)) }) }
+                let people = displayed.filter { query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || ([$0.name, $0.id] + $0.aliases).contains(where: { $0.localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespacesAndNewlines)) }) }
                 if people.isEmpty {
                     ContentUnavailableView(query.isEmpty ? "未提取到人物" : "没有找到这个人物", systemImage: "person.text.rectangle", description: Text(query.isEmpty ? "本次扫描没有发现可核对的人物资料。" : "试试原文中的姓名或称呼。"))
                 }
@@ -90,6 +90,22 @@ struct BookCharactersView: View {
                                 extracted = CardDraft(guide: guide, card: draft)
                             } catch { message = error.localizedDescription }
                         }.accessibilityIdentifier("characters-card-" + person.name)
+                        ForEach(Array((expanded.contains(person.id) ? person.attributes : Array(person.attributes.prefix(6))).enumerated()), id: \.offset) { index, attribute in
+                            Button { locate(guide, evidence: attribute.evidence) } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("\(attribute.kind.title) · \(attribute.value)")
+                                    if expanded.contains(person.id) { Text("第 \(attribute.evidence.chapter + 1) 章 · \(attribute.evidence.fact.quote)").font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }.buttonStyle(.borderless).accessibilityIdentifier("characters-attribute-\(person.id)-\(attribute.kind.rawValue)-\(index)")
+                        }
+                        ForEach(Array((expanded.contains(person.id) ? person.relationships : Array(person.relationships.prefix(2))).enumerated()), id: \.offset) { index, relationship in
+                            Button { locate(guide, evidence: relationship.evidence) } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("\(person.name) → \(displayed.first { $0.id == relationship.target }?.name ?? relationship.target)：\(relationship.relation)")
+                                    if expanded.contains(person.id) { Text("第 \(relationship.evidence.chapter + 1) 章 · \(relationship.evidence.fact.quote)").font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }.buttonStyle(.borderless).accessibilityIdentifier("characters-relation-\(person.id)-\(index)")
+                        }
                         if let description = person.manualDescription {
                             Text("手动整理").font(.caption).foregroundStyle(.secondary)
                             Text(description).lineLimit(expanded.contains(person.id) ? nil : 4).accessibilityIdentifier("characters-description-" + person.id)
@@ -103,15 +119,15 @@ struct BookCharactersView: View {
                                 Button("核对原文") { locate(guide, evidence: evidence) }.buttonStyle(.borderless).accessibilityIdentifier("characters-locate-\(person.name)-\(index)")
                             }.padding(.vertical, 6)
                         }
-                        if person.evidence.count > 1 || person.manualDescription != nil {
-                            Button(expanded.contains(person.id) ? "收起人物资料" : person.manualDescription != nil ? "展开资料与原文依据" : "展开其余 \(person.evidence.count - 1) 条资料") {
+                        if person.evidence.count > 1 || person.manualDescription != nil || !person.attributes.isEmpty || !person.relationships.isEmpty {
+                            Button(expanded.contains(person.id) ? "收起人物资料" : (person.manualDescription != nil || !person.attributes.isEmpty || !person.relationships.isEmpty) ? "展开资料与原文依据" : "展开其余 \(person.evidence.count - 1) 条资料") {
                                 if expanded.contains(person.id) { expanded.remove(person.id) } else { expanded.insert(person.id) }
                             }
                         }
                     }
                 }
             } else {
-                ContentUnavailableView("书中人物，一处查看", systemImage: "person.text.rectangle", description: Text("从原文整理人物、身份与关系，每条资料保留原文依据。只合并相同姓名，保留最初介绍和近期事实。"))
+                ContentUnavailableView("书中人物，一处查看", systemImage: "person.text.rectangle", description: Text("从原文整理人物、身份与关系，每条资料保留原文依据。只合并原文明确关联且归属唯一的别名，保留最初介绍和近期事实。"))
             }
         }.navigationTitle("书中人物").scrollDismissesKeyboard(.interactively)
             .task { reload() }
