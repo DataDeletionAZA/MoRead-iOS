@@ -1870,7 +1870,13 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(app.buttons["translations-replace"].exists, cached > 0)
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "epub-current-page-translation"; screenshot.lifetime = .keepAlways; add(screenshot)
         close()
-        app.webViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3)).press(forDuration: 1.2)
+        let web = app.webViews.firstMatch
+        let paragraphs = web.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The same letter arrived twice.")).allElementsBoundByIndex
+        let paragraph = try XCTUnwrap(paragraphs.filter {
+            let frame = $0.frame
+            return frame.minX >= web.frame.minX && frame.maxX <= web.frame.maxX && frame.minY >= web.frame.minY && frame.maxY <= web.frame.maxY && $0.isHittable
+        }.sorted { $0.frame.minY < $1.frame.minY }.first)
+        paragraph.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 12, dy: 12)).press(forDuration: 1.2)
         func annotationMenu() -> XCUIElement? {
             if app.menuItems["批注"].exists { return app.menuItems["批注"] }
             let button = app.collectionViews.buttons["批注"]
@@ -1887,7 +1893,7 @@ final class ReadingTests: XCTestCase {
         app.buttons["本段对照"].tap(); XCTAssertTrue(app.navigationBars["本段对照"].waitForExistence(timeout: 5))
         let selected = rows(); XCTAssertFalse(selected.isEmpty); XCTAssertTrue(selected.allSatisfy { second.contains($0) })
         app.navigationBars["本段对照"].buttons.firstMatch.tap(); app.buttons["保存"].tap()
-        app.buttons["批注"].tap(); XCTAssertTrue(app.staticTexts["bookshop"].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        app.buttons["批注"].tap(); XCTAssertTrue(app.staticTexts["The"].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
         let mark = XCTAttachment(screenshot: app.screenshot()); mark.name = "epub-repeated-paragraph-highlight"; mark.lifetime = .keepAlways; add(mark)
         app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-translations"]; app.launch()
