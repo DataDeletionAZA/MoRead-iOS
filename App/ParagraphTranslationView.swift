@@ -64,6 +64,7 @@ struct ParagraphTranslationView: View {
         List {
             Section {
                 ModelAssignmentPicker(task: .translation)
+                if currentPage { Text("当前页包含 \(paragraphs.count) 个英文段落").font(.caption).accessibilityIdentifier("translations-paragraph-count") }
                 Toggle("显示译文", isOn: Binding(get: { visible }, set: { value in
                     change { store, book in
                         _ = try library.modifyRecords(for: book) { $0.translationsVisible = value }
@@ -77,7 +78,8 @@ struct ParagraphTranslationView: View {
                         .disabled(busy).accessibilityIdentifier("translations-replace")
                 }
                 if busy { Button("停止翻译") { companion.translationTasks[bookID]?.cancel() }.accessibilityIdentifier("translations-stop") }
-                if let status = companion.translationStates[bookID] { Text(status).font(.caption).accessibilityIdentifier("translations-status") }
+                Text("当前范围已保存 \(translations.count) / \(paragraphs.count) 段").font(.caption).accessibilityIdentifier("translations-saved-count")
+                if let status = companion.translationStates[bookID] { Text("本书翻译任务：" + status).font(.caption).accessibilityIdentifier("translations-status") }
                 if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("translations-error") }
             } footer: { Text("翻译所选范围内的完整英文段落，已保存的译文直接复用。整章翻译会发送本章原文并按服务商规则计费，阅读进度保持不变。") }
             if paragraphs.isEmpty { Text("此处没有可翻译的英文段落。").foregroundStyle(.secondary) }
@@ -112,7 +114,8 @@ struct ParagraphTranslationView: View {
             let current = try storage.chapter(chapter, in: book)
             guard sourceRevision == nil || current.revision == sourceRevision else { throw MoReadError.invalid("原文已变化，请重新选择段落。") }
             source = current; paragraphs = try EnglishParagraph.paragraphs(in: current.text, intersecting: range)
-            translations = try ParagraphTranslationStore(library: storage, bookID: bookID).load(chapter: chapter)
+            let starts = Set(paragraphs.map(\.start))
+            translations = try ParagraphTranslationStore(library: storage, bookID: bookID).load(chapter: chapter).filter { starts.contains($0.start) && $0.matches(current.text) }
             visible = try storage.records(for: book).translationsVisible ?? true; error = nil
         } catch { self.error = error.localizedDescription; source = nil; paragraphs = []; translations = [] }
     }

@@ -89,7 +89,7 @@ final class ReadingTests: XCTestCase {
         app.textViews["reader-text"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.4)).press(forDuration: 1.2)
         let translationMenu = app.descendants(matching: .any).matching(identifier: "本段译文").firstMatch
         for _ in 0..<3 where !translationMenu.exists {
-            let next = app.buttons["Next Page"]
+            let next = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
             if next.waitForExistence(timeout: 2) { next.tap() }
         }
         XCTAssertTrue(translationMenu.waitForExistence(timeout: 5)); translationMenu.tap()
@@ -1835,6 +1835,68 @@ final class ReadingTests: XCTestCase {
         tapSettingsRow("备份与恢复", in: app)
         app.buttons["create-backup"].tap()
         XCTAssertTrue(app.buttons["share-backup"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+
+    func testEPUBCurrentPageTranslationKeepsRepeatedParagraphsDistinct() throws {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        let url = try XCTUnwrap(Bundle(for: ReadingTests.self).url(forResource: "Bilingual", withExtension: "epub"))
+        app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-epub", "--simulate-translations"]
+        app.launch()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
+        func page() {
+            app.buttons["目录"].tap()
+            XCTAssertTrue(app.buttons["翻译当前页"].waitForExistence(timeout: 15)); app.buttons["翻译当前页"].tap()
+            XCTAssertTrue(app.navigationBars["当前页对照"].waitForExistence(timeout: 5))
+        }
+        func close() { app.navigationBars["当前页对照"].buttons.firstMatch.tap(); app.buttons["完成"].tap() }
+        func rows() -> [String] { app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "translation-source-")).allElementsBoundByIndex.map(\.identifier) }
+        page()
+        let first = rows(); XCTAssertFalse(first.isEmpty)
+        let count = Int(app.staticTexts["translations-paragraph-count"].label.filter(\.isNumber)) ?? 0
+        XCTAssertGreaterThan(count, 0); XCTAssertLessThan(count, 25)
+        app.buttons["translations-start"].tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "译文已保存"), object: app.staticTexts["translations-status"])], timeout: 15), .completed)
+        close()
+        app.webViews.firstMatch.swipeLeft()
+        page(); let second = rows(); XCTAssertFalse(second.isEmpty); XCTAssertNotEqual(second, first)
+        let cached = Set(first).intersection(second).count
+        let secondCount = Int(app.staticTexts["translations-paragraph-count"].label.filter(\.isNumber)) ?? 0
+        XCTAssertEqual(app.staticTexts["translations-saved-count"].label, "当前范围已保存 \(cached) / \(secondCount) 段")
+        XCTAssertEqual(app.buttons["translations-replace"].exists, cached > 0)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "epub-current-page-translation"; screenshot.lifetime = .keepAlways; add(screenshot)
+        close()
+        app.webViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3)).press(forDuration: 1.2)
+        func annotationMenu() -> XCUIElement? {
+            if app.menuItems["批注"].exists { return app.menuItems["批注"] }
+            let button = app.collectionViews.buttons["批注"]
+            return button.exists ? button : nil
+        }
+        for _ in 0..<3 where annotationMenu() == nil {
+            let next = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
+            if next.waitForExistence(timeout: 2) { next.tap() }
+        }
+        let action = try XCTUnwrap(annotationMenu())
+        let frame = action.frame
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.midX, dy: frame.midY)).tap()
+        XCTAssertTrue(app.navigationBars["记录这一段"].waitForExistence(timeout: 10))
+        app.buttons["本段对照"].tap(); XCTAssertTrue(app.navigationBars["本段对照"].waitForExistence(timeout: 5))
+        let selected = rows(); XCTAssertFalse(selected.isEmpty); XCTAssertTrue(selected.allSatisfy { second.contains($0) })
+        app.navigationBars["本段对照"].buttons.firstMatch.tap(); app.buttons["保存"].tap()
+        app.buttons["批注"].tap(); XCTAssertTrue(app.staticTexts["bookshop"].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
+        let mark = XCTAttachment(screenshot: app.screenshot()); mark.name = "epub-repeated-paragraph-highlight"; mark.lifetime = .keepAlways; add(mark)
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-translations"]; app.launch()
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap(); XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
+        page(); XCTAssertEqual(rows().first, second.first)
+        XCTAssertEqual(app.staticTexts["translations-paragraph-count"].label, "当前页包含 \(secondCount) 个英文段落"); close()
+        app.buttons["目录"].tap(); app.buttons["第二章 来信"].tap()
+        XCTAssertTrue(app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Another")).firstMatch.waitForExistence(timeout: 15))
+        page(); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Another letter arrived.")).firstMatch.exists)
         XCTAssertFalse(app.alerts["需要处理"].exists)
     }
 

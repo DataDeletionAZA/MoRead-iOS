@@ -56,7 +56,7 @@ struct ReaderView: View {
                         EPUBReader(book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage in selectionIsTranslation = false; selection = passage; note = "" }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
+                        }, onSelection: { passage in selectionIsTranslation = false; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
@@ -149,7 +149,10 @@ struct ReaderView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { refreshReadingTime(); companion.setAnnotationReader(bookID, library: model) } else { companion.setAnnotationReader(nil, library: model); recordTime(); model.flush() }
         }
-        .onChange(of: sheet) { _, _ in refreshReadingTime() }
+        .onChange(of: sheet) { _, value in
+            refreshReadingTime()
+            if value == .contents, book?.format == "epub" { NotificationCenter.default.post(name: .epubCapturePage, object: bookID) }
+        }
         .onChange(of: selection) { _, _ in refreshReadingTime() }
         .onChange(of: chat?.id) { _, _ in refreshReadingTime() }
         .onChange(of: speech.location) { _, location in
@@ -169,7 +172,7 @@ struct ReaderView: View {
                         NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                         NavigationLink("中英对照") { ParagraphTranslationView(bookID: bookID, chapter: chapter?.id ?? book.position.chapter) }
-                        if let visiblePage, book.format == "txt" {
+                        if let visiblePage {
                             NavigationLink("翻译当前页") { ParagraphTranslationView(bookID: bookID, chapter: visiblePage.chapter, range: NSRange(location: visiblePage.offset, length: visiblePage.text.utf16.count), sourceRevision: visiblePage.revision, currentPage: true) }
                         }
                         NavigationLink("书中人物") {

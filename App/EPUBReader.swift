@@ -18,7 +18,10 @@ struct EPUBJump {
     let offset: Int
     var locator: Data? = nil
 }
-extension Notification.Name { static let epubJump = Notification.Name("MoRead.EPUBJump") }
+extension Notification.Name {
+    static let epubJump = Notification.Name("MoRead.EPUBJump")
+    static let epubCapturePage = Notification.Name("MoRead.EPUBCapturePage")
+}
 
 @MainActor
 final class EPUBService {
@@ -101,10 +104,11 @@ struct EPUBReader: UIViewControllerRepresentable {
     let onToggleControls: () -> Void
     let onLocation: (Data) -> Void
     let onSelection: (SourcePassage) -> Void
+    let onVisiblePage: (SourcePassage?) -> Void
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection)
+        EPUBHostController(book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
@@ -122,10 +126,12 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let onToggleControls: () -> Void
     private let onLocation: (Data) -> Void
     private let onSelection: (SourcePassage) -> Void
+    private let onVisiblePage: (SourcePassage?) -> Void
     private var navigator: EPUBNavigatorViewController?
     private var anchors: [EPUBAnchor] = []
     private var openTask: Task<Void, Never>?
     private var locationTask: Task<Void, Never>?
+    private var selectionTask: Task<Void, Never>?
     private var fontSize: Double
     private var lineSpacing: Double
     private var typography: ReaderTypography
@@ -134,10 +140,10 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
 
-    init(book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void) {
+    init(book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage
-        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection
+        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -148,6 +154,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
         spinner.startAnimating()
         NotificationCenter.default.addObserver(self, selector: #selector(jump(_:)), name: .epubJump, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(capturePage(_:)), name: .epubCapturePage, object: nil)
         openTask = Task { [weak self] in
             guard let self, let book = model.books.first(where: { $0.id == self.bookID }), let store = model.store else { return }
             do {
@@ -258,18 +265,56 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         }
     }
     func close() {
-        openTask?.cancel(); locationTask?.cancel()
+        openTask?.cancel(); locationTask?.cancel(); selectionTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
         model.perform { onLocation(try JSONSerialization.data(withJSONObject: locator.json)) }
-        locationTask?.cancel()
+        refreshVisiblePage(recordPosition: true)
+    }
+    @objc private func capturePage(_ notification: Notification) {
+        guard notification.object as? UUID == bookID else { return }
+        refreshVisiblePage(recordPosition: false)
+    }
+    private func refreshVisiblePage(recordPosition: Bool) {
+        locationTask?.cancel(); onVisiblePage(nil)
         locationTask = Task { [weak self] in
-            guard let self, let reader = self.navigator, let exact = await reader.firstVisibleElementLocator(), !Task.isCancelled else { return }
-            guard var book = model.books.first(where: { $0.id == self.bookID }), let position = position(for: exact, book: book) else { return }
-            // A paragraph's start is a conservative watermark: text below it stays unread.
-            book.record(position: position, visibleEnd: position); model.update(book)
+            guard let self else { return }
+            do {
+                let passage = try await sourcePassage(selecting: false)
+                try Task.checkCancellation(); onVisiblePage(passage)
+                if recordPosition, passage == nil, let exact = await navigator?.firstVisibleElementLocator(), !Task.isCancelled,
+                   var book = model.books.first(where: { $0.id == bookID }), let position = position(for: exact, book: book) {
+                    book.record(position: position, visibleEnd: position); model.update(book)
+                }
+                if recordPosition, let passage, var book = model.books.first(where: { $0.id == bookID }) {
+                    // Only the first visible paragraph's start advances the EPUB watermark.
+                    let position = ReadingPosition(chapter: passage.chapter, offset: passage.offset)
+                    book.record(position: position, visibleEnd: position); model.update(book)
+                }
+            } catch is CancellationError {} catch { onVisiblePage(nil) }
         }
+    }
+    private func sourcePassage(selecting: Bool) async throws -> SourcePassage? {
+        guard !model.maintenance, let reader = navigator, let href = reader.currentLocation?.href,
+              let book = model.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }), let store = model.store,
+              let index = reader.publication.readingOrder.firstIndex(where: { $0.url().string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] }) else { return nil }
+        let chapter = try store.chapter(index, in: book)
+        let blocks = try EPUBSourceBlock.blocks(in: chapter, anchors: anchors)
+        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting)).get()
+        try Task.checkCancellation()
+        guard model.store === store, !model.maintenance, reader.currentLocation?.href == href,
+              let value = result as? [String: Any], let start = value["start"] as? Int, let end = value["end"] as? Int,
+              start >= 0, end > start, end <= chapter.text.utf16.count,
+              TextBoundary.floor(start, in: chapter.text) == start, TextBoundary.floor(end, in: chapter.text) == end,
+              try store.chapter(index, in: book).revision == chapter.revision else { return nil }
+        var passage = SourcePassage(bookID: bookID, chapter: chapter, offset: start, text: (chapter.text as NSString).substring(with: NSRange(location: start, length: end - start)))
+        if selecting, let selector = value["selector"] as? String, let current = reader.currentLocation {
+            let text = try Locator.Text(json: value["text"])
+            let locator = current.copy(locations: { $0.otherLocations["cssSelector"] = selector }, text: { $0 = text })
+            passage.epubLocator = try JSONSerialization.data(withJSONObject: locator.json)
+        }
+        return passage
     }
     private func position(for locator: Locator, book: Book) -> ReadingPosition? {
         guard let reader = navigator,
@@ -284,16 +329,15 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         return ReadingPosition(chapter: chapterIndex, offset: found.location)
     }
     @objc private func annotate() {
-        guard let selected = navigator?.currentSelection,
-              let book = model.books.first(where: { $0.id == bookID }),
-              let position = position(for: selected.locator, book: book),
-              let text = selected.locator.text.highlight,
-              let chapter = try? model.store?.chapter(position.chapter, in: book) else {
-            model.error = "暂时无法准确定位这段原文，请选择更完整的一段再试。"; return
+        guard let selected = navigator?.currentSelection else { return }
+        selectionTask?.cancel()
+        selectionTask = Task {
+            do {
+                guard let passage = try await sourcePassage(selecting: true), passage.epubLocator != nil,
+                      passage.text.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("暂时无法准确定位这段原文，请选择更完整的一段再试。") }
+                onSelection(passage); navigator?.clearSelection()
+            } catch is CancellationError {} catch { model.error = error.localizedDescription }
         }
-        var passage = SourcePassage(bookID: bookID, chapter: chapter, offset: position.offset, text: text)
-        passage.epubLocator = try? JSONSerialization.data(withJSONObject: selected.locator.json)
-        onSelection(passage); navigator?.clearSelection()
     }
     @objc private func jump(_ notification: Notification) {
         guard let jump = notification.object as? EPUBJump, jump.bookID == bookID else { return }
