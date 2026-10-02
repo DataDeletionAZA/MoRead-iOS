@@ -163,4 +163,43 @@ import XCTest
         XCTAssertTrue(try store.preview(modelFingerprint: model, modelLabel: "本地", progressBounded: false).resuming)
         try store.delete(); XCTAssertNil(try store.checkpoint())
     }
+    func testExtractedCardRoundTripBackupEditsAndStaleSourceRejection() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), root = folder.appendingPathComponent("library")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = try LibraryStore(root: root), companions = try CompanionStore(root: root)
+        var book = try library.importBook(title: "灯塔", chapters: [.init(id: 0, title: "一", text: "阿翎来到灯塔。"), .init(id: 1, title: "二", text: "小岚守着来信。")])
+        book.readThrough = .init(offset: 7); try library.save(book)
+        let store = BookCharactersStore(library: library, bookID: book.id)
+        let guide = try await generate(store, plan: store.preview(modelFingerprint: model, modelLabel: "本地"), replies: Replies())
+        var draft = try store.extractedCard(from: guide, named: "阿翎")
+        XCTAssertEqual(try companions.characters().count, 0)
+        XCTAssertTrue(draft.description.contains("第 1 章依据：阿翎来到灯塔。")); XCTAssertFalse(draft.description.contains("小岚"))
+        XCTAssertThrowsError(try store.extractedCard(from: guide, named: "小岚"))
+        draft.name = "  灯塔的阿翎  "; draft.description += "\n说话温柔。"
+        let card = try draft.characterCard(), data = try draft.json()
+        XCTAssertEqual(card.id, draft.id); XCTAssertEqual(card.name, "灯塔的阿翎"); XCTAssertTrue(card.greeting.isEmpty)
+        let imported = try CharacterCardImporter.parse(data)
+        XCTAssertEqual(imported.name, card.name); XCTAssertEqual(imported.description, card.description)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["spec"] as? String, "chara_card_v2")
+        try companions.save(card); try companions.save(draft.characterCard())
+        XCTAssertEqual(try companions.characters(), [card])
+        let archive = folder.appendingPathComponent("cards.zip")
+        _ = try await BackupArchive.create(root: root, output: archive)
+        let restored = try await BackupArchive.prepare(archive, beside: root)
+        defer { try? FileManager.default.removeItem(at: restored.directory) }
+        XCTAssertEqual(try CompanionStore(root: restored.directory).characters(), [card])
+        var invalid = draft; invalid.name = " \n"; XCTAssertThrowsError(try invalid.json())
+        invalid.name = String(repeating: "名", count: 81); XCTAssertThrowsError(try invalid.characterCard())
+        invalid.name = "a" + String(repeating: "\u{0301}", count: 80); XCTAssertThrowsError(try invalid.json())
+        invalid = draft; invalid.description = ""; XCTAssertThrowsError(try invalid.json())
+        invalid.description = String(repeating: "字", count: 24_001); XCTAssertThrowsError(try invalid.json())
+        book.readThrough = .init(); try library.save(book)
+        XCTAssertThrowsError(try store.extractedCard(from: guide, named: "阿翎"))
+        book.readThrough = .init(offset: 7); try library.save(book)
+        let changed = Chapter(id: 0, title: "一", text: "阿翎离开灯塔。")
+        try JSONEncoder().encode(changed).write(to: library.directory(book.id).appendingPathComponent("chapter-0.json"), options: .atomic)
+        XCTAssertThrowsError(try store.extractedCard(from: guide, named: "阿翎"))
+        try store.delete(); XCTAssertThrowsError(try store.extractedCard(from: guide, named: "阿翎"))
+    }
 }

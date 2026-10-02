@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import MoReadCore
 
 struct BookCharactersView: View {
@@ -15,6 +16,12 @@ struct BookCharactersView: View {
     @State private var plan: CharacterGenerationPlan?
     @State private var deleting = false
     @State private var message: String?
+    private struct CardDraft: Identifiable {
+        let guide: BookCharacterGuide
+        let card: ExtractedCharacterCard
+        var id: UUID { card.id }
+    }
+    @State private var extracted: CardDraft?
     private var job: KnowledgeJobKey { .init(bookID: bookID, chapter: nil) }
     private var busy: Bool { companion.knowledgeTasks[job] != nil }
     private var book: Book? { library.books.first { $0.id == bookID && !$0.removed && $0.hasBody } }
@@ -64,6 +71,14 @@ struct BookCharactersView: View {
                 }
                 ForEach(people) { person in
                     Section(person.name) {
+                        Button("提取为伴读角色卡") {
+                            do {
+                                guard !library.maintenance, let storage = library.store else { return }
+                                library.flush()
+                                let draft = try BookCharactersStore(library: storage, bookID: bookID).extractedCard(from: guide, named: person.name)
+                                extracted = CardDraft(guide: guide, card: draft)
+                            } catch { message = error.localizedDescription }
+                        }.accessibilityIdentifier("characters-card-" + person.name)
                         Text("依据来自 \(Set(person.evidence.map(\.chapter)).count) 章").font(.caption).foregroundStyle(.secondary)
                         ForEach(Array((expanded.contains(person.name) ? person.evidence : Array(person.evidence.prefix(1))).enumerated()), id: \.offset) { index, evidence in
                             VStack(alignment: .leading, spacing: 8) {
@@ -86,6 +101,9 @@ struct BookCharactersView: View {
         }.navigationTitle("书中人物").scrollDismissesKeyboard(.interactively)
             .task { reload() }
             .onChange(of: library.recordsRevision) { _, _ in reload() }
+            .sheet(item: $extracted) { draft in
+                ExtractedCharacterEditor(guide: draft.guide, originalName: draft.card.name, draft: draft.card)
+            }
             .sheet(item: $plan) { value in
                 NavigationStack {
                     Form {
@@ -132,4 +150,71 @@ struct BookCharactersView: View {
             library.flush(); onLocate(try BookCharactersStore(library: storage, bookID: bookID).locate(guide, evidence: evidence))
         } catch { message = error.localizedDescription }
     }
+}
+
+private struct ExtractedCharacterEditor: View {
+    let guide: BookCharacterGuide
+    let originalName: String
+    @State var draft: ExtractedCharacterCard
+    @EnvironmentObject private var library: LibraryModel
+    @EnvironmentObject private var companion: CompanionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var document: ExtractedCharacterDocument?
+    @State private var exporting = false
+    @State private var message: String?
+    @FocusState private var focused: Bool
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("姓名", text: $draft.name).focused($focused).accessibilityIdentifier("extracted-card-name")
+                    TextEditor(text: $draft.description).frame(minHeight: 220).focused($focused)
+                        .accessibilityLabel("人物资料").accessibilityIdentifier("extracted-card-description")
+                } footer: {
+                    Text("核对原文依据后保存，可补充性格和说话方式。角色资料会在伴读时发送给所选模型；完整人设始终随角色使用。")
+                }
+                Section {
+                    Button("保存为伴读角色") {
+                        do {
+                            focused = false; try validateSource()
+                            if companion.saveCard(try draft.characterCard()) { dismiss() }
+                        } catch { message = error.localizedDescription }
+                    }.accessibilityIdentifier("extracted-card-save")
+                    Button("导出角色卡 JSON") {
+                        do {
+                            focused = false; try validateSource()
+                            document = ExtractedCharacterDocument(data: try draft.json()); exporting = true
+                        } catch { message = error.localizedDescription }
+                    }.accessibilityIdentifier("extracted-card-export")
+                }.disabled(library.maintenance || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if let message { Text(message).font(.callout).accessibilityIdentifier("extracted-card-status") }
+            }.navigationTitle("提取角色卡").scrollDismissesKeyboard(.interactively)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
+                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focused = false } }
+                }
+                .fileExporter(isPresented: $exporting, document: document, contentType: .json, defaultFilename: "MoRead-角色卡.json") { result in
+                    switch result {
+                    case .success: message = "角色卡已导出，可在支持 SillyTavern 的应用中导入。"
+                    case .failure(let error): message = "导出失败：" + error.localizedDescription
+                    }
+                }
+        }
+    }
+    private func validateSource() throws {
+        guard !library.maintenance, let storage = library.store else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
+        library.flush()
+        _ = try BookCharactersStore(library: storage, bookID: guide.bookID).extractedCard(from: guide, named: originalName)
+    }
+}
+
+private struct ExtractedCharacterDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    let data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents, data.count <= 4 * 1024 * 1024 else { throw CocoaError(.fileReadCorruptFile) }
+        self.data = data
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }

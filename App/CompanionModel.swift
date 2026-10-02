@@ -56,13 +56,14 @@ final class CompanionModel: ObservableObject {
     }
     func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
     func saveSettings() { perform { try store?.save(settings) } }
-    func saveCard(_ card: CharacterCard, select: Bool = true) {
-        perform {
+    @discardableResult func saveCard(_ card: CharacterCard, select: Bool = true) -> Bool {
+        do {
             guard let store else { throw MoReadError.invalid("角色资料存储尚未打开。") }
             try store.save(card)
             if let index = characters.firstIndex(where: { $0.id == card.id }) { characters[index] = card } else { characters.append(card) }
             if select { settings.selectedCharacter = card.id }; try store.save(settings)
-        }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     func newConversation(book: Book?) -> UUID? {
         guard let card = characters.first(where: { $0.id == settings.selectedCharacter }) ?? characters.first else { return nil }

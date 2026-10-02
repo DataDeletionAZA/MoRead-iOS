@@ -119,7 +119,7 @@ struct CharacterEditor: View {
                 .alert("头像未更换", isPresented: Binding(get: { imageError != nil }, set: { if !$0 { imageError = nil } })) { Button("好", role: .cancel) {} } message: { Text(imageError ?? "") }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("保存") { companion.saveCard(card); if companion.error == nil { dismiss() } }.disabled(card.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { if companion.saveCard(card) { dismiss() } }.disabled(card.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
                 }
         }
     }

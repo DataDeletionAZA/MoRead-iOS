@@ -569,6 +569,62 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(reply("无", "无").waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Next words."].exists)
     }
+    func testExtractedCharacterCardEditingExportCancelSaveAndRestart() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-characters"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["目录"].tap(); app.buttons["书中人物"].tap()
+        app.buttons["characters-generate"].tap(); app.buttons["characters-confirm"].tap()
+        XCTAssertTrue(app.staticTexts["已保存 1 位人物。"].waitForExistence(timeout: 15))
+        let extract = app.buttons["characters-card-林遥"]
+        revealListElement(extract, in: app); extract.tap()
+        let name = app.textFields["extracted-card-name"], description = app.textViews["extracted-card-description"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); XCTAssertEqual(name.value as? String, "林遥")
+        XCTAssertTrue((description.value as? String ?? "").contains("第 1 章依据："))
+        XCTAssertFalse((description.value as? String ?? "").contains("江舟"))
+        name.tap(); name.typeText("草稿"); app.buttons["关闭"].tap()
+        revealListElement(extract, in: app); extract.tap()
+        XCTAssertEqual(name.value as? String, "林遥")
+        name.tap(); name.typeText("同伴"); app.buttons["完成"].tap()
+        description.tap(); description.typeText("\n轻声说话。"); app.buttons["完成"].tap()
+        let export = app.buttons["extracted-card-export"]; revealListElement(export, in: app); export.tap()
+        let exportSave = app.buttons["DOCPicker.actionButton"]
+        let localFiles = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["我的iPhone", "我的 iPhone", "On My iPhone"])).firstMatch
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in exportSave.exists || localFiles.exists }, object: nil)], timeout: 40), .completed)
+        if !exportSave.exists { localFiles.tap() }
+        XCTAssertTrue(exportSave.waitForExistence(timeout: 10)); exportSave.tap()
+        let replacement = NSPredicate(format: "label IN %@", ["取代", "替换", "Replace"])
+        let replace = app.buttons.matching(replacement).firstMatch
+        let systemReplace = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons.matching(replacement).firstMatch
+        let exported = app.staticTexts["extracted-card-status"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in exported.exists || replace.exists || systemReplace.exists }, object: nil)], timeout: 30), .completed)
+        if replace.exists { replace.tap() } else if systemReplace.exists { systemReplace.tap() }
+        XCTAssertTrue(app.staticTexts["extracted-card-status"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["extracted-card-status"].label.contains("已导出"))
+        revealListElement(export, in: app); export.tap()
+        let cancel = app.buttons.matching(NSPredicate(format: "label IN %@", ["取消", "Cancel"])).firstMatch
+        let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        if !cancel.exists { picker.buttons["BackButton"].tap() }
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10)); cancel.tap()
+        XCTAssertTrue(app.navigationBars["提取角色卡"].waitForExistence(timeout: 5))
+        XCTAssertEqual(name.value as? String, "林遥同伴")
+        let save = app.buttons["extracted-card-save"]; revealListElement(save, in: app)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Extracted-character-card"; shot.lifetime = .keepAlways; add(shot)
+        save.tap()
+        XCTAssertTrue(app.navigationBars["书中人物"].waitForExistence(timeout: 5))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["伴读"].tap()
+        let selected = app.buttons.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "林遥同伴", "角色与世界书")).firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 10)); selected.tap()
+        let rows = app.cells.containing(.staticText, identifier: "林遥同伴").containing(.button, identifier: "编辑")
+        XCTAssertEqual(rows.count, 1); rows.firstMatch.buttons["编辑"].tap()
+        XCTAssertEqual(app.textFields["名字"].value as? String, "林遥同伴")
+        let savedDescription = app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "第 1 章依据：")).firstMatch
+        XCTAssertTrue(savedDescription.waitForExistence(timeout: 5)); XCTAssertTrue((savedDescription.value as? String ?? "").contains("轻声说话。"))
+    }
     func testBookCharactersScopePreviewResumeSearchCacheAndStop() {
         executionTimeAllowance = 300
         let app = XCUIApplication()
