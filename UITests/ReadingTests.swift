@@ -1634,8 +1634,9 @@ final class ReadingTests: XCTestCase {
         reveal(key); XCTAssertEqual((key.value as? String)?.count, "test-voice-key-12345".count)
     }
     func testSpeechPreferencesAndChapterSleepTimer() {
+        executionTimeAllowance = 300
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reset-test-library", "--english-speech-sample"]; app.launch()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--english-speech-sample", "--trace-system-speech"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         XCTAssertTrue(app.buttons["听书"].waitForExistence(timeout: 10)); app.buttons["听书"].tap()
@@ -1647,7 +1648,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("en-US\n")
         let voice = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "speech-voice-en-US-")).firstMatch
         XCTAssertTrue(voice.waitForExistence(timeout: 10)); let voiceName = voice.label; voice.tap()
-        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--trace-system-speech"]; app.launch()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
         app.buttons["听书"].tap()
         XCTAssertTrue(rate.waitForExistence(timeout: 10)); XCTAssertEqual(rate.value as? String, savedRate)

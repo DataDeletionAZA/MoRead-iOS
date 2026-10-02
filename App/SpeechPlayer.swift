@@ -68,6 +68,12 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         NotificationCenter.default.addObserver(self, selector: #selector(routeChanged(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(voicesChanged), name: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil)
     }
+    private func trace(_ event: String) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--trace-system-speech") else { return }
+        NSLog("%@", "MoReadSpeech \(event) wanted=\(wantsPlayback) playing=\(isPlaying) preparing=\(isPreparing) nativeSpeaking=\(synthesizer.isSpeaking) nativePaused=\(synthesizer.isPaused) current=\(current != nil) chapter=\(position.chapter) offset=\(position.offset)")
+        #endif
+    }
     func loadPreferences() {
         let data = UserDefaults.standard.data(forKey: "speech.preferences") ?? Data()
         preferences = ((try? JSONDecoder().decode(SpeechPreferences.self, from: data)) ?? SpeechPreferences()).validated()
@@ -146,6 +152,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         activateAudio()
     }
     private func activateAudio() {
+        trace("activate")
         let request = UUID(); audioRequest = request; isPreparing = true; wantsPlayback = true
         audioQueue.async { [weak self] in
             let succeeded: Bool
@@ -163,7 +170,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 else if self.cloudTask != nil { self.isPlaying = false; self.isPreparing = true }
                 else if self.current != nil { if self.synthesizer.isPaused { self.synthesizer.continueSpeaking() } }
                 else { self.speakNext() }
-                self.updateNowPlaying()
+                self.updateNowPlaying(); self.trace("activated")
             }
         }
     }
@@ -171,7 +178,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         tickTimer()
         guard bookID != nil, library?.maintenance != true else { return }
         audioRequest = UUID(); isPreparing = false; wantsPlayback = false; cloudPlayer?.pause()
-        synthesizer.pauseSpeaking(at: .word); isPlaying = false; updateNowPlaying()
+        synthesizer.pauseSpeaking(at: .word); isPlaying = false; updateNowPlaying(); trace("pause-request")
     }
     func resume() {
         stopPreview(); tickTimer()
@@ -183,7 +190,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         timerTask?.cancel(); timerTask = nil; sleepTimer = nil; stoppedBookID = bookID; stopReason = reason
         library?.flush()
         current = nil; segment = nil; chapter = nil; bookID = nil; isPlaying = false; location = nil
-        synthesizer.stopSpeaking(at: .immediate)
+        synthesizer.stopSpeaking(at: .immediate); trace("stop")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         audioQueue.async { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
     }
@@ -200,7 +207,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let continuing = wantsPlayback
             current = nil; segment = nil; cancelCloud(); isPreparing = false; synthesizer.stopSpeaking(at: .immediate)
             position = ReadingPosition(chapter: id, offset: TextBoundary.floor(offset, in: target.text))
-            chapter = target; location = nil
+            chapter = target; location = nil; trace("seek")
             if continuing { isPlaying = true; speakNext() } else { updateNowPlaying() }
         } catch { library.error = error.localizedDescription }
     }
@@ -220,7 +227,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                     if cloudSettings.enabled { playCloud(next, book: book, store: store); return }
                     let utterance = try utterance(next.text)
                     current = utterance; isPlaying = false; isPreparing = true
-                    synthesizer.speak(utterance); updateNowPlaying(); return
+                    trace("enqueue-before"); synthesizer.speak(utterance); trace("enqueue-after"); updateNowPlaying(); return
                 }
                 position = ReadingPosition(chapter: position.chapter + 1, offset: 0); chapter = nil
             }
@@ -230,10 +237,17 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             guard let self, self.current === utterance else { return }
+            self.trace("did-start")
             self.isPreparing = false; self.lastTick = .now; self.isPlaying = self.wantsPlayback
             if !self.wantsPlayback { self.synthesizer.pauseSpeaking(at: .immediate) }
             self.updateNowPlaying()
         }
+    }
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didPause utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.trace("did-pause") }
+    }
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didContinue utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.trace("did-continue") }
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in self?.finished(utterance) }
@@ -241,6 +255,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            self.trace("did-cancel matching=\(self.current === utterance)")
             if self.previewUtterance === utterance { self.previewUtterance = nil; self.isPreviewing = false }
             else if self.current === utterance {
                 self.tickTimer(); self.current = nil; self.segment = nil; self.isPreparing = false; self.isPlaying = false; self.updateNowPlaying()
@@ -248,6 +263,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
     }
     private func finished(_ utterance: AVSpeechUtterance) {
+        trace("did-finish matching=\(current === utterance)")
         if previewUtterance === utterance { previewUtterance = nil; isPreviewing = false; return }
         guard current === utterance else { return }
         completeSegment()
