@@ -166,6 +166,11 @@ final class LibraryModel: ObservableObject {
             guard let store else { return }
             var chapters = try TextImporter.chapters(Self.sampleText)
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--continuous-short-chapters") {
+                chapters = [Chapter(id: 0, title: "短章一", text: "清晨，林遥打开了书店的门。她把第一封信放在桌上，慢慢读完最后一行。"),
+                            Chapter(id: 1, title: "短章二", text: "中午，江舟送来一张地图。两个人沿着河岸走向灯塔，途中停下来读第二封信。"),
+                            Chapter(id: 2, title: "短章三", text: "傍晚，灯塔亮起了灯。林遥合上笔记，带着第三封信回到书店。")]
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--translation-sample") {
                 chapters[0].text = "After the rain, Lin opened the bookshop.\nA letter arrived at noon.\nThe map showed a lighthouse."
             }

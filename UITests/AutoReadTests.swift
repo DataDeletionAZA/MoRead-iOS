@@ -56,7 +56,7 @@ final class AutoReadUITests: XCTestCase {
         status(app, "排版改变，已暂停")
         XCUIDevice.shared.orientation = .portrait
         app.buttons["auto-read-toggle"].tap(); status(app, "自动阅读中")
-        app.textViews["reader-text"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)).tap()
+        app.tables["continuous-reader"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)).tap()
         status(app, "触摸后已暂停")
         app.buttons["auto-read-toggle"].tap(); status(app, "自动阅读中")
         status(app, "已到全书末尾", timeout: 90)
@@ -67,6 +67,75 @@ final class AutoReadUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["第二章 来信"].exists)
         app.buttons["auto-read-open"].tap()
         XCTAssertTrue(app.buttons["auto-read-mode"].label.contains("匀速滚动"))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+    func testLongChapterScrollAndRestoreSourcePosition() throws {
+        executionTimeAllowance = 180
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap(); open(app)
+        let table = app.tables["continuous-reader"]
+        func visibleParagraph() throws -> String {
+            let candidates = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph ", "reader-text")).allElementsBoundByIndex
+            let visible = candidates.filter { $0.frame.intersection(table.frame).height > 20 && $0.isHittable }.sorted { $0.frame.minY < $1.frame.minY }
+            return try XCTUnwrap(visible.first).label
+        }
+        XCTAssertTrue(try visibleParagraph().hasPrefix("Paragraph 1."))
+        for _ in 0..<3 { table.swipeUp(velocity: .slow) }
+        XCTAssertTrue(app.navigationBars["第一章 雨后"].exists)
+        let anchor = try visibleParagraph()
+        XCTAssertFalse(anchor.hasPrefix("Paragraph 1."))
+        shot(app, "long-chapter-middle")
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
+        app.buttons["目录"].tap(); app.buttons["第二章 来信"].tap()
+        app.buttons["书签"].tap(); app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.tap()
+        XCTAssertEqual(try visibleParagraph(), anchor)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); open(app)
+        XCTAssertEqual(try visibleParagraph(), anchor)
+        shot(app, "long-chapter-restored")
+        let last = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Paragraph 24.")).firstMatch
+        for _ in 0..<24 {
+            if last.exists && last.isHittable { break }
+            table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.75)).press(forDuration: 0.05, thenDragTo: table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4)))
+        }
+        XCTAssertTrue(last.isHittable)
+        shot(app, "long-chapter-last-paragraph")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * 0.1, dy: app.navigationBars.firstMatch.frame.minY / 2)).tap()
+        let beginning = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph 1.", "reader-text")).firstMatch
+        let returned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            beginning.exists && beginning.isHittable && beginning.frame.minY >= table.frame.minY
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [returned], timeout: 10), .completed)
+        XCTAssertTrue(try visibleParagraph().hasPrefix("Paragraph 1."))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+    func testShortChaptersScrollContinuouslyWithoutSkippingAndRestoreBookmarks() {
+        executionTimeAllowance = 180
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--continuous-short-chapters"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap(); open(app)
+        XCTAssertTrue(app.scrollViews["continuous-reader"].exists || app.tables["continuous-reader"].exists)
+        app.buttons["auto-read-open"].tap(); app.buttons["auto-read-start"].tap(); status(app, "自动阅读中")
+        let first = app.navigationBars["短章一"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: first)], timeout: 5), .timedOut)
+        app.buttons["auto-read-toggle"].tap(); status(app, "已暂停")
+        shot(app, "short-chapter-keeps-reading-time")
+        app.buttons["auto-read-toggle"].tap(); status(app, "自动阅读中")
+        let resumed = Date()
+        status(app, "已到全书末尾", timeout: 90)
+        XCTAssertGreaterThan(Date().timeIntervalSince(resumed), 15)
+        XCTAssertTrue(app.navigationBars["短章三"].exists)
+        app.buttons["auto-read-stop"].tap()
+        app.buttons["目录"].tap(); app.buttons["短章二"].tap()
+        XCTAssertTrue(app.navigationBars["短章二"].waitForExistence(timeout: 10))
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
+        app.buttons["目录"].tap(); app.buttons["短章一"].tap()
+        app.buttons["书签"].tap(); app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["短章二"].waitForExistence(timeout: 10))
+        shot(app, "continuous-chapter-bookmark")
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); open(app)
+        XCTAssertTrue(app.navigationBars["短章二"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["auto-read-status"].exists)
         XCTAssertFalse(app.alerts["需要处理"].exists)
     }
     func testEPUBAutoReadScrollAndPages() throws {

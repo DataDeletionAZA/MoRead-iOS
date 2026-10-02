@@ -63,7 +63,25 @@ struct ReaderView: View {
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
-                            content
+                            ContinuousTextReader(bookID: bookID, chapterCount: book.chapters.count, currentChapter: chapter.id, content: content, revision: model.recordsRevision, chapterContent: { index in
+                                guard book.chapters.indices.contains(index), let store = model.store else { return nil }
+                                do {
+                                    let source = index == self.chapter?.id ? self.chapter! : try store.chapter(index, in: book)
+                                    let rows = try ParagraphTranslationStore(library: store, bookID: bookID).load(chapter: index)
+                                    let presentation = TranslatedText(source: source.text, translations: rows, visible: records.translationsVisible ?? true)
+                                    return (source, textContent(book: book, chapter: source, presentation: presentation))
+                                } catch {
+                                    DispatchQueue.main.async { model.error = error.localizedDescription }
+                                    return nil
+                                }
+                            }, onRead: { position, end, passage in
+                                guard sheet == nil, selection == nil, chat == nil, scenePhase == .active, var updated = self.book else { return }
+                                if self.chapter?.id != position.chapter {
+                                    model.perform { self.chapter = try model.store?.chapter(position.chapter, in: updated); refreshTranslations() }
+                                }
+                                updated.record(position: position, visibleEnd: end); model.update(updated)
+                                visiblePage = passage
+                            })
                         } else {
                             PagedTextReader(content: content, mode: ReaderPageMode(rawValue: pageMode) ?? .slide,
                                             hasPreviousChapter: chapter.id > 0, hasNextChapter: chapter.id + 1 < book.chapters.count,
@@ -331,11 +349,11 @@ struct ReaderView: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
-    private func textContent(book: Book, chapter: Chapter) -> TextReader {
+    private func textContent(book: Book, chapter: Chapter, presentation: TranslatedText? = nil) -> TextReader {
         TextReader(autoRead: autoRead, onAutoNext: {
             guard chapter.id + 1 < book.chapters.count else { return false }
             loadChapter(chapter.id + 1, automatic: true); return true
-        }, presentation: translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
+        }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, onToggleControls: { immersive.toggle() },
@@ -456,7 +474,7 @@ struct ReaderView: View {
     }
 }
 
-struct TextReader: UIViewRepresentable {
+struct TextReader {
     let autoRead: AutoReadSession
     let onAutoNext: () -> Bool
     let presentation: TranslatedText
@@ -480,67 +498,6 @@ struct TextReader: UIViewRepresentable {
     let onPosition: (Int, NSRange) -> Void
     let onSelection: (NSRange) -> Void
     let onTranslation: (NSRange) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    static func dismantleUIView(_ view: UITextView, coordinator: Coordinator) { coordinator.active = false; coordinator.parent.autoRead.detach(coordinator.autoReadOwner); view.delegate = nil }
-    func makeUIView(context: Context) -> UITextView {
-        let storage = NSTextStorage()
-        let manager = AnnotationLayoutManager()
-        let container = NSTextContainer(size: .zero)
-        container.widthTracksTextView = true
-        manager.addTextContainer(container); storage.addLayoutManager(manager)
-        let view = ReaderTextView(frame: .zero, textContainer: container)
-        view.isEditable = false; view.isSelectable = true
-        view.textContainerInset = typography.insets
-        view.delegate = context.coordinator
-        view.addGestureRecognizer(AutoReadTouch(autoRead))
-        let coordinator = context.coordinator
-        autoRead.attach(coordinator.autoReadOwner) { [weak coordinator, weak view] distance in
-            guard let coordinator, let view else { return .waiting }
-            return coordinator.advance(view, distance: distance)
-        }
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.toggleControls(_:)))
-        tap.cancelsTouchesInView = false; tap.delegate = context.coordinator; view.addGestureRecognizer(tap)
-        view.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "显示或收起阅读工具", actionHandler: { _ in context.coordinator.parent.onToggleControls(); return true })]
-        view.accessibilityIdentifier = "reader-text"
-        return view
-    }
-    func updateUIView(_ view: UITextView, context: Context) {
-        let coordinator = context.coordinator
-        let previous = coordinator.parent
-        let navigationChanged = coordinator.navigationID != navigationID
-        let preservedOffset = coordinator.lastPosition
-        let needsLayout = view.text != text || previous.presentation != presentation || previous.font != font || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.ink != ink || previous.annotations != annotations
-        coordinator.parent = self
-        (view as? ReaderTextView)?.setPaper(paper, image: backgroundImage, opacity: typography.backgroundOpacity ?? 0.25)
-        if needsLayout, !navigationChanged { autoRead.pause("排版改变，已暂停") }
-        if needsLayout {
-            view.textContainerInset = typography.insets
-            let value = attributedText
-            view.attributedText = value
-            coordinator.baseText = NSAttributedString(attributedString: value)
-        }
-        if previous.speechRange != speechRange || needsLayout {
-            if !needsLayout {
-                for old in previous.speechDisplayRanges {
-                    coordinator.baseText.enumerateAttributes(in: old) { attributes, range, _ in view.textStorage.setAttributes(attributes, range: range) }
-                }
-            }
-            for range in speechDisplayRanges { view.textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range) }
-            if let first = speechDisplayRanges.first { view.scrollRangeToVisible(first) }
-        }
-        if navigationChanged || needsLayout || (isReading && !previous.isReading) {
-            coordinator.navigationID = navigationID
-            DispatchQueue.main.async {
-                guard coordinator.active, coordinator.navigationID == self.navigationID, coordinator.parent.presentation == self.presentation else { return }
-                view.layoutIfNeeded()
-                if navigationChanged || needsLayout {
-                    let safe = presentation.displayOffset(forSource: navigationChanged ? offset : preservedOffset)
-                    view.scrollRangeToVisible(NSRange(location: safe, length: safe < text.utf16.count ? 1 : 0))
-                }
-                coordinator.report(view)
-            }
-        }
-    }
     var attributedText: NSAttributedString {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.paragraphSpacing = typography.paragraphSpacing
         paragraph.firstLineHeadIndent = typography.firstLineIndent * fontSize
@@ -567,57 +524,7 @@ struct TextReader: UIViewRepresentable {
         }
         return UIAction(title: "批注", image: UIImage(systemName: "pencil")) { _ in onSelection(original) }
     }
-    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
-        var parent: TextReader
-        let autoReadOwner = UUID()
-        var waitingNavigation: UUID?
-        var autoReadSize = CGSize.zero
-        var active = true
-        var navigationID: UUID?
-        var lastPosition = 0
-        var baseText = NSAttributedString(string: "")
-        init(_ parent: TextReader) { self.parent = parent }
-        func advance(_ view: UITextView, distance: Double) -> AutoReadSession.Result {
-            defer { autoReadSize = view.bounds.size }
-            if parent.autoRead.phase == .running, autoReadSize != .zero, autoReadSize != view.bounds.size {
-                parent.autoRead.pause("排版改变，已暂停"); return .waiting
-            }
-            guard active, parent.isReading, navigationID == parent.navigationID, waitingNavigation != parent.navigationID,
-                  view.bounds.height > 0, !view.text.isEmpty else { return .waiting }
-            guard distance > 0 else { return .ready }
-            let bottom = max(-view.adjustedContentInset.top, view.contentSize.height - view.bounds.height + view.adjustedContentInset.bottom)
-            if view.contentOffset.y >= bottom - 0.5 {
-                guard parent.onAutoNext() else { return .end }
-                waitingNavigation = parent.navigationID; return .waiting
-            }
-            view.setContentOffset(CGPoint(x: view.contentOffset.x, y: min(bottom, view.contentOffset.y + distance)), animated: false)
-            report(view); return .ready
-        }
-        func scrollViewDidScroll(_ scrollView: UIScrollView) { if let view = scrollView as? UITextView { report(view) } }
-        func report(_ view: UITextView) {
-            guard active, parent.isReading, view.bounds.height > 0, !view.text.isEmpty else { return }
-            let rect = CGRect(x: 0, y: max(0, view.contentOffset.y - view.textContainerInset.top), width: view.bounds.width - view.textContainerInset.left - view.textContainerInset.right, height: view.bounds.height - view.textContainerInset.bottom)
-            let glyphs = view.layoutManager.glyphRange(forBoundingRect: rect, in: view.textContainer)
-            let range = view.layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-            let presentation = parent.presentation
-            guard range.length > 0, let original = presentation.sourceRange(forDisplay: range) else { return }
-            let start = original.location
-            lastPosition = start
-            let currentID = navigationID
-            let callback = parent.onPosition
-            DispatchQueue.main.async { if self.active, self.parent.isReading, self.navigationID == currentID, self.parent.presentation == presentation { callback(start, original) } }
-        }
-        @objc func toggleControls(_ tap: UITapGestureRecognizer) {
-            guard let text = tap.view as? UITextView, text.selectedRange.length == 0, parent.isReading,
-                  abs(tap.location(in: text).x - text.bounds.midX) < text.bounds.width / 6 else { return }
-            parent.onToggleControls()
-        }
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
-        func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
-            guard let annotation = parent.selectionAction(for: range) else { return nil }
-            return UIMenu(children: suggestedActions + [annotation])
-        }
-    }
+
 }
 
 final class AnnotationLayoutManager: NSLayoutManager {
