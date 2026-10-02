@@ -16,6 +16,43 @@ final class ParagraphTranslationTests: XCTestCase {
         XCTAssertTrue(parts.allSatisfy { $0.utf16.count <= 6000 && !$0.contains("�") })
     }
 
+    func testInlineTranslationsPreserveSourceAnchorsAndSelections() throws {
+        let source = "😀 Hello reader.\r\nA letter arrived.\nThe end."
+        let paragraphs = try EnglishParagraph.paragraphs(in: source)
+        let rows = zip(paragraphs, ["你好，读者😀。", "信到了。\n落款不明。", "结束。"]).map { ParagraphTranslation(paragraph: $0, chinese: $1) }
+        let view = TranslatedText(source: source, translations: rows.reversed())
+        XCTAssertEqual(view.text, "😀 Hello reader.\n你好，读者😀。\r\nA letter arrived.\n信到了。\n落款不明。\nThe end.\n结束。")
+        for offset in 0...source.utf16.count where TextBoundary.floor(offset, in: source) == offset {
+            XCTAssertEqual(view.sourceOffset(forDisplay: view.displayOffset(forSource: offset)), offset)
+        }
+        for (paragraph, insertion) in zip(paragraphs, view.insertions) {
+            let original = NSRange(location: paragraph.start, length: paragraph.text.utf16.count)
+            XCTAssertEqual(view.sourceRange(forDisplay: insertion.textRange), original)
+            XCTAssertTrue(view.containsTranslation(in: insertion.textRange))
+            XCTAssertEqual(view.sourceRange(forDisplay: NSRange(location: insertion.textRange.location, length: 0))?.length, 0)
+            for offset in insertion.textRange.location..<NSMaxRange(insertion.textRange) {
+                XCTAssertEqual(view.sourceOffset(forDisplay: offset), paragraph.start)
+                XCTAssertEqual(view.sourceOffset(forDisplay: offset, trailing: true), paragraph.end)
+            }
+            let ranges = view.displayRanges(forSource: original)
+            XCTAssertEqual(ranges.count, 1)
+            XCTAssertEqual(view.sourceRange(forDisplay: ranges[0]), original)
+            XCTAssertFalse(view.containsTranslation(in: ranges[0]))
+        }
+        let all = NSRange(location: 0, length: source.utf16.count)
+        let renderedOriginal = view.displayRanges(forSource: all).map { (view.text as NSString).substring(with: $0) }.joined()
+        XCTAssertEqual(renderedOriginal, source)
+        XCTAssertEqual(view.sourceRange(forDisplay: NSRange(location: 0, length: view.text.utf16.count)), all)
+        XCTAssertEqual(TranslatedText(source: source, translations: rows, visible: false).text, source)
+        var hidden = rows; hidden[1].hidden = true
+        XCTAssertFalse(TranslatedText(source: source, translations: hidden).text.contains("信到了。"))
+        XCTAssertEqual(TranslatedText(source: "Changed source.", translations: rows).text, "Changed source.")
+        XCTAssertEqual(TranslatedText(source: source, translations: rows + rows).text, view.text)
+        XCTAssertNil(view.sourceRange(forDisplay: NSRange(location: Int.max, length: 1)))
+        XCTAssertTrue(view.displayRanges(forSource: NSRange(location: 1, length: Int.max)).isEmpty)
+        XCTAssertEqual(TranslatedText(source: "").sourceOffset(forDisplay: Int.max), 0)
+    }
+
     @MainActor func testReuseRetranslateHideDeleteFailureAndRestart() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

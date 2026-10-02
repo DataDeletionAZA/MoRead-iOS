@@ -169,6 +169,9 @@ final class LibraryModel: ObservableObject {
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--translation-sample") {
                 chapters[0].text = "After the rain, Lin opened the bookshop.\nA letter arrived at noon.\nThe map showed a lighthouse."
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--translation-pages-sample") {
+                chapters[0].text = (1...24).map { "Paragraph \($0). After the rain, Lin opened the bookshop door. A notebook was waiting on the counter. She wrote the date on its first page." }.joined(separator: "\n")
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--english-speech-sample") {
                 chapters[0].text = String(repeating: "After the rain, Lin opened the bookshop door. A notebook was waiting on the counter. She wrote the date on its first page. ", count: 12)
                 chapters[1].text = "A letter arrived."

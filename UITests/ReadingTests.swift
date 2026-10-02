@@ -49,6 +49,80 @@ final class ReadingTests: XCTestCase {
         tap("translation-toggle-0"); XCTAssertTrue(first.waitForExistence(timeout: 5))
         XCTAssertFalse(app.alerts["需要处理"].exists)
     }
+    func testInlineTranslationsCurrentPageModesAndBookmarks() {
+        executionTimeAllowance = 420
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-translations", "--translation-pages-sample"]
+        app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
+        func text() -> String { app.textViews["reader-text"].firstMatch.value as? String ?? "" }
+        func mode(_ name: String) {
+            app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons[name].tap(); app.buttons["完成"].tap()
+            XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
+        }
+        func number(_ prefix: String) {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", prefix), object: app.staticTexts["reader-page-number"])], timeout: 10), .completed)
+        }
+        func closeComparison(_ title: String) {
+            app.navigationBars[title].buttons.element(boundBy: 0).tap()
+            app.buttons["完成"].tap()
+        }
+        func showTranslations(_ visible: Bool) {
+            app.buttons["目录"].tap(); app.buttons["中英对照"].tap()
+            let toggle = app.switches["translations-visible"]
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            if (toggle.value as? String == "1") != visible { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
+            closeComparison("中英对照")
+        }
+        mode("无动画翻页"); number("本章 1 /")
+        let original = text(); XCTAssertTrue(original.hasPrefix("Paragraph 1.")); XCTAssertFalse(original.contains("Paragraph 24."))
+        app.buttons["目录"].tap(); app.buttons["翻译当前页"].tap()
+        XCTAssertTrue(app.navigationBars["当前页对照"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 24.")).firstMatch.exists)
+        app.buttons["translations-start"].tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "译文已保存"), object: app.staticTexts["translations-status"])], timeout: 15), .completed)
+        closeComparison("当前页对照"); number("本章 1 /")
+        XCTAssertTrue(text().contains("本地译文：Paragraph 1."))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "inline-translation-page"; shot.lifetime = .keepAlways; add(shot)
+        app.textViews["reader-text"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.4)).press(forDuration: 1.2)
+        let translationMenu = app.descendants(matching: .any).matching(identifier: "本段译文").firstMatch
+        for _ in 0..<3 where !translationMenu.exists {
+            let next = app.buttons["Next Page"]
+            if next.waitForExistence(timeout: 2) { next.tap() }
+        }
+        XCTAssertTrue(translationMenu.waitForExistence(timeout: 5)); translationMenu.tap()
+        XCTAssertTrue(app.navigationBars["本段对照"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["translation-source-0"].label.hasPrefix("Paragraph 1."))
+        app.buttons["完成"].tap()
+        for name in ["滑动翻页", "覆盖翻页", "仿真翻页"] {
+            mode(name); number("本章 1 /"); XCTAssertTrue(text().contains("本地译文：Paragraph 1."))
+        }
+        mode("无动画翻页")
+        showTranslations(false); number("本章 1 /"); XCTAssertEqual(text(), original)
+        showTranslations(true); number("本章 1 /"); XCTAssertTrue(text().contains("本地译文：Paragraph 1."))
+        let total = Int(app.staticTexts["reader-page-number"].label.components(separatedBy: "/").last!.replacingOccurrences(of: "页", with: "").trimmingCharacters(in: .whitespaces))!
+        XCTAssertGreaterThan(total, 4)
+        for page in 2..<total { app.buttons["reader-next-page"].tap(); number("本章 \(page) /") }
+        let bookmarked = text()
+        XCTAssertFalse(bookmarked.contains("本地译文"))
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap()
+        XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
+        app.buttons["reader-next-page"].tap(); number("本章 \(total) /")
+        app.buttons["书签"].tap(); app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.tap()
+        number("本章 \(total - 1) /"); XCTAssertEqual(text(), bookmarked)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-translations", "--translations-fail"]; app.launch()
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
+        number("本章 \(total - 1) /"); XCTAssertEqual(text(), bookmarked)
+        app.buttons["目录"].tap(); app.buttons["第一章 雨后"].tap(); number("本章 1 /")
+        XCTAssertTrue(text().contains("本地译文：Paragraph 1."))
+        mode("上下滚动"); XCTAssertTrue(text().contains("本地译文：Paragraph 1."))
+        XCTAssertFalse(text().contains("本地译文：Paragraph 24."))
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+
     func testSettingsRemainNavigableWhileCredentialsLoad() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-slow-credentials"]; app.launch()

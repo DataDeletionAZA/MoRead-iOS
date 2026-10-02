@@ -17,6 +17,9 @@ struct ReaderView: View {
     private var typography: ReaderTypography { ReaderTypography(data: typographyData) }
     @State private var immersive = false
     @State private var chapter: Chapter?
+    @State private var translatedText = TranslatedText(source: "")
+    @State private var visiblePage: SourcePassage?
+    @State private var selectionIsTranslation = false
     @State private var requestedOffset = 0
     @State private var navigationID = UUID()
     @State private var sheet: ReaderSheet?
@@ -53,7 +56,7 @@ struct ReaderView: View {
                         EPUBReader(book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage in selection = passage; note = "" }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
+                        }, onSelection: { passage in selectionIsTranslation = false; selection = passage; note = "" }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
@@ -113,21 +116,26 @@ struct ReaderView: View {
                     .sheet(item: $chat) { target in NavigationStack { CompanionChat(conversationID: target.id, selection: chatSelection) } }
                     .sheet(item: $selection) { passage in
                         NavigationStack {
-                            Form {
-                                Section("原文") { Text(passage.text).textSelection(.enabled) }
-                                NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
-                                NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
-                                Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
-                                Button("和角色聊这一段", systemImage: "bubble.left.and.bubble.right") {
-                                    selection = nil
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openChat(passage) }
-                                }
-                                Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline"); Text("波浪线").tag("wave") }
-                            }.navigationTitle("记录这一段")
-                                .toolbar {
-                                    ToolbarItem(placement: .cancellationAction) { Button("取消") { selection = nil } }
-                                    ToolbarItem(placement: .confirmationAction) { Button("保存") { saveAnnotation(passage) } }
-                                }
+                            if selectionIsTranslation {
+                                ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision)
+                                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { selection = nil } } }
+                            } else {
+                                Form {
+                                    Section("原文") { Text(passage.text).textSelection(.enabled) }
+                                    NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
+                                    NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
+                                    Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
+                                    Button("和角色聊这一段", systemImage: "bubble.left.and.bubble.right") {
+                                        selection = nil
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openChat(passage) }
+                                    }
+                                    Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline"); Text("波浪线").tag("wave") }
+                                }.navigationTitle("记录这一段")
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) { Button("取消") { selection = nil } }
+                                        ToolbarItem(placement: .confirmationAction) { Button("保存") { saveAnnotation(passage) } }
+                                    }
+                            }
                         }
                     }
             } else { ContentUnavailableView("书籍已移除", systemImage: "book.closed") }
@@ -135,7 +143,7 @@ struct ReaderView: View {
         .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: model.recordsRevision) { _, _ in
-            if let book { model.perform { if let value = try model.store?.records(for: book) { records = value } } }
+            if let book { model.perform { if let value = try model.store?.records(for: book) { records = value }; refreshTranslations() } }
         }
         .onDisappear { companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
@@ -161,6 +169,9 @@ struct ReaderView: View {
                         NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                         NavigationLink("中英对照") { ParagraphTranslationView(bookID: bookID, chapter: chapter?.id ?? book.position.chapter) }
+                        if let visiblePage, book.format == "txt" {
+                            NavigationLink("翻译当前页") { ParagraphTranslationView(bookID: bookID, chapter: visiblePage.chapter, range: NSRange(location: visiblePage.offset, length: visiblePage.text.utf16.count), sourceRevision: visiblePage.revision, currentPage: true) }
+                        }
                         NavigationLink("书中人物") {
                             BookCharactersView(bookID: book.id) { passage in
                                 if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
@@ -257,26 +268,39 @@ struct ReaderView: View {
         }
     }
     private func textContent(book: Book, chapter: Chapter) -> TextReader {
-        TextReader(text: chapter.text, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
+        TextReader(presentation: translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, onToggleControls: { immersive.toggle() },
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
-                   onPosition: { start, end in
+                   onPosition: { start, visible in
             guard sheet == nil, selection == nil, chat == nil, scenePhase == .active,
                   var updated = self.book, self.chapter?.id == chapter.id else { return }
-            updated.record(position: .init(chapter: chapter.id, offset: start), visibleEnd: .init(chapter: chapter.id, offset: end))
+            updated.record(position: .init(chapter: chapter.id, offset: start), visibleEnd: .init(chapter: chapter.id, offset: NSMaxRange(visible)))
             model.update(updated)
+            if visible.length > 0 { visiblePage = SourcePassage(bookID: book.id, chapter: chapter, offset: visible.location, text: (chapter.text as NSString).substring(with: visible)) }
         }, onSelection: { range in
+            selectionIsTranslation = false
             selection = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range)); note = ""
+        }, onTranslation: { range in
+            selectionIsTranslation = true
+            selection = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range))
         })
     }
     private func loadChapter(_ index: Int, offset: Int = 0) {
         guard let book, book.chapters.indices.contains(index) else { return }
         model.perform {
             chapter = try model.store?.chapter(index, in: book)
-            requestedOffset = offset; navigationID = UUID()
+            requestedOffset = offset; navigationID = UUID(); visiblePage = nil
+            refreshTranslations()
         }
+    }
+    private func refreshTranslations() {
+        guard let chapter, let storage = model.store else { return }
+        do {
+            let rows = try ParagraphTranslationStore(library: storage, bookID: bookID).load(chapter: chapter.id)
+            translatedText = TranslatedText(source: chapter.text, translations: rows, visible: records.translationsVisible ?? true)
+        } catch { translatedText = TranslatedText(source: chapter.text); model.error = error.localizedDescription }
     }
     private func openChat(_ passage: SourcePassage? = nil) {
         guard var book else { return }
@@ -365,7 +389,9 @@ struct ReaderView: View {
 }
 
 struct TextReader: UIViewRepresentable {
-    let text: String
+    let presentation: TranslatedText
+    var text: String { presentation.text }
+    var speechDisplayRanges: [NSRange] { speechRange.map { presentation.displayRanges(forSource: $0) } ?? [] }
     let font: UIFont
     let fontSize: Double
     let lineSpacing: Double
@@ -381,8 +407,9 @@ struct TextReader: UIViewRepresentable {
     let immersive: Bool
     let onToggleControls: () -> Void
     let isReading: Bool
-    let onPosition: (Int, Int) -> Void
+    let onPosition: (Int, NSRange) -> Void
     let onSelection: (NSRange) -> Void
+    let onTranslation: (NSRange) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     static func dismantleUIView(_ view: UITextView, coordinator: Coordinator) { coordinator.active = false; view.delegate = nil }
     func makeUIView(context: Context) -> UITextView {
@@ -406,7 +433,7 @@ struct TextReader: UIViewRepresentable {
         let previous = coordinator.parent
         let navigationChanged = coordinator.navigationID != navigationID
         let preservedOffset = coordinator.lastPosition
-        let needsLayout = view.text != text || previous.font != font || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.ink != ink || previous.annotations != annotations
+        let needsLayout = view.text != text || previous.presentation != presentation || previous.font != font || previous.fontSize != fontSize || previous.lineSpacing != lineSpacing || previous.typography != typography || previous.ink != ink || previous.annotations != annotations
         coordinator.parent = self
         (view as? ReaderTextView)?.setPaper(paper, image: backgroundImage, opacity: typography.backgroundOpacity ?? 0.25)
         if needsLayout {
@@ -416,21 +443,21 @@ struct TextReader: UIViewRepresentable {
             coordinator.baseText = NSAttributedString(attributedString: value)
         }
         if previous.speechRange != speechRange || needsLayout {
-            if !needsLayout, let old = previous.speechRange, old.location >= 0, NSMaxRange(old) <= coordinator.baseText.length {
-                coordinator.baseText.enumerateAttributes(in: old) { attributes, range, _ in view.textStorage.setAttributes(attributes, range: range) }
+            if !needsLayout {
+                for old in previous.speechDisplayRanges {
+                    coordinator.baseText.enumerateAttributes(in: old) { attributes, range, _ in view.textStorage.setAttributes(attributes, range: range) }
+                }
             }
-            if let speechRange, speechRange.location >= 0, NSMaxRange(speechRange) <= view.textStorage.length {
-                view.textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: speechRange)
-                view.scrollRangeToVisible(speechRange)
-            }
+            for range in speechDisplayRanges { view.textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range) }
+            if let first = speechDisplayRanges.first { view.scrollRangeToVisible(first) }
         }
         if navigationChanged || needsLayout || (isReading && !previous.isReading) {
             coordinator.navigationID = navigationID
             DispatchQueue.main.async {
-                guard coordinator.active, coordinator.navigationID == self.navigationID else { return }
+                guard coordinator.active, coordinator.navigationID == self.navigationID, coordinator.parent.presentation == self.presentation else { return }
                 view.layoutIfNeeded()
                 if navigationChanged || needsLayout {
-                    let safe = TextBoundary.floor(navigationChanged ? offset : preservedOffset, in: text)
+                    let safe = presentation.displayOffset(forSource: navigationChanged ? offset : preservedOffset)
                     view.scrollRangeToVisible(NSRange(location: safe, length: safe < text.utf16.count ? 1 : 0))
                 }
                 coordinator.report(view)
@@ -442,14 +469,26 @@ struct TextReader: UIViewRepresentable {
         paragraph.firstLineHeadIndent = typography.firstLineIndent * fontSize
         paragraph.alignment = typography.justified ? .justified : .natural
         let value = NSMutableAttributedString(string: text, attributes: [.font: font, .kern: typography.letterSpacing * fontSize, .foregroundColor: ink, .paragraphStyle: paragraph])
+        let translatedParagraph = paragraph.mutableCopy() as! NSMutableParagraphStyle
+        translatedParagraph.firstLineHeadIndent = 0
+        for insertion in presentation.insertions {
+            value.addAttributes([.font: font.withSize(font.pointSize * 0.9), .foregroundColor: ink.withAlphaComponent(0.78), .paragraphStyle: translatedParagraph], range: insertion.textRange)
+        }
         for annotation in annotations {
-            let range = NSRange(location: annotation.passage.offset, length: annotation.passage.text.utf16.count)
-            guard range.location >= 0, range.location <= value.length, range.length <= value.length - range.location else { continue }
-            if annotation.style == "highlight" { value.addAttribute(.backgroundColor, value: UIColor.systemYellow.withAlphaComponent(0.28), range: range) }
-            else { value.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: UIColor.systemOrange], range: range) }
-            if annotation.style == "wave" { value.addAttribute(AnnotationLayoutManager.waveKey, value: true, range: range) }
+            for range in presentation.displayRanges(forSource: NSRange(location: annotation.passage.offset, length: annotation.passage.text.utf16.count)) {
+                if annotation.style == "highlight" { value.addAttribute(.backgroundColor, value: UIColor.systemYellow.withAlphaComponent(0.28), range: range) }
+                else { value.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: UIColor.systemOrange], range: range) }
+                if annotation.style == "wave" { value.addAttribute(AnnotationLayoutManager.waveKey, value: true, range: range) }
+            }
         }
         return value
+    }
+    func selectionAction(for range: NSRange) -> UIAction? {
+        guard range.length > 0, let original = presentation.sourceRange(forDisplay: range), original.length > 0 else { return nil }
+        if presentation.containsTranslation(in: range) {
+            return UIAction(title: "本段译文", image: UIImage(systemName: "character.book.closed")) { _ in onTranslation(original) }
+        }
+        return UIAction(title: "批注", image: UIImage(systemName: "pencil")) { _ in onSelection(original) }
     }
     final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var parent: TextReader
@@ -464,12 +503,13 @@ struct TextReader: UIViewRepresentable {
             let rect = CGRect(x: 0, y: max(0, view.contentOffset.y - view.textContainerInset.top), width: view.bounds.width - view.textContainerInset.left - view.textContainerInset.right, height: view.bounds.height - view.textContainerInset.bottom)
             let glyphs = view.layoutManager.glyphRange(forBoundingRect: rect, in: view.textContainer)
             let range = view.layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-            let start = TextBoundary.floor(range.location, in: parent.text)
-            let end = TextBoundary.floor(range.location + range.length, in: parent.text)
+            let presentation = parent.presentation
+            guard range.length > 0, let original = presentation.sourceRange(forDisplay: range) else { return }
+            let start = original.location
             lastPosition = start
             let currentID = navigationID
             let callback = parent.onPosition
-            DispatchQueue.main.async { if self.active, self.parent.isReading, self.navigationID == currentID { callback(start, end) } }
+            DispatchQueue.main.async { if self.active, self.parent.isReading, self.navigationID == currentID, self.parent.presentation == presentation { callback(start, original) } }
         }
         @objc func toggleControls(_ tap: UITapGestureRecognizer) {
             guard let text = tap.view as? UITextView, text.selectedRange.length == 0, parent.isReading,
@@ -478,8 +518,7 @@ struct TextReader: UIViewRepresentable {
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
         func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
-            guard range.length > 0 else { return nil }
-            let annotation = UIAction(title: "批注", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.parent.onSelection(range) }
+            guard let annotation = parent.selectionAction(for: range) else { return nil }
             return UIMenu(children: suggestedActions + [annotation])
         }
     }

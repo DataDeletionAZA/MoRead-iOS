@@ -49,7 +49,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     private var dragPage: TextPageController?
     private var dragDirection = 0
 
-    init(_ parent: PagedTextReader) { parentReader = parent; anchor = parent.content.offset; super.init(nibName: nil, bundle: nil) }
+    init(_ parent: PagedTextReader) { parentReader = parent; anchor = parent.content.presentation.displayOffset(forSource: parent.content.offset); super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     func deactivate() { active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
     func cancel() { generation = UUID(); pagination?.cancel(); pagination = nil }
@@ -102,8 +102,9 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         let content = parent.content
         footer.isHidden = content.immersive; footerHeight.constant = content.immersive ? 0 : 44
         let navigation = old.navigationID != content.navigationID
-        let geometry = old.text != content.text || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
-        if navigation { anchor = content.offset; if transitioning { needsPagination = true } }
+        let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
+        if old.presentation != content.presentation { anchor = content.presentation.displayOffset(forSource: old.presentation.sourceOffset(forDisplay: anchor)) }
+        if navigation { anchor = content.presentation.displayOffset(forSource: content.offset); if transitioning { needsPagination = true } }
         view.backgroundColor = content.paper
         if geometry { needsPagination = true; view.setNeedsLayout() }
         else if needsPagination || pagination != nil { if navigation { needsPagination = true; view.setNeedsLayout() } }
@@ -116,13 +117,11 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
                 else { page.view.backgroundColor = content.paper }
             }
             if old.speechRange != content.speechRange || old.annotations != content.annotations || old.ink != content.ink {
-                if let previous = old.speechRange, NSMaxRange(previous) <= baseText.length {
+                for previous in old.speechDisplayRanges {
                     baseText.enumerateAttributes(in: previous) { attributes, range, _ in textStorage.setAttributes(attributes, range: range) }
                 }
-                if let range = content.speechRange, range.location >= 0, NSMaxRange(range) <= textStorage.length {
-                    textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range)
-                    if let index = index(containing: range.location), index != pageIndex { display(index, animated: false, preserving: range.location) }
-                }
+                for range in content.speechDisplayRanges { textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range) }
+                if let first = content.speechDisplayRanges.first, let index = index(containing: first.location), index != pageIndex { display(index, animated: false, preserving: first.location) }
             }
             if navigation, let index = index(containing: anchor) { display(index, animated: false, preserving: anchor) }
             if content.isReading, !old.isReading { report() }
@@ -161,7 +160,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
             self.visible?.willMove(toParent: nil); self.visible?.view.removeFromSuperview(); self.visible?.removeFromParent(); self.visible = nil
             self.pages = [:]; self.textStorage = storage; self.layout = manager; self.containers = containers; self.ranges = ranges
             self.pagination = nil; self.spinner.stopAnimating(); self.pager?.view.isHidden = false
-            if let range = self.parentReader.content.speechRange, range.location >= 0, NSMaxRange(range) <= storage.length {
+            for range in self.parentReader.content.speechDisplayRanges {
                 storage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range)
             }
             self.display(self.index(containing: self.anchor) ?? 0, animated: false, preserving: self.anchor)
@@ -178,7 +177,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         let page: TextPageController
         if ranges.indices.contains(index) {
             page = TextPageController(index: index, container: containers[index], range: ranges[index], content: parentReader.content)
-            page.onSelection = { [weak self] range in self?.parentReader.content.onSelection(range) }
+            page.selectionAction = { [weak self] range in self?.parentReader.content.selectionAction(for: range) }
             page.turnPage = { [weak self] direction in self?.turn(direction) }
         } else { page = TextPageController(index: index, message: index < 0 ? "上一章" : "下一章", paper: parentReader.content.paper) }
         pages[index] = page
@@ -218,11 +217,13 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     private func report() {
         guard active, parentReader.content.isReading, ranges.indices.contains(pageIndex) else { return }
         let range = ranges[pageIndex]; let token = generation; let position = anchor
+        guard let source = parentReader.content.presentation.sourceRange(forDisplay: range), source.length > 0 else { return }
+        let sourcePosition = parentReader.content.presentation.sourceOffset(forDisplay: position)
         let navigation = parentReader.content.navigationID; let callback = parentReader.content.onPosition
         DispatchQueue.main.async { [weak self] in
             guard let self, self.active, self.generation == token, !self.needsPagination, self.anchor == position,
                   self.parentReader.content.navigationID == navigation, self.parentReader.content.isReading else { return }
-            callback(position, NSMaxRange(range))
+            callback(sourcePosition, source)
         }
     }
     @objc private func back() { turn(-1) }
@@ -295,7 +296,7 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
     let index: Int
     let range: NSRange
     var textView: UITextView?
-    var onSelection: ((NSRange) -> Void)?
+    var selectionAction: ((NSRange) -> UIAction?)?
     var turnPage: ((Int) -> Void)?
     init(index: Int, container: NSTextContainer, range: NSRange, content: TextReader) {
         self.index = index; self.range = range
@@ -327,7 +328,7 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
     }
     func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
         let selection = NSIntersectionRange(self.range, range)
-        guard selection.length > 0 else { return nil }
-        return UIMenu(children: suggestedActions + [UIAction(title: "批注", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.onSelection?(selection) }])
+        guard let action = selectionAction?(selection) else { return nil }
+        return UIMenu(children: suggestedActions + [action])
     }
 }

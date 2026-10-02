@@ -49,6 +49,7 @@ struct ParagraphTranslationView: View {
     let chapter: Int
     var range: NSRange? = nil
     var sourceRevision: String? = nil
+    var currentPage = false
     @EnvironmentObject private var library: LibraryModel
     @EnvironmentObject private var companion: CompanionModel
     @State private var source: Chapter?
@@ -69,7 +70,7 @@ struct ParagraphTranslationView: View {
                         visible = value
                     }
                 })).accessibilityIdentifier("translations-visible")
-                Button(range == nil ? "翻译当前章" : "翻译选中段落") { start(range, replace: false) }
+                Button(currentPage ? "翻译当前页" : range == nil ? "翻译当前章" : "翻译选中段落") { start(range, replace: false) }
                     .disabled(busy || paragraphs.isEmpty).accessibilityIdentifier("translations-start")
                 if !translations.isEmpty {
                     Button("重新翻译已有段落") { replacementRange = range; confirmReplace = true }
@@ -98,7 +99,7 @@ struct ParagraphTranslationView: View {
                     } else { Text("尚未翻译").foregroundStyle(.secondary) }
                 }.disabled(busy)
             }
-        }.navigationTitle(range == nil ? "中英对照" : "本段对照")
+        }.navigationTitle(currentPage ? "当前页对照" : range == nil ? "中英对照" : "本段对照")
             .task(id: library.recordsRevision) { load() }
             .confirmationDialog("重新翻译会再次调用当前模型；成功后替换原译文。", isPresented: $confirmReplace, titleVisibility: .visible) {
                 Button("重新翻译") { start(replacementRange, replace: true) }
