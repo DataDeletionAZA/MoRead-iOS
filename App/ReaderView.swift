@@ -31,6 +31,9 @@ struct ReaderView: View {
     @State private var dictionaryWord = ""
     @State private var dictionarySource: SourcePassage?
     @State private var selection: SourcePassage?
+    @AppStorage("reader.tapZones") private var tapZonesData = Data()
+    private var tapZones: ReaderTapZones? { ReaderTapZones(data: tapZonesData) }
+    @State private var actionMessage: String?
     @State private var bookmarkMessage: String?
     @State private var note = ""
     @State private var style = "highlight"
@@ -51,7 +54,7 @@ struct ReaderView: View {
     }
     private var paperColor: Color { (paper == "custom" || paper == "image") ? Color(rgb: typography.backgroundRGB ?? 0xF7F2E3) : paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
-    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead, dictionary; var id: String { rawValue } }
+    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead, dictionary, englishLearning; var id: String { rawValue } }
 
     private var readingScreen: some View {
         Group {
@@ -117,6 +120,15 @@ struct ReaderView: View {
     var body: some View {
         observedReader
         .overlay { autoReadOverlay }
+        .overlay(alignment: .bottom) {
+            if let actionMessage {
+                Text(actionMessage).font(.callout).padding(12).background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 20).allowsHitTesting(false).accessibilityIdentifier("reader-action-message")
+                    .task(id: actionMessage) {
+                        do { try await Task.sleep(for: .seconds(3)); self.actionMessage = nil } catch {}
+                    }
+            }
+        }
         .onDisappear { autoRead.stop(); companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { refreshReadingTime(); companion.setAnnotationReader(bookID, library: model) } else { autoRead.pause("离开阅读页后已暂停"); companion.setAnnotationReader(nil, library: model); recordTime(); model.flush() }
@@ -181,6 +193,8 @@ struct ReaderView: View {
         NavigationStack {
             Group {
                 switch kind {
+                case .englishLearning:
+                    EnglishReadingView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }))
                 case .dictionary:
                     DictionaryLookupView(word: dictionaryWord, source: dictionarySource)
                 case .autoRead:
@@ -241,7 +255,8 @@ struct ReaderView: View {
                 case .typography:
                     Form {
                         Button("进入沉浸阅读", systemImage: "arrow.up.left.and.arrow.down.right") { sheet = nil; immersive = true }.accessibilityIdentifier("enter-immersive")
-                        Text("轻点正文中间可显示或收起阅读工具。").font(.caption).foregroundStyle(.secondary)
+                        NavigationLink("操作区域") { ReaderTapZonesView() }
+                        Text(tapZones == nil ? "轻点正文中间可显示或收起阅读工具。" : "点按已设定的菜单区域可显示或收起阅读工具。").font(.caption).foregroundStyle(.secondary)
                         if book.format == "txt" {
                             Picker("翻页方式", selection: Binding(get: { pageMode }, set: { value in
                                 requestedOffset = self.book?.position.offset ?? 0; navigationID = UUID(); pageMode = value
@@ -299,14 +314,14 @@ struct ReaderView: View {
                         if let markdown = try? model.store?.notesMarkdown(for: book) { ShareLink("导出笔记", item: markdown) }
                     }
                 }
-            }.navigationTitle(kind == .dictionary ? "本地词典" : kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
+            }.navigationTitle(kind == .englishLearning ? "阅读辅助" : kind == .dictionary ? "本地词典" : kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
     @ViewBuilder private func readerContent(book: Book) -> some View {
         VStack(spacing: 0) {
             if book.format == "epub" {
-                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, tapZones: tapZones, onTapAction: performTapAction, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                     didLocateEPUB = true
                     var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
                 }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
@@ -382,7 +397,7 @@ struct ReaderView: View {
         }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id }, wordGlosses: wordGlosses,
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
-                   immersive: immersive, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
+                   immersive: immersive, tapZones: tapZones, onTapAction: performTapAction, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
                    onPosition: { start, visible in
             guard sheet == nil, selection == nil, chat == nil, scenePhase == .active,
@@ -465,6 +480,37 @@ struct ReaderView: View {
         } catch { model.error = error.localizedDescription; bookmarkMessage = "书签未能保存，请重试" }
         return bookmarkMessage ?? "书签未能保存，请重试"
     }
+    private func performTapAction(_ action: ReaderTapAction) {
+        guard sheet == nil, selection == nil, chat == nil, scenePhase == .active, let book else { return }
+        autoRead.pause("点按阅读操作后已暂停")
+        switch action {
+        case .none, .previousPage, .nextPage: break
+        case .menu: immersive.toggle()
+        case .contents: sheet = .contents
+        case .bookmarks: bookmarkMessage = nil; sheet = .bookmarks
+        case .settings: sheet = .typography
+        case .search: sheet = .search
+        case .englishLearning: sheet = .englishLearning
+        case .previousChapter, .nextChapter:
+            let index = book.position.chapter + (action == .previousChapter ? -1 : 1)
+            guard book.chapters.indices.contains(index) else { actionMessage = index < 0 ? "已经是第一章" : "已经是最后一章"; return }
+            if book.format == "txt" { loadChapter(index) }
+            else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: bookID, chapter: index, offset: 0)) }
+        case .toggleTranslations:
+            changeRecords { $0.translationsVisible = !($0.translationsVisible ?? true) }
+            actionMessage = records.translationsVisible == false ? "译文已隐藏" : "译文已显示"
+        case .toggleBookmark:
+            do {
+                var removed = false
+                records = try model.modifyRecords(for: book) { value in
+                    if value.bookmarks.contains(where: { $0.isAt(position: book.position, locator: book.epubLocator) }) {
+                        value.bookmarks.removeAll { $0.isAt(position: book.position, locator: book.epubLocator) }; removed = true
+                    } else { value.bookmarks.append(Bookmark(position: book.position, label: chapter?.title ?? book.title, locator: book.epubLocator)) }
+                }
+                actionMessage = removed ? "书签已移除" : "书签已保存"
+            } catch { model.error = error.localizedDescription }
+        }
+    }
     private func saveAnnotation(_ passage: SourcePassage) {
         guard let book else { return }
         model.perform {
@@ -526,6 +572,8 @@ struct TextReader {
     let wordGlosses: [String: DictionaryGloss]
     let speechRange: NSRange?
     let immersive: Bool
+    let tapZones: ReaderTapZones?
+    let onTapAction: (ReaderTapAction) -> Void
     let onToggleControls: () -> Void
     let onBookmark: () -> String
     let isReading: Bool

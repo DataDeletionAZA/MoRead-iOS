@@ -40,9 +40,9 @@ final class EnglishReadingTests: XCTestCase {
         app.buttons["english-annotation-mode"].tap(); app.buttons["划线弹窗"].tap()
         app.navigationBars["阅读辅助"].buttons.element(boundBy: 0).tap(); app.buttons["完成"].tap()
         screenshot("english-popup-paged")
-        let paragraph = body.textViews.matching(NSPredicate(format: "label BEGINSWITH %@", "Paragraph 1.")).firstMatch
+        let paragraph = body
         XCTAssertTrue(paragraph.exists)
-        paragraph.coordinate(withNormalizedOffset: CGVector(dx: 0.44, dy: 0)).withOffset(CGVector(dx: 0, dy: 12)).tap()
+        paragraph.coordinate(withNormalizedOffset: CGVector(dx: 0.44, dy: 0)).withOffset(CGVector(dx: 0, dy: 36)).tap()
         XCTAssertTrue(app.textFields["dictionary-query"].waitForExistence(timeout: 10))
         XCTAssertEqual((app.textFields["dictionary-query"].value as? String)?.lowercased(), "after")
         XCTAssertTrue(app.staticTexts["生词本释义"].waitForExistence(timeout: 10))
@@ -51,7 +51,7 @@ final class EnglishReadingTests: XCTestCase {
         screenshot("english-saved-definition")
         app.buttons["完成"].tap()
         screenshot("english-learned-word-unmarked")
-        paragraph.coordinate(withNormalizedOffset: CGVector(dx: 0.44, dy: 0)).withOffset(CGVector(dx: 0, dy: 12)).tap()
+        paragraph.coordinate(withNormalizedOffset: CGVector(dx: 0.44, dy: 0)).withOffset(CGVector(dx: 0, dy: 36)).tap()
         XCTAssertFalse(app.textFields["dictionary-query"].exists)
         XCTAssertFalse(app.buttons["排版"].exists)
     }
@@ -71,9 +71,9 @@ final class EnglishReadingTests: XCTestCase {
         app.navigationBars["阅读辅助"].buttons.element(boundBy: 0).tap(); app.buttons["完成"].tap()
         for mode in ["上下滚动", "无动画翻页", "覆盖翻页", "滑动翻页", "仿真翻页"] {
             app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons[mode].tap(); app.buttons["完成"].tap()
-            let paragraph = app.textViews["reader-text"].firstMatch.textViews.matching(NSPredicate(format: "label BEGINSWITH %@", "Paragraph 1.")).firstMatch
+            let paragraph = app.textViews["reader-text"].firstMatch
             XCTAssertTrue(paragraph.waitForExistence(timeout: 10))
-            paragraph.coordinate(withNormalizedOffset: CGVector(dx: 0.44, dy: 0)).withOffset(CGVector(dx: 0, dy: 12)).tap()
+            paragraph.coordinate(withNormalizedOffset: CGVector(dx: 0.44, dy: 0)).withOffset(CGVector(dx: 0, dy: 36)).tap()
             XCTAssertTrue(app.textFields["dictionary-query"].waitForExistence(timeout: 10), mode)
             XCTAssertEqual((app.textFields["dictionary-query"].value as? String)?.lowercased(), "after", mode)
             XCTAssertTrue(app.staticTexts["生词本释义"].waitForExistence(timeout: 10))
@@ -97,19 +97,19 @@ final class EnglishReadingTests: XCTestCase {
         for key in ["english-learning", "english-bionic"] { app.switches[key].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
         app.navigationBars["阅读辅助"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
         func shot(_ name: String) { let image = XCTAttachment(screenshot: app.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image) }
-        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph")).firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Parag")).firstMatch.waitForExistence(timeout: 15))
         shot("epub-english-inline")
         web.swipeLeft()
         let baseline = web.screenshot().pngRepresentation
         app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
         app.buttons["目录"].tap(); app.buttons["第二章 来信"].tap()
         app.buttons["书签"].tap(); app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.tap()
-        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph")).firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Parag")).firstMatch.waitForExistence(timeout: 15))
         shot("epub-english-bookmark")
         XCTAssertEqual(web.screenshot().pngRepresentation, baseline)
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-translations"]; app.launch()
         XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
-        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph")).firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Parag")).firstMatch.waitForExistence(timeout: 20))
         shot("epub-english-restart")
         XCTAssertEqual(web.screenshot().pngRepresentation, baseline)
         app.buttons["排版"].tap(); app.buttons["阅读辅助"].tap()

@@ -96,6 +96,8 @@ struct EPUBReader: UIViewControllerRepresentable {
     let autoRead: AutoReadSession
     let isReading: Bool
     let onBookmark: () -> String
+    let tapZones: ReaderTapZones?
+    let onTapAction: (ReaderTapAction) -> Void
     let book: Book
     let initialPassage: SourcePassage?
     let initialPassageScope: ReadingScope?
@@ -113,9 +115,10 @@ struct EPUBReader: UIViewControllerRepresentable {
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary)
+        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, tapZones: tapZones, onTapAction: onTapAction, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
+        controller.tapZones = tapZones
         controller.isReading = isReading
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
         controller.setAnnotations(annotations)
@@ -132,6 +135,8 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let autoReadOwner = UUID()
     var isReading: Bool { didSet { if !isReading { bookmarkPull?.cancel() } } }
     private let onBookmark: () -> String
+    var tapZones: ReaderTapZones?
+    private let onTapAction: (ReaderTapAction) -> Void
     private var bookmarkPull: BookmarkPull?
     private var closed = false
     private let bookID: UUID
@@ -161,7 +166,8 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
-    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void) {
+    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, tapZones: ReaderTapZones?, onTapAction: @escaping (ReaderTapAction) -> Void, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void) {
+        self.tapZones = tapZones; self.onTapAction = onTapAction
         self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage; self.initialPassageScope = initialPassageScope
@@ -497,7 +503,39 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                     onDictionary(text, passage); return
                 }
             }
-            if abs(point.x - view.bounds.midX) < view.bounds.width / 6 { onToggleControls() }
+            guard reader.currentSelection == nil else { return }
+            if let tapZones {
+                var hit = reader.view.hitTest(point, with: nil)
+                while let node = hit, !(node is WKWebView) { hit = node.superview }
+                let surface = hit ?? reader.view!
+                let local = surface.convert(point, from: reader.view)
+                let action = tapZones.action(x: local.x - surface.bounds.minX, y: local.y - surface.bounds.minY, width: surface.bounds.width, height: surface.bounds.height)
+                switch action {
+                case .previousPage, .nextPage:
+                    if reader.settings.scroll, let web = surface as? WKWebView {
+                        let result = await reader.evaluateJavaScript("getComputedStyle(document.documentElement).writingMode.startsWith('vertical')")
+                        guard let horizontal = (try? result.get()) as? Bool, !closed, isReading else { return }
+                        let scroll = web.scrollView, inset = scroll.adjustedContentInset
+                        let position = horizontal ? scroll.contentOffset.x : scroll.contentOffset.y
+                        let length = horizontal ? scroll.bounds.width : scroll.bounds.height
+                        let lower = horizontal ? -inset.left : -inset.top
+                        let upper = max(lower, (horizontal ? scroll.contentSize.width + inset.right : scroll.contentSize.height + inset.bottom) - length)
+                        let step = length * 0.9 * (action == .previousPage ? -1 : 1) * (horizontal ? -1 : 1)
+                        let target = min(upper, max(lower, position + step))
+                        if abs(target - position) > 0.5 {
+                            var offset = scroll.contentOffset
+                            if horizontal { offset.x = target } else { offset.y = target }
+                            scroll.setContentOffset(offset, animated: !UIAccessibility.isReduceMotionEnabled); return
+                        }
+                    }
+                    if action == .previousPage { _ = await reader.goBackward(options: NavigatorGoOptions(animated: !UIAccessibility.isReduceMotionEnabled)) }
+                    else { _ = await reader.goForward(options: NavigatorGoOptions(animated: !UIAccessibility.isReduceMotionEnabled)) }
+                case .toggleBookmark:
+                    guard await refreshVisiblePage(recordPosition: true).value, !closed, isReading else { return }
+                    onTapAction(action)
+                default: onTapAction(action)
+                }
+            } else if abs(point.x - view.bounds.midX) < view.bounds.width / 6 { onToggleControls() }
         }
     }
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) { autoRead.pause("正文暂不可用，已暂停"); model.error = "阅读操作失败，请重新打开这本书。" }

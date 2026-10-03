@@ -123,6 +123,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         let old = parentReader.content
         parentReader = parent
         let content = parent.content
+        pager?.gestureRecognizers.filter { $0 is UITapGestureRecognizer }.forEach { $0.isEnabled = content.tapZones == nil }
         footer.isHidden = content.immersive; footerHeight.constant = content.immersive ? 0 : 44
         let navigation = old.navigationID != content.navigationID
         let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography || old.wordGlosses != content.wordGlosses
@@ -261,13 +262,22 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         if completed, let page = pageViewController.viewControllers?.first as? TextPageController { commit(page.index) }
         if needsPagination { view.setNeedsLayout() }
     }
-    @objc private func toggleControls(_ tap: UITapGestureRecognizer) { parentReader.content.onToggleControls() }
+    @objc private func toggleControls(_ tap: UITapGestureRecognizer) {
+        guard let zones = parentReader.content.tapZones else { parentReader.content.onToggleControls(); return }
+        let point = tap.location(in: pageHost)
+        let action = zones.action(x: point.x, y: point.y, width: pageHost.bounds.width, height: pageHost.bounds.height)
+        switch action {
+        case .previousPage: turn(-1)
+        case .nextPage: turn(1)
+        default: parentReader.content.onTapAction(action)
+        }
+    }
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { gestureRecognizer is UITapGestureRecognizer }
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if gestureRecognizer is UITapGestureRecognizer {
             if let text = (visible ?? pager?.viewControllers?.first as? TextPageController)?.textView,
                text.hasVocabularyTag(at: gestureRecognizer.location(in: text)) { return false }
-            return !transitioning && parentReader.content.isReading && ((visible ?? pager?.viewControllers?.first as? TextPageController)?.textView?.selectedRange.length ?? 0) == 0 && abs(gestureRecognizer.location(in: pageHost).x - pageHost.bounds.midX) < pageHost.bounds.width / 6
+            return active && !transitioning && pagination == nil && !needsPagination && parentReader.content.isReading && ((visible ?? pager?.viewControllers?.first as? TextPageController)?.textView?.selectedRange.length ?? 0) == 0 && (parentReader.content.tapZones != nil || abs(gestureRecognizer.location(in: pageHost).x - pageHost.bounds.midX) < pageHost.bounds.width / 6)
         }
         guard !transitioning, pagination == nil, visible?.textView?.selectedRange.length ?? 0 == 0, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
         let velocity = pan.velocity(in: pageHost)

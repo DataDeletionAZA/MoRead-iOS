@@ -15,7 +15,10 @@ struct EnglishReadingView: View {
                 Toggle("英文词首加粗", isOn: Binding(get: { value.englishBionic ?? false }, set: { value.englishBionic = $0 })).accessibilityIdentifier("english-bionic")
                 Text("加粗每个英文单词的前半部分。").font(.caption).foregroundStyle(.secondary)
             }
-            Section { NavigationLink("生词本") { VocabularyView() } }
+            Section {
+                NavigationLink("查字词") { DictionaryLookupView() }
+                NavigationLink("生词本") { VocabularyView() }
+            }
         }.navigationTitle("阅读辅助")
     }
 }

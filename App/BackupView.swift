@@ -120,7 +120,7 @@ struct BackupView: View {
     private func discardPrepared() { if let prepared { try? FileManager.default.removeItem(at: prepared.directory) }; prepared = nil }
     private func savePreferences(to root: URL) throws {
         let defaults = UserDefaults.standard
-        let values = ["app.tintRGB", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.pageMode", "reader.typography", "reader.autoRead", "shelf.sort", "speech.preferences", "speech.cloud", "stats.widgets"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
+        let values = ["app.tintRGB", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.pageMode", "reader.typography", "reader.tapZones", "reader.autoRead", "shelf.sort", "speech.preferences", "speech.cloud", "stats.widgets"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
         try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: root.appendingPathComponent("reader-settings.plist"), options: .atomic)
     }
     private func loadPreferences(from root: URL) {
@@ -137,6 +137,7 @@ struct BackupView: View {
         defaults.set((ReaderPageMode(rawValue: values["reader.pageMode"] as? String ?? "") ?? .scroll).rawValue, forKey: "reader.pageMode")
         defaults.set(ReaderTypography(data: values["reader.typography"] as? Data ?? Data()).encoded(), forKey: "reader.typography")
         defaults.set(AutoReadSettings(data: values["reader.autoRead"] as? Data ?? Data()).encoded(), forKey: "reader.autoRead")
+        defaults.set(ReaderTapZones(data: values["reader.tapZones"] as? Data ?? Data())?.encoded() ?? Data(), forKey: "reader.tapZones")
         let sort = values["shelf.sort"] as? String ?? ""
         defaults.set((ShelfSort(rawValue: sort) ?? .recent).rawValue, forKey: "shelf.sort")
         defaults.set(StatisticsWidgets(data: values["stats.widgets"] as? Data ?? Data()).encoded(), forKey: "stats.widgets")

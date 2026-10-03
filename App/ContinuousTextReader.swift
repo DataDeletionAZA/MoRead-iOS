@@ -207,9 +207,18 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
     }
     @objc private func toggleControls(_ tap: UITapGestureRecognizer) {
         for case let cell as ContinuousChapterCell in table.visibleCells where cell.textView.hasVocabularyTag(at: tap.location(in: cell.textView)) { return }
-        guard parentReader.content.isReading, abs(tap.location(in: table).x - table.bounds.midX) < table.bounds.width / 6,
+        guard active, !restoring, parentReader.content.isReading, !table.isDecelerating,
               table.visibleCells.allSatisfy({ (($0 as? ContinuousChapterCell)?.textView.selectedRange.length ?? 0) == 0 }) else { return }
-        parentReader.content.onToggleControls()
+        if let zones = parentReader.content.tapZones {
+            let point = tap.location(in: view)
+            let action = zones.action(x: point.x, y: point.y, width: view.bounds.width, height: view.bounds.height)
+            switch action {
+            case .previousPage, .nextPage:
+                let step = table.bounds.height * 0.9 * (action == .previousPage ? -1 : 1)
+                table.setContentOffset(CGPoint(x: 0, y: min(max(0, table.contentSize.height - table.bounds.height), max(0, table.contentOffset.y + step))), animated: !UIAccessibility.isReduceMotionEnabled)
+            default: parentReader.content.onTapAction(action)
+            }
+        } else if abs(tap.location(in: table).x - table.bounds.midX) < table.bounds.width / 6 { parentReader.content.onToggleControls() }
     }
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 }
