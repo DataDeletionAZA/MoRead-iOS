@@ -6,17 +6,62 @@ final class DictionaryTests: XCTestCase {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: nil, subdirectory: "Dictionary"))
         return try Data(contentsOf: url).base64EncodedString()
     }
-    private func lookup(_ app: XCUIApplication, _ word: String) {
+    private func lookup(_ app: XCUIApplication, _ word: String, submit: Bool = true) {
         let field = app.textFields["dictionary-query"]
         XCTAssertTrue(field.waitForExistence(timeout: 10)); field.tap()
         if let value = field.value as? String, value != field.placeholderValue { field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count)) }
-        field.typeText(word); app.buttons["dictionary-search"].tap()
+        field.typeText(word); if submit { app.buttons["dictionary-search"].tap() }
     }
     private func manager(_ app: XCUIApplication) {
         app.tabBars.buttons["设置"].tap()
         let link = app.buttons["词典管理"]
         for _ in 0..<4 { if link.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(link.waitForExistence(timeout: 5)); link.tap()
+    }
+    func testAIDictionaryWithoutConfiguredModelShowsSetupMessage() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); manager(app)
+        app.buttons["查字词"].tap(); lookup(app, "apple")
+        app.segmentedControls["dictionary-mode"].buttons["AI 词典"].tap(); app.buttons["dictionary-ai-start"].tap()
+        XCTAssertTrue(app.staticTexts["请先在模型分工中选择词典模型。"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["vocabulary-save"].exists)
+    }
+    func testAIDictionarySaveSwitchSourceCancelAndFailure() throws {
+        executionTimeAllowance = 360
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-dictionary", "--simulate-ai-dictionary", "--simulate-model-roles"]
+        app.launchEnvironment["MOREAD_TEST_MDX"] = try fixture("sample-v2.mdx"); app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); manager(app)
+        app.buttons["查字词"].tap(); lookup(app, "apple")
+        app.segmentedControls["dictionary-mode"].buttons["AI 词典"].tap()
+        app.buttons["model-role-dictionary"].tap(); app.buttons["批量测试 · batch-fixture"].tap()
+        app.buttons["dictionary-ai-start"].tap()
+        let definition = app.scrollViews["dictionary-ai-definition"]
+        XCTAssertTrue(definition.waitForExistence(timeout: 10)); XCTAssertTrue(definition.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "batch-fixture")).firstMatch.exists)
+        app.buttons["vocabulary-save"].tap(); XCTAssertTrue(app.staticTexts["vocabulary-notice"].waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "ai-dictionary-definition"; screenshot.lifetime = .keepAlways; add(screenshot)
+        lookup(app, "slow", submit: false); app.buttons["dictionary-ai-start"].tap()
+        XCTAssertTrue(app.buttons["dictionary-ai-stop"].waitForExistence(timeout: 5)); app.buttons["dictionary-ai-stop"].tap()
+        XCTAssertFalse(definition.exists)
+        lookup(app, "fail", submit: false); app.buttons["dictionary-search"].tap()
+        XCTAssertTrue(app.staticTexts["词典服务暂不可用。"].waitForExistence(timeout: 10)); XCTAssertFalse(app.buttons["vocabulary-save"].exists)
+        lookup(app, "slow", submit: false); app.buttons["dictionary-ai-start"].tap()
+        app.buttons["model-role-dictionary"].tap(); app.buttons["使用默认模型"].tap()
+        XCTAssertFalse(app.buttons["dictionary-ai-stop"].exists)
+        lookup(app, "apple", submit: false); app.buttons["dictionary-search"].tap()
+        XCTAssertTrue(definition.waitForExistence(timeout: 10)); XCTAssertTrue(definition.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "chat-fixture")).firstMatch.exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap(); app.buttons["生词本"].tap()
+        let row = app.buttons["vocabulary-word-apple"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertTrue(row.label.contains("语境词义")); XCTAssertTrue(row.label.contains("/fixture/"))
+        let learned = app.switches["vocabulary-learned-apple"]
+        learned.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        row.tap()
+        let save = app.buttons["vocabulary-save"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)], timeout: 10), .completed)
+        save.tap(); app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertFalse(row.label.contains("/fixture/")); XCTAssertFalse(row.label.contains("语境词义")); XCTAssertTrue(row.label.contains("苹果")); XCTAssertEqual(learned.value as? String, "1")
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); manager(app); app.buttons["生词本"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertFalse(row.label.contains("/fixture/")); XCTAssertEqual(learned.value as? String, "1")
     }
     func testVocabularySaveEditLearnSearchRestartAndDelete() throws {
         let app = XCUIApplication()
@@ -32,7 +77,8 @@ final class DictionaryTests: XCTestCase {
         let row = app.buttons["vocabulary-word-apple"]
         XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertEqual(app.buttons.matching(identifier: "vocabulary-word-apple").count, 1)
         app.buttons["vocabulary-edit-apple"].tap()
-        app.textFields["vocabulary-gloss"].tap(); app.textFields["vocabulary-gloss"].typeText("水果")
+        let gloss = app.textFields["vocabulary-gloss"]
+        gloss.tap(); gloss.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (gloss.value as? String)?.count ?? 0)); gloss.typeText("水果")
         app.textFields["vocabulary-phonetic"].tap(); app.textFields["vocabulary-phonetic"].typeText("/apple/")
         app.buttons["vocabulary-edit-save"].tap()
         let learned = app.switches["vocabulary-learned-apple"]
@@ -123,7 +169,7 @@ final class DictionaryTests: XCTestCase {
         executionTimeAllowance = 360
         let app = XCUIApplication()
         for mode in ["上下滚动", "无动画翻页", "EPUB"] {
-            app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample", "--import-test-dictionary"]
+            app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample", "--import-test-dictionary", "--simulate-ai-dictionary", "--simulate-model-roles"]
             app.launchEnvironment["MOREAD_TEST_MDX"] = try fixture("sample-reading.mdx"); app.launch()
             let sample = app.buttons[mode == "EPUB" ? "add-epub-sample" : "add-sample"]
             XCTAssertTrue(sample.waitForExistence(timeout: 15)); sample.tap()
@@ -134,7 +180,9 @@ final class DictionaryTests: XCTestCase {
             if mode == "EPUB" {
                 let web = app.webViews.firstMatch
                 XCTAssertTrue(web.waitForExistence(timeout: 15))
-                let text = try XCTUnwrap(web.staticTexts.allElementsBoundByIndex.first(where: { $0.isHittable && $0.frame.height > 15 }))
+                func selectableText() -> XCUIElement? { web.staticTexts.allElementsBoundByIndex.first(where: { $0.isHittable && $0.frame.height > 15 }) }
+                XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in selectableText() != nil }, object: nil)], timeout: 15), .completed)
+                let text = try XCTUnwrap(selectableText())
                 let frame = text.frame
                 app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + min(20, frame.width / 2), dy: frame.midY)).press(forDuration: 1.2)
             } else {
@@ -153,6 +201,12 @@ final class DictionaryTests: XCTestCase {
             XCTAssertTrue(app.textFields["dictionary-query"].waitForExistence(timeout: 10))
             let word = try XCTUnwrap(app.textFields["dictionary-query"].value as? String)
             XCTAssertFalse(word.isEmpty); XCTAssertNotEqual(word, "字词或短语")
+            if mode == "上下滚动" {
+                app.segmentedControls["dictionary-mode"].buttons["AI 词典"].tap(); app.buttons["dictionary-ai-start"].tap()
+                XCTAssertTrue(app.scrollViews["dictionary-ai-definition"].waitForExistence(timeout: 10))
+                app.buttons["vocabulary-save"].tap(); XCTAssertTrue(app.staticTexts["vocabulary-notice"].waitForExistence(timeout: 5))
+                app.segmentedControls["dictionary-mode"].buttons["本地词典"].tap()
+            }
             let save = app.buttons["vocabulary-save"]
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)], timeout: 10), .completed, "Selected word: " + word)
             save.tap(); XCTAssertTrue(app.staticTexts["vocabulary-notice"].waitForExistence(timeout: 5))

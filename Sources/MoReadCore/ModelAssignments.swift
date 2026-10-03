@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ModelTask: String, CaseIterable, Sendable {
-    case chat, batch, knowledge, summary, memory, annotation, coverQuery, suggestion, translation, image
+    case chat, batch, knowledge, summary, memory, annotation, coverQuery, suggestion, translation, dictionary, image
     public var label: String {
         switch self {
         case .chat: "主对话"
@@ -13,6 +13,7 @@ public enum ModelTask: String, CaseIterable, Sendable {
         case .coverQuery: "封面搜索词"
         case .suggestion: "建议回复"
         case .translation: "段落翻译"
+        case .dictionary: "AI 词典"
         case .image: "绘图"
         }
     }
@@ -30,6 +31,7 @@ extension CompanionSettings {
         case .coverQuery: coverQueryProvider
         case .suggestion: suggestionProvider
         case .translation: translationProvider
+        case .dictionary: dictionaryProvider
         case .image: imageProvider
         }
     }
@@ -38,7 +40,7 @@ extension CompanionSettings {
         switch task {
         case .chat, .batch, .image: fallback = nil
         case .summary, .memory: fallback = batchProvider
-        case .knowledge, .annotation, .coverQuery, .suggestion, .translation: fallback = batchProvider ?? selectedProvider
+        case .knowledge, .annotation, .coverQuery, .suggestion, .translation, .dictionary: fallback = batchProvider ?? selectedProvider
         }
         let id = assignedProvider(for: task) ?? fallback
         return providers.first { $0.id == id }
@@ -58,6 +60,7 @@ extension CompanionSettings {
         case .coverQuery: coverQueryProvider = id
         case .suggestion: suggestionProvider = id
         case .translation: translationProvider = id
+        case .dictionary: dictionaryProvider = id
         case .image: imageProvider = id
         }
     }
