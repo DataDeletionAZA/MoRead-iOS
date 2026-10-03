@@ -45,8 +45,9 @@ final class ChatAppearanceTests: XCTestCase {
         let custom = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Noto")).firstMatch
         XCTAssertTrue(custom.waitForExistence(timeout: 5)); custom.tap()
         let slider = app.sliders["chat-font-slider"]; reveal(slider, app: app); slider.adjust(toNormalizedSliderPosition: 0.5)
-        let scale = app.steppers["chat-font-scale"]; reveal(scale, app: app)
-        scale.buttons.matching(NSPredicate(format: "label ENDSWITH %@", "Increment")).firstMatch.tap()
+        let scale = app.steppers["chat-font-scale"]
+        let increase = scale.buttons.matching(NSPredicate(format: "label ENDSWITH %@", "Increment")).firstMatch
+        reveal(increase, app: app); increase.tap()
         let selectedScale = scale.label
         XCTAssertFalse(selectedScale.contains("100%"))
         closeEditor(app, save: true)
@@ -59,7 +60,7 @@ final class ChatAppearanceTests: XCTestCase {
         openEditor(app)
         XCTAssertTrue(app.segmentedControls["chat-bubble-style"].buttons["玻璃"].isSelected)
         reveal(font, app: app); XCTAssertTrue(font.label.contains("Noto"))
-        reveal(scale, app: app); XCTAssertEqual(scale.label, selectedScale)
+        reveal(increase, app: app); XCTAssertEqual(scale.label, selectedScale)
         let reset = app.buttons["chat-appearance-reset"]; reveal(reset, app: app); reset.tap()
         closeEditor(app, save: false)
         openEditor(app)
