@@ -180,11 +180,11 @@ final class DictionaryTests: XCTestCase {
             if mode == "EPUB" {
                 let web = app.webViews.firstMatch
                 XCTAssertTrue(web.waitForExistence(timeout: 15))
-                func selectableText() -> XCUIElement? { web.staticTexts.allElementsBoundByIndex.first(where: { $0.isHittable && $0.frame.height > 15 }) }
+                func selectableText() -> XCUIElement? { web.staticTexts.allElementsBoundByIndex.first(where: { $0.isHittable && $0.label.count > 40 && $0.frame.height > 50 }) }
                 XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in selectableText() != nil }, object: nil)], timeout: 15), .completed)
                 let text = try XCTUnwrap(selectableText())
                 let frame = text.frame
-                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + min(20, frame.width / 2), dy: frame.midY)).press(forDuration: 1.2)
+                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + min(80, frame.width / 2), dy: frame.minY + 12)).press(forDuration: 1.2)
             } else {
                 app.textViews["reader-text"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.12)).press(forDuration: 1.2)
             }

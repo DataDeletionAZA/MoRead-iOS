@@ -96,6 +96,7 @@ struct DictionaryLookupView: View {
     @State private var aiRequest = UUID()
     @State private var aiBusy = false
     @State private var aiScroll: Int?
+    @State private var savedWord: VocabularyWord?
     init(word: String = "", source: SourcePassage? = nil) {
         self.source = source; sourceWord = VocabularyWord.normalize(word)
         _query = State(initialValue: String(word.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80)))
@@ -132,6 +133,19 @@ struct DictionaryLookupView: View {
                         .id(entry.id.uuidString + searched).opacity(simple ? 0 : 1).allowsHitTesting(!simple).accessibilityHidden(simple)
                     if simple { ScrollView { Text(plainText[entry.id].map { $0.isEmpty ? "这条释义没有可显示的文字。" : $0 } ?? "正在读取文字…").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding().accessibilityIdentifier("dictionary-plain") } }
                 }
+            } else if !useAI, let savedWord {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("生词本释义").font(.headline)
+                    if !savedWord.phonetic.isEmpty { Text(savedWord.phonetic) }
+                    Toggle("已掌握", isOn: Binding(get: { savedWord.learned }, set: { learned in
+                        do {
+                            guard let vocabulary = model.vocabulary, !model.maintenance else { return }
+                            var changed = savedWord; changed.learned = learned
+                            try vocabulary.update(changed, replacing: savedWord); self.savedWord = changed; model.vocabularyRevision = UUID()
+                        } catch { self.error = error.localizedDescription }
+                    })).accessibilityIdentifier("dictionary-word-learned")
+                    ScrollView { Text(.init(savedWord.definition)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                }.padding()
             } else if !useAI {
                 ContentUnavailableView(searched.isEmpty ? "查字词" : "没有找到释义", systemImage: "character.book.closed", description: Text(searched.isEmpty ? "输入字词，或在正文中选中文字后查词。" : "可以更换字词，或在词典管理中导入并启用其他词典。"))
             }
@@ -142,6 +156,7 @@ struct DictionaryLookupView: View {
             .onChange(of: query) { _, _ in stopAI() }
             .onChange(of: companion.settings.resolvedProvider(for: .dictionary)) { _, _ in stopAI() }
             .onChange(of: model.maintenance) { _, value in if value { stopAI() } }
+            .onChange(of: model.vocabularyRevision) { _, _ in loadSavedWord() }
     }
     private var aiContent: some View {
         VStack(spacing: 10) {
@@ -176,6 +191,10 @@ struct DictionaryLookupView: View {
         } catch { self.error = error.localizedDescription }
     }
     private func stopAI() { aiRequest = UUID(); aiTask?.cancel(); aiTask = nil; aiBusy = false }
+    private func loadSavedWord() {
+        do { savedWord = try model.vocabulary?.words().first { $0.word == VocabularyWord.normalize(searched) } }
+        catch { savedWord = nil; self.error = error.localizedDescription }
+    }
     private func aiLookup() {
         guard !model.maintenance else { return }
         queryFocused = false
@@ -214,6 +233,7 @@ struct DictionaryLookupView: View {
         guard !word.isEmpty, word.count <= 80, let library = model.dictionaryLibrary else { return }
         queryFocused = false; stopAI(); aiEntry = nil; aiScroll = nil
         error = nil; notice = nil; searching = true; entries = []; selected = nil; positions = [:]; plainText = [:]; searched = word
+        loadSavedWord()
         lookupTask = Task {
             do {
                 let values = try await library.lookup(word)

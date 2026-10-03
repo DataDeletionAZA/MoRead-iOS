@@ -9,6 +9,9 @@ public struct ReaderTypography: Codable, Equatable, Sendable {
     }
     public var font: Font = .system
     public var customFontID: UUID?
+    public var englishLearning: Bool?
+    public var englishBionic: Bool?
+    public var wordAnnotationMode: WordAnnotationMode?
     public var epubScroll: Bool?
     public var backgroundOpacity: Double?
     public var backgroundRGB: Int?

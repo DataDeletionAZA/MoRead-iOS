@@ -109,6 +109,14 @@ struct RootView: View {
                 companion.perform { for provider in [chat, batch] { try KeychainStore.save("fixture-only", for: provider.id) } }
                 companion.settings.providers = [chat, batch]; companion.settings.selectedProvider = chat.id; companion.saveSettings()
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--english-reading-sample"), let vocabulary = model.vocabulary {
+                model.perform {
+                    for (word, meaning, sound) in [("after", "在……之后", "/ˈɑːftə/"), ("the", "这一个", "/ðə/"), ("rain", "雨", "/reɪn/"), ("bookshop", "书店", "/ˈbʊkʃɒp/"), ("notebook", "笔记本", "/ˈnəʊtbʊk/")] {
+                        _ = try vocabulary.saveDefinition(word: word, definition: "\(word)：\(meaning)", gloss: meaning, phonetic: sound)
+                    }
+                    model.vocabularyRevision = UUID()
+                }
+            }
             if companion.simulatedHybrid, companion.conversations.isEmpty, let card = companion.characters.first {
                 companion.perform {
                     var provider = AIProvider(); provider.name = "本地检索测试"; provider.model = "fixture"; provider.baseURL = "https://example.invalid/v1"

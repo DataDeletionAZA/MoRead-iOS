@@ -22,6 +22,7 @@ struct ReaderView: View {
     @State private var immersive = false
     @State private var chapter: Chapter?
     @State private var translatedText = TranslatedText(source: "")
+    @State private var wordGlosses: [String: DictionaryGloss] = [:]
     @State private var visiblePage: SourcePassage?
     @State private var selectionIsTranslation = false
     @State private var requestedOffset = 0
@@ -123,6 +124,7 @@ struct ReaderView: View {
                         }
                     }
                     .task(id: bookID) {
+                        model.perform { wordGlosses = EnglishReading.unlearned(try model.vocabulary?.words() ?? []) }
                         model.perform { if let value = try model.store?.records(for: book) { records = value } }
                         if !opened {
                             opened = true
@@ -171,6 +173,7 @@ struct ReaderView: View {
         .onChange(of: model.recordsRevision) { _, _ in
             if let book { model.perform { if let value = try model.store?.records(for: book) { records = value }; refreshTranslations() } }
         }
+        .onChange(of: model.vocabularyRevision) { _, _ in model.perform { wordGlosses = EnglishReading.unlearned(try model.vocabulary?.words() ?? []) } }
         .overlay { autoReadOverlay }
         .onDisappear { autoRead.stop(); companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
@@ -310,6 +313,7 @@ struct ReaderView: View {
                             })) { Text("左右翻页").tag(false); Text("上下滚动").tag(true) }.accessibilityIdentifier("epub-page-mode")
                         }
                         NavigationLink("字体与段落") { ReaderTypographyView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }), isEPUB: book.format == "epub") }
+                        if book.format == "txt" { NavigationLink("阅读辅助") { EnglishReadingView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() })) } }
                         Section("文字") {
                             Stepper(value: $fontSize, in: 14...36, step: 1) { LabeledContent("字号", value: "\(Int(fontSize))") }.accessibilityIdentifier("reader-font-size-stepper")
                             Slider(value: $fontSize, in: 14...36, step: 1).accessibilityLabel("字号")
@@ -362,7 +366,7 @@ struct ReaderView: View {
             guard chapter.id + 1 < book.chapters.count else { return false }
             loadChapter(chapter.id + 1, automatic: true); return true
         }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
-                   annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
+                   annotations: records.annotations.filter { $0.passage.chapter == chapter.id }, wordGlosses: wordGlosses,
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
@@ -505,6 +509,7 @@ struct TextReader {
     let offset: Int
     let navigationID: UUID
     let annotations: [Annotation]
+    let wordGlosses: [String: DictionaryGloss]
     let speechRange: NSRange?
     let immersive: Bool
     let onToggleControls: () -> Void
@@ -531,6 +536,7 @@ struct TextReader {
                 if annotation.style == "wave" { value.addAttribute(AnnotationLayoutManager.waveKey, value: true, range: range) }
             }
         }
+        applyEnglishReading(to: value)
         return value
     }
     func selectionActions(for range: NSRange) -> [UIAction] {
@@ -548,6 +554,10 @@ struct TextReader {
 
 final class AnnotationLayoutManager: NSLayoutManager {
     static let waveKey = NSAttributedString.Key("MoReadWaveUnderline")
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        drawWordGlosses(for: glyphsToShow, at: origin)
+    }
     override func drawUnderline(forGlyphRange glyphRange: NSRange, underlineType underlineVal: NSUnderlineStyle, baselineOffset: CGFloat, lineFragmentRect lineRect: CGRect, lineFragmentGlyphRange lineGlyphRange: NSRange, containerOrigin: CGPoint) {
         let index = characterIndexForGlyph(at: glyphRange.location)
         guard let storage = textStorage, index < storage.length, storage.attribute(Self.waveKey, at: index, effectiveRange: nil) as? Bool == true,

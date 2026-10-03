@@ -125,7 +125,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         let content = parent.content
         footer.isHidden = content.immersive; footerHeight.constant = content.immersive ? 0 : 44
         let navigation = old.navigationID != content.navigationID
-        let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
+        let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography || old.wordGlosses != content.wordGlosses
         if old.presentation != content.presentation { anchor = content.presentation.displayOffset(forSource: old.presentation.sourceOffset(forDisplay: anchor)) }
         if navigation || geometry || !content.isReading { bookmarkPull?.cancel() }
         if navigation { anchor = content.presentation.displayOffset(forSource: content.offset); if transitioning { needsPagination = true } }
@@ -265,6 +265,8 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { gestureRecognizer is UITapGestureRecognizer }
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if gestureRecognizer is UITapGestureRecognizer {
+            if let text = (visible ?? pager?.viewControllers?.first as? TextPageController)?.textView,
+               text.hasVocabularyTag(at: gestureRecognizer.location(in: text)) { return false }
             return !transitioning && parentReader.content.isReading && ((visible ?? pager?.viewControllers?.first as? TextPageController)?.textView?.selectedRange.length ?? 0) == 0 && abs(gestureRecognizer.location(in: pageHost).x - pageHost.bounds.midX) < pageHost.bounds.width / 6
         }
         guard !transitioning, pagination == nil, visible?.textView?.selectedRange.length ?? 0 == 0, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
@@ -354,5 +356,9 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
         let selection = NSIntersectionRange(self.range, range)
         guard let actions = selectionActions?(selection) else { return nil }
         return UIMenu(children: suggestedActions + actions)
+    }
+    func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction) -> UIAction? {
+        if case .tag("moread-vocabulary") = textItem.content, let range = textView.vocabularyRange(at: textItem.range.location) { return selectionActions?(range).last }
+        return defaultAction
     }
 }

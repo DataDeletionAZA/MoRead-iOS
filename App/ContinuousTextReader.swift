@@ -100,7 +100,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         let navigation = old.content.navigationID != parent.content.navigationID
         let style = old.content.font != parent.content.font || old.content.fontSize != parent.content.fontSize
             || old.content.lineSpacing != parent.content.lineSpacing || old.content.typography != parent.content.typography
-            || old.content.ink != parent.content.ink || old.revision != parent.revision
+            || old.content.ink != parent.content.ink || old.content.wordGlosses != parent.content.wordGlosses || old.revision != parent.revision
         if navigation || style {
             if style, !navigation { parent.content.autoRead.pause("排版改变，已暂停") }
             cache.removeAll()
@@ -206,6 +206,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         }
     }
     @objc private func toggleControls(_ tap: UITapGestureRecognizer) {
+        for case let cell as ContinuousChapterCell in table.visibleCells where cell.textView.hasVocabularyTag(at: tap.location(in: cell.textView)) { return }
         guard parentReader.content.isReading, abs(tap.location(in: table).x - table.bounds.midX) < table.bounds.width / 6,
               table.visibleCells.allSatisfy({ (($0 as? ContinuousChapterCell)?.textView.selectedRange.length ?? 0) == 0 }) else { return }
         parentReader.content.onToggleControls()
@@ -308,6 +309,10 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
     func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
         guard let actions = content?.selectionActions(for: range) else { return nil }
         return UIMenu(children: suggestedActions + actions)
+    }
+    func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction) -> UIAction? {
+        if case .tag("moread-vocabulary") = textItem.content, let range = textView.vocabularyRange(at: textItem.range.location) { return content?.selectionActions(for: range).last }
+        return defaultAction
     }
 }
 

@@ -3,6 +3,7 @@ import Foundation
 public struct DictionaryGloss: Equatable, Sendable {
     public let meaning: String
     public let phonetic: String
+    public init(meaning: String, phonetic: String) { self.meaning = meaning; self.phonetic = phonetic }
     public static func extract(_ source: String) -> Self {
         let text = String(source.prefix(32_000)).replacingOccurrences(of: #"\[([^\]\n]+)\]\([^\n)]*\)"#, with: "$1", options: .regularExpression)
             .replacingOccurrences(of: #"[*`_]"#, with: "", options: .regularExpression)
