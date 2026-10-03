@@ -111,6 +111,9 @@ struct ReaderView: View {
         readingScreen
         .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
+        .onChange(of: book?.chapters.map(\.revision)) { _, _ in
+            if let book, book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
+        }
         .onChange(of: model.recordsRevision) { _, _ in
             if let book { model.perform { if let value = try model.store?.records(for: book) { records = value }; refreshTranslations() } }
         }
@@ -216,6 +219,7 @@ struct ReaderView: View {
                         NavigationLink("查字词") { DictionaryLookupView() }
                         NavigationLink("生词本") { VocabularyView() }
                         NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
+                        if book.format == "txt" { NavigationLink("正文清理") { TextCleanupView(bookID: bookID) }.accessibilityIdentifier("cleanup-open") }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                         NavigationLink("中英对照") { ParagraphTranslationView(bookID: bookID, chapter: chapter?.id ?? book.position.chapter) }
                         if let visiblePage {
@@ -395,7 +399,7 @@ struct ReaderView: View {
             guard chapter.id + 1 < book.chapters.count else { return false }
             loadChapter(chapter.id + 1, automatic: true); return true
         }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
-                   annotations: records.annotations.filter { $0.passage.chapter == chapter.id }, wordGlosses: wordGlosses,
+                   annotations: records.annotations.filter { $0.passage.bookID == bookID && $0.passage.isValid(in: chapter, scope: .wholeBook) }, wordGlosses: wordGlosses,
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, tapZones: tapZones, onTapAction: performTapAction, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
