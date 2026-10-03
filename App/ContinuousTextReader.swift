@@ -29,6 +29,8 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
     private var active = true
     private var reportPending = false
     private var position: ReadingPosition
+    private var rotationAnchor: ReadingPosition?
+    private var rotationID = UUID()
 
     init(_ parent: ContinuousTextReader) {
         parentReader = parent
@@ -65,12 +67,27 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         active = false; generation = UUID(); parentReader.content.autoRead.detach(owner)
         table.delegate = nil; table.dataSource = nil; cache.removeAll()
     }
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        // UIKit can adjust table offsets throughout rotation; restore after its final layout.
+        rotationAnchor = rotationAnchor ?? position
+        generation = UUID(); restoring = true
+        let token = UUID(); rotationID = token
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self, active, rotationID == token else { return }
+            view.layoutIfNeeded()
+            let target = rotationAnchor ?? position
+            rotationAnchor = nil
+            reload(at: target)
+        }
+    }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         table.frame = view.bounds
         guard view.bounds.width > 100, view.bounds.height > 100, size != view.bounds.size else { return }
         if size != .zero { parentReader.content.autoRead.pause("排版改变，已暂停") }
         size = view.bounds.size; table.estimatedRowHeight = size.height
+        guard rotationAnchor == nil else { return }
         reload(at: position)
     }
     func update(_ parent: ContinuousTextReader) {
@@ -111,6 +128,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
     }
     private func reload(at target: ReadingPosition) {
         position = target; generation = UUID(); restoring = true
+        if rotationAnchor != nil { rotationAnchor = target; return }
         guard size != .zero, parentReader.chapterCount > 0 else { return }
         let token = generation
         table.reloadData(); table.layoutIfNeeded()
