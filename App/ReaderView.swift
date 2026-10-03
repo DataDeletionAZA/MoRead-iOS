@@ -59,7 +59,7 @@ struct ReaderView: View {
                         EPUBReader(autoRead: autoRead, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage in selectionIsTranslation = false; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
+                        }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {

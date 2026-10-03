@@ -17,11 +17,13 @@ struct EPUBSourceBlock: Encodable {
             return Self(start: anchor.offset, text: source.substring(with: NSRange(location: anchor.offset, length: end - anchor.offset)), selector: selector)
         }
     }
-    static func script(blocks: [Self], selecting: Bool) throws -> String {
+    static func script(blocks: [Self], selecting: Bool, translations: [ParagraphTranslation]? = nil, restoring: Locator? = nil) throws -> String {
         guard let url = Bundle.main.url(forResource: "EPUBSourceMap", withExtension: "js") else { throw MoReadError.invalid("无法读取 EPUB 正文定位组件。") }
         let script = try String(contentsOf: url, encoding: .utf8)
         // Fixed-layout Readium spreads embed evaluated code in a template literal.
         let json = String(decoding: try JSONEncoder().encode(blocks), as: UTF8.self).replacingOccurrences(of: "$", with: "\\u0024")
-        return "(\(script))(\(json), \(selecting));"
+        let rows = String(decoding: try JSONEncoder().encode(translations), as: UTF8.self).replacingOccurrences(of: "$", with: "\\u0024")
+        let target = try restoring.map { String(decoding: try JSONSerialization.data(withJSONObject: $0.json), as: UTF8.self).replacingOccurrences(of: "$", with: "\\u0024") } ?? "null"
+        return "(\(script))(\(json), \(selecting), \(rows), \(target));"
     }
 }

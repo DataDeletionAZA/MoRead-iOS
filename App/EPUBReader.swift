@@ -104,7 +104,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     let speechLocation: SpeechLocation?
     let onToggleControls: () -> Void
     let onLocation: (Data) -> Void
-    let onSelection: (SourcePassage) -> Void
+    let onSelection: (SourcePassage, Bool) -> Void
     let onVisiblePage: (SourcePassage?) -> Void
     @EnvironmentObject private var model: LibraryModel
 
@@ -115,6 +115,7 @@ struct EPUBReader: UIViewControllerRepresentable {
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
         controller.setAnnotations(annotations)
         controller.setSpeechLocation(speechLocation)
+        controller.setRecordsRevision(model.recordsRevision)
     }
     static func dismantleUIViewController(_ controller: EPUBHostController, coordinator: ()) { controller.close() }
 }
@@ -129,7 +130,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let model: LibraryModel
     private let onToggleControls: () -> Void
     private let onLocation: (Data) -> Void
-    private let onSelection: (SourcePassage) -> Void
+    private let onSelection: (SourcePassage, Bool) -> Void
     private let onVisiblePage: (SourcePassage?) -> Void
     private var navigator: EPUBNavigatorViewController?
     private var anchors: [EPUBAnchor] = []
@@ -143,8 +144,11 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var annotations: [Annotation]
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
+    private var recordsRevision: UUID?
+    private var pendingTranslationLocator: Locator?
+    private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
-    init(autoRead: AutoReadSession, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
+    init(autoRead: AutoReadSession, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
         self.autoRead = autoRead
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage
@@ -179,6 +183,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                           let exact = self.locator(for: passage, publication: publication) else { throw MoReadError.invalid("原文或已读范围已经变化，请重新打开。") }
                     locator = exact
                 } else { locator = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) } }
+                pendingTranslationLocator = locator
                 var templates = HTMLDecorationTemplate.defaultTemplates()
                 templates["wave"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-wave'/>", stylesheet: """
                 .moread-wave { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%23d67b16' stroke-width='1.3'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom; }
@@ -237,6 +242,11 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         guard value != annotations else { return }
         annotations = value; renderAnnotations()
     }
+    func setRecordsRevision(_ value: UUID) {
+        guard value != recordsRevision else { return }
+        recordsRevision = value
+        refreshVisiblePage(recordPosition: false)
+    }
     private func renderAnnotations() {
         let decorations = annotations.compactMap { annotation -> Decoration? in
             guard let locator = locator(for: annotation.passage) else { return nil }
@@ -271,7 +281,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         if let locator = locator(for: passage) { navigator?.apply(decorations: [Decoration(id: "spoken", locator: locator, style: .highlight(tint: .systemTeal))], in: "speech") }
         if let anchor = anchors.last(where: { $0.chapter == value.chapter && $0.offset <= value.range.location }), anchor.locator != speechAnchor {
             speechAnchor = anchor.locator
-            Task { if let locator = try? Locator(jsonString: anchor.locator) { _ = await navigator?.go(to: locator) } }
+            Task { if let locator = try? Locator(jsonString: anchor.locator) { pendingTranslationLocator = locator; _ = await navigator?.go(to: locator) } }
         }
     }
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -318,7 +328,6 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         return navigator.publication.readingOrder.last?.url().string.components(separatedBy: "#")[0] == location.href.string.components(separatedBy: "#")[0] ? .end : .waiting
     }
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
-        model.perform { onLocation(try JSONSerialization.data(withJSONObject: locator.json)) }
         refreshVisiblePage(recordPosition: true)
     }
     @objc private func capturePage(_ notification: Notification) {
@@ -326,12 +335,15 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         refreshVisiblePage(recordPosition: false)
     }
     private func refreshVisiblePage(recordPosition: Bool) {
-        locationTask?.cancel(); onVisiblePage(nil)
+        locationTask?.cancel()
         locationTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, !Task.isCancelled, !closed else { return }
+            onVisiblePage(nil)
             do {
-                let passage = try await sourcePassage(selecting: false)
+                let passage = try await sourcePassage(selecting: false)?.passage
                 try Task.checkCancellation(); onVisiblePage(passage)
+                if let data = passage?.epubLocator { onLocation(data) }
+                else if recordPosition, let locator = navigator?.currentLocation { onLocation(try JSONSerialization.data(withJSONObject: locator.json)) }
                 if recordPosition, passage == nil, let exact = await navigator?.firstVisibleElementLocator(), !Task.isCancelled,
                    var book = model.books.first(where: { $0.id == bookID }), let position = position(for: exact, book: book) {
                     book.record(position: position, visibleEnd: position); model.update(book)
@@ -344,26 +356,38 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             } catch is CancellationError {} catch { onVisiblePage(nil) }
         }
     }
-    private func sourcePassage(selecting: Bool) async throws -> SourcePassage? {
+    private func sourcePassage(selecting: Bool) async throws -> (passage: SourcePassage, translation: Bool)? {
         guard !model.maintenance, let reader = navigator, let href = reader.currentLocation?.href,
               let book = model.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }), let store = model.store,
               let index = reader.publication.readingOrder.firstIndex(where: { $0.url().string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] }) else { return nil }
         let chapter = try store.chapter(index, in: book)
         let blocks = try EPUBSourceBlock.blocks(in: chapter, anchors: anchors)
-        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting)).get()
+        let translations: [ParagraphTranslation]?
+        if selecting { translations = nil }
+        else if let cached = translationCache, cached.chapter == index, cached.source == chapter.revision, cached.records == recordsRevision {
+            translations = cached.rows
+        } else {
+            let visible = try store.records(for: book).translationsVisible ?? true
+            let rows = visible ? try ParagraphTranslationStore(library: store, bookID: bookID).load(chapter: index).filter { !$0.hidden } : []
+            translationCache = (index, chapter.revision, recordsRevision, rows); translations = rows
+        }
+        let restoring = !selecting && pendingTranslationLocator?.href.string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] ? pendingTranslationLocator : nil
+        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting, translations: translations, restoring: restoring)).get()
+        if restoring == pendingTranslationLocator, result is [String: Any] { pendingTranslationLocator = nil }
         try Task.checkCancellation()
         guard model.store === store, !model.maintenance, reader.currentLocation?.href == href,
               let value = result as? [String: Any], let start = value["start"] as? Int, let end = value["end"] as? Int,
               start >= 0, end > start, end <= chapter.text.utf16.count,
               TextBoundary.floor(start, in: chapter.text) == start, TextBoundary.floor(end, in: chapter.text) == end,
               try store.chapter(index, in: book).revision == chapter.revision else { return nil }
+        if value["changed"] as? Bool == true { autoRead.pause("译文显示改变，已暂停") }
         var passage = SourcePassage(bookID: bookID, chapter: chapter, offset: start, text: (chapter.text as NSString).substring(with: NSRange(location: start, length: end - start)))
-        if selecting, let selector = value["selector"] as? String, let current = reader.currentLocation {
+        if let selector = value["selector"] as? String {
             let text = try Locator.Text(json: value["text"])
-            let locator = current.copy(locations: { $0.otherLocations["cssSelector"] = selector }, text: { $0 = text })
+            let locator = Locator(href: href, mediaType: .xhtml, locations: .init(otherLocations: ["cssSelector": selector]), text: text)
             passage.epubLocator = try JSONSerialization.data(withJSONObject: locator.json)
         }
-        return passage
+        return (passage, value["translation"] as? Bool ?? false)
     }
     private func position(for locator: Locator, book: Book) -> ReadingPosition? {
         guard let reader = navigator,
@@ -382,9 +406,9 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         selectionTask?.cancel()
         selectionTask = Task {
             do {
-                guard let passage = try await sourcePassage(selecting: true), passage.epubLocator != nil,
-                      passage.text.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("暂时无法准确定位这段原文，请选择更完整的一段再试。") }
-                onSelection(passage); navigator?.clearSelection()
+                guard let result = try await sourcePassage(selecting: true), result.passage.epubLocator != nil,
+                      result.translation || result.passage.text.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("暂时无法准确定位这段原文，请选择更完整的一段再试。") }
+                onSelection(result.passage, result.translation); navigator?.clearSelection()
             } catch is CancellationError {} catch { model.error = error.localizedDescription }
         }
     }
@@ -400,7 +424,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 } else if let reader = navigator, reader.publication.readingOrder.indices.contains(jump.chapter) {
                     _ = await reader.go(to: reader.publication.readingOrder[jump.chapter]); return
                 } else { locator = nil }
-                if let locator { _ = await navigator?.go(to: locator) }
+                if let locator { pendingTranslationLocator = locator; _ = await navigator?.go(to: locator) }
             } catch { model.error = error.localizedDescription }
         }
     }

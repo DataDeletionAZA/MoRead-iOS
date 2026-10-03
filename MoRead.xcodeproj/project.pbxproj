@@ -29,6 +29,7 @@
 		43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B830F2AED127F80997D8521 /* RootView.swift */; };
 		457D71997185824C45A19866 /* ReaderBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 035CD3F1A06D22ADFB39DD82 /* ReaderBackgroundView.swift */; };
 		49DC7E6FF60B2348E8F97793 /* CompanionToolsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */; };
+		4FEED8D50BDB6184FCFF8F92 /* LongParagraph.epub in Resources */ = {isa = PBXBuildFile; fileRef = D277CD6F70690EC2BCEE1DD5 /* LongParagraph.epub */; };
 		50A22A5A9E75977CB6C3BAD4 /* StatisticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C9D12B773D9E8E25BB61A9C /* StatisticsView.swift */; };
 		50EDAFE261A421D9943EABFF /* ReadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7764A144DFD6CD5D0F64DEE /* ReadingTests.swift */; };
 		51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2065DE60076241DE16C071 /* SpeechControls.swift */; };
@@ -146,6 +147,7 @@
 		C33E022BE43A5D8195D64849 /* ChapterKnowledgeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterKnowledgeModel.swift; sourceTree = "<group>"; };
 		C9724B60ACBC358E02A9F36C /* IllustrationGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IllustrationGallery.swift; sourceTree = "<group>"; };
 		CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryView.swift; sourceTree = "<group>"; };
+		D277CD6F70690EC2BCEE1DD5 /* LongParagraph.epub */ = {isa = PBXFileReference; path = LongParagraph.epub; sourceTree = "<group>"; };
 		D873B44D290EDDDCE5025C21 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		E08C16806605250221F9CB65 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
 		E13CDB21AB706B03ADB8D9DE /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
@@ -181,6 +183,7 @@
 				9B003E598C7C2E719F60D4E0 /* Bilingual.epub */,
 				69B72192AAF05D6A68352E35 /* BrokenCover.epub */,
 				3F6C6B247B6CA03880290F94 /* Cover.epub */,
+				D277CD6F70690EC2BCEE1DD5 /* LongParagraph.epub */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -427,6 +430,7 @@
 				A35FF49FC387B28CAB6809D7 /* Bilingual.epub in Resources */,
 				9CFE93799DE4CA1F8D624F60 /* BrokenCover.epub in Resources */,
 				0408C6FA4201DF73D7F676D7 /* Cover.epub in Resources */,
+				4FEED8D50BDB6184FCFF8F92 /* LongParagraph.epub in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

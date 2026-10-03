@@ -126,7 +126,7 @@ struct ParagraphTranslationView: View {
     private func change(_ action: (ParagraphTranslationStore, Book) throws -> Void) {
         do {
             guard !library.maintenance, let storage = library.store, let book = library.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }) else { throw MoReadError.invalid("书籍暂不可用。") }
-            try action(ParagraphTranslationStore(library: storage, bookID: bookID), book); load()
+            try action(ParagraphTranslationStore(library: storage, bookID: bookID), book); library.recordsRevision = UUID(); load()
         } catch { self.error = error.localizedDescription }
     }
 }
