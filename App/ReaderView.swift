@@ -5,6 +5,7 @@ import MoReadCore
 struct ReaderView: View {
     let bookID: UUID
     var initialPassage: SourcePassage? = nil
+    var initialPassageScope: ReadingScope? = nil
     @EnvironmentObject private var model: LibraryModel
     @EnvironmentObject private var companion: CompanionModel
     @EnvironmentObject private var speech: SpeechPlayer
@@ -27,6 +28,7 @@ struct ReaderView: View {
     @State private var navigationID = UUID()
     @State private var sheet: ReaderSheet?
     @State private var dictionaryWord = ""
+    @State private var dictionarySource: SourcePassage?
     @State private var selection: SourcePassage?
     @State private var bookmarkMessage: String?
     @State private var note = ""
@@ -57,10 +59,10 @@ struct ReaderView: View {
             } else if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                        EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { dictionaryWord = $0; sheet = .dictionary }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
+                        }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
@@ -127,7 +129,7 @@ struct ReaderView: View {
                             do {
                                 if let initialPassage {
                                     guard initialPassage.bookID == bookID, let source = try model.store?.chapter(initialPassage.chapter, in: book),
-                                          initialPassage.isValid(in: source, scope: ReadingScope(through: book.readThrough)) else { throw MoReadError.invalid("原文或已读范围已经变化，请返回插图重新打开。") }
+                                          initialPassage.isValid(in: source, scope: initialPassageScope ?? ReadingScope(through: book.readThrough)) else { throw MoReadError.invalid("原文或已读范围已经变化，请返回后重新打开。") }
                                     if book.format == "txt" { loadChapter(initialPassage.chapter, offset: initialPassage.offset) }
                                 } else if book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
                             } catch { initialSourceError = error.localizedDescription; return }
@@ -145,7 +147,7 @@ struct ReaderView: View {
                             } else {
                                 Form {
                                     Section("原文") { Text(passage.text).textSelection(.enabled) }
-                                    NavigationLink("查字词") { DictionaryLookupView(word: passage.text) }
+                                    NavigationLink("查字词") { DictionaryLookupView(word: passage.text, source: passage) }
                                     NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
                                     NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
                                     Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
@@ -235,7 +237,7 @@ struct ReaderView: View {
             Group {
                 switch kind {
                 case .dictionary:
-                    DictionaryLookupView(word: dictionaryWord)
+                    DictionaryLookupView(word: dictionaryWord, source: dictionarySource)
                 case .autoRead:
                     AutoReadSettingsView(settings: AutoReadSettings(data: autoReadData), speechActive: speech.isPlaying || speech.isPreparing) { settings in
                         autoReadData = settings.encoded()
@@ -253,6 +255,7 @@ struct ReaderView: View {
                 case .contents:
                     List {
                         NavigationLink("查字词") { DictionaryLookupView() }
+                        NavigationLink("生词本") { VocabularyView() }
                         NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                         NavigationLink("中英对照") { ParagraphTranslationView(bookID: bookID, chapter: chapter?.id ?? book.position.chapter) }
@@ -375,7 +378,11 @@ struct ReaderView: View {
         }, onTranslation: { range in
             selectionIsTranslation = true
             selection = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range))
-        }, onDictionary: { dictionaryWord = $0; sheet = .dictionary })
+        }, onDictionary: { word, range in
+            dictionaryWord = word
+            dictionarySource = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range))
+            sheet = .dictionary
+        })
     }
     private func loadChapter(_ index: Int, offset: Int = 0, automatic: Bool = false) {
         if !automatic { autoRead.pause("阅读位置改变，已暂停") }
@@ -506,7 +513,7 @@ struct TextReader {
     let onPosition: (Int, NSRange) -> Void
     let onSelection: (NSRange) -> Void
     let onTranslation: (NSRange) -> Void
-    let onDictionary: (String) -> Void
+    let onDictionary: (String, NSRange) -> Void
     var attributedText: NSAttributedString {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.paragraphSpacing = typography.paragraphSpacing
         paragraph.firstLineHeadIndent = typography.firstLineIndent * fontSize
@@ -534,7 +541,7 @@ struct TextReader {
             action = UIAction(title: "本段译文", image: UIImage(systemName: "character.book.closed")) { _ in onTranslation(original) }
         } else { action = UIAction(title: "批注", image: UIImage(systemName: "pencil")) { _ in onSelection(original) } }
         let word = (text as NSString).substring(with: range)
-        return [action, UIAction(title: "查字词", image: UIImage(systemName: "character.book.closed")) { _ in onDictionary(word) }]
+        return [action, UIAction(title: "查字词", image: UIImage(systemName: "character.book.closed")) { _ in onDictionary(word, original) }]
     }
 
 }

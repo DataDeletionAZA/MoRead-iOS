@@ -38,6 +38,8 @@ final class LibraryModel: ObservableObject {
     @Published var showDictionaries = false
     @Published var dictionaryRevision = UUID()
     @Published var dictionaryNotice: String?
+    @Published var vocabularyRevision = UUID()
+    var vocabulary: VocabularyStore? { store.map { VocabularyStore(root: $0.root) } }
     private(set) var dictionaryLibrary: LocalDictionaries?
     private var fontDescriptors: [UUID: CTFontDescriptor] = [:]
     @Published var textImport: TextImportDraft?
@@ -68,7 +70,7 @@ final class LibraryModel: ObservableObject {
             organization = try storage.organization()
             organization.prune(keeping: Set(books.map(\.id)))
             store = storage
-            dictionaryLibrary = LocalDictionaries(root: root); dictionaryRevision = UUID()
+            dictionaryLibrary = LocalDictionaries(root: root); dictionaryRevision = UUID(); vocabularyRevision = UUID()
             try reloadFonts()
             try loadReadingBackground()
             coverRevision = UUID()

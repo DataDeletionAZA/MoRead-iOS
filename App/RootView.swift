@@ -429,6 +429,7 @@ struct SettingsView: View {
                 }
                 Section("阅读与外观") {
                     NavigationLink("词典管理") { DictionaryManagerView() }
+                    NavigationLink("生词本") { VocabularyView() }
                     NavigationLink("字体库") { FontLibraryView() }
                     NavigationLink("主题与外观") { ThemeView() }
                 }

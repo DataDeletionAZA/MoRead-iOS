@@ -103,7 +103,7 @@ struct DictionaryWebView: UIViewRepresentable {
             """
             webView.evaluateJavaScript(script, in: nil, in: .defaultClient) { [weak self] result in
                 guard let self, active, case .success(let value) = result, let text = value as? String else { return }
-                parent.plainText = text.isEmpty ? "这条释义没有可显示的文字。" : text
+                parent.plainText = text
             }
         }
         func scrollViewDidScroll(_ scrollView: UIScrollView) { if !restoring { parent.position = scrollView.contentOffset } }

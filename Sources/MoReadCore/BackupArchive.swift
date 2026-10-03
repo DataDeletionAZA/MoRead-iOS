@@ -126,6 +126,7 @@ public enum BackupArchive {
         }
         _ = try FontLibrary(root: staging).fonts()
         try await LocalDictionaries(root: staging).validateBackup()
+        _ = try VocabularyStore(root: staging).words()
         let library = try LibraryStore(root: staging)
         let books = try library.books()
         _ = try library.organization()

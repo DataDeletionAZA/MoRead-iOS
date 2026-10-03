@@ -98,6 +98,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     let onBookmark: () -> String
     let book: Book
     let initialPassage: SourcePassage?
+    let initialPassageScope: ReadingScope?
     let fontSize: Double
     let lineSpacing: Double
     let typography: ReaderTypography
@@ -108,11 +109,11 @@ struct EPUBReader: UIViewControllerRepresentable {
     let onLocation: (Data) -> Void
     let onSelection: (SourcePassage, Bool) -> Void
     let onVisiblePage: (SourcePassage?) -> Void
-    let onDictionary: (String) -> Void
+    let onDictionary: (String, SourcePassage?) -> Void
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary)
+        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.isReading = isReading
@@ -134,12 +135,13 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var closed = false
     private let bookID: UUID
     private let initialPassage: SourcePassage?
+    private let initialPassageScope: ReadingScope?
     private let model: LibraryModel
     private let onToggleControls: () -> Void
     private let onLocation: (Data) -> Void
     private let onSelection: (SourcePassage, Bool) -> Void
     private let onVisiblePage: (SourcePassage?) -> Void
-    private let onDictionary: (String) -> Void
+    private let onDictionary: (String, SourcePassage?) -> Void
     private var navigator: EPUBNavigatorViewController?
     private var anchors: [EPUBAnchor] = []
     private var openTask: Task<Void, Never>?
@@ -156,10 +158,10 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
-    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String) -> Void) {
+    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void) {
         self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
-        self.initialPassage = initialPassage
+        self.initialPassage = initialPassage; self.initialPassageScope = initialPassageScope
         self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage; self.onDictionary = onDictionary
         super.init(nibName: nil, bundle: nil)
     }
@@ -187,7 +189,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 let locator: Locator?
                 if let passage = initialPassage {
                     guard let current = model.books.first(where: { $0.id == bookID }), !current.removed,
-                          passage.bookID == bookID, passage.isValid(in: try store.chapter(passage.chapter, in: current), scope: ReadingScope(through: current.readThrough)),
+                          passage.bookID == bookID, passage.isValid(in: try store.chapter(passage.chapter, in: current), scope: initialPassageScope ?? ReadingScope(through: current.readThrough)),
                           let exact = self.locator(for: passage, publication: publication) else { throw MoReadError.invalid("原文或已读范围已经变化，请重新打开。") }
                     locator = exact
                 } else { locator = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) } }
@@ -426,7 +428,17 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     }
     @objc private func lookupSelection() {
         guard isReading, let text = navigator?.currentSelection?.locator.text.highlight, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        onDictionary(text); navigator?.clearSelection()
+        selectionTask?.cancel()
+        selectionTask = Task {
+            do {
+                let result = try await sourcePassage(selecting: true)
+                try Task.checkCancellation()
+                guard isReading else { return }
+                let matches = result.map { $0.translation || $0.passage.text.filter { !$0.isWhitespace } == text.filter { !$0.isWhitespace } } ?? false
+                onDictionary(text, matches ? result?.passage : nil); navigator?.clearSelection()
+            } catch is CancellationError { }
+            catch { if !Task.isCancelled, isReading { onDictionary(text, nil); navigator?.clearSelection() } }
+        }
     }
     @objc private func annotate() {
         guard let selected = navigator?.currentSelection else { return }

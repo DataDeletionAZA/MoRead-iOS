@@ -18,6 +18,41 @@ final class DictionaryTests: XCTestCase {
         for _ in 0..<4 { if link.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(link.waitForExistence(timeout: 5)); link.tap()
     }
+    func testVocabularySaveEditLearnSearchRestartAndDelete() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-dictionary"]
+        app.launchEnvironment["MOREAD_TEST_MDX"] = try fixture("sample-v2.mdx"); app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); manager(app)
+        app.buttons["查字词"].tap(); lookup(app, "APPLE")
+        let save = app.buttons["vocabulary-save"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)], timeout: 10), .completed)
+        save.tap(); XCTAssertTrue(app.staticTexts["vocabulary-notice"].waitForExistence(timeout: 5))
+        save.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap(); app.buttons["生词本"].tap()
+        let row = app.buttons["vocabulary-word-apple"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertEqual(app.buttons.matching(identifier: "vocabulary-word-apple").count, 1)
+        app.buttons["vocabulary-edit-apple"].tap()
+        app.textFields["vocabulary-gloss"].tap(); app.textFields["vocabulary-gloss"].typeText("水果")
+        app.textFields["vocabulary-phonetic"].tap(); app.textFields["vocabulary-phonetic"].typeText("/apple/")
+        app.buttons["vocabulary-edit-save"].tap()
+        let learned = app.switches["vocabulary-learned-apple"]
+        XCTAssertTrue(learned.waitForExistence(timeout: 5)); learned.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.segmentedControls.buttons["学习中"].tap(); XCTAssertFalse(row.exists)
+        app.segmentedControls.buttons["已掌握"].tap(); XCTAssertTrue(row.exists)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); manager(app); app.buttons["生词本"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertEqual(learned.value as? String, "1")
+        XCTAssertTrue(row.label.contains("水果")); XCTAssertTrue(row.label.contains("/apple/"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "vocabulary-saved-word"; screenshot.lifetime = .keepAlways; add(screenshot)
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.exists); search.tap(); search.typeText("missing")
+        XCTAssertFalse(row.exists)
+        search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 7)); search.typeText("苹果")
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        app.buttons["vocabulary-remove-apple"].tap()
+        app.sheets.buttons.matching(identifier: "vocabulary-remove-confirm").firstMatch.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: row)], timeout: 10), .completed)
+        app.terminate(); app.launch(); manager(app); app.buttons["生词本"].tap(); XCTAssertFalse(row.exists)
+    }
     func testLookupResourcesEntryLinksRestartAndReaderEntry() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-dictionary"]
@@ -85,10 +120,11 @@ final class DictionaryTests: XCTestCase {
         XCTAssertFalse(plain.label.contains("display:none")); XCTAssertFalse(plain.label.contains("脚本内容"))
     }
     func testSelectionLookupInContinuousPagedAndEPUBReading() throws {
-        executionTimeAllowance = 240
+        executionTimeAllowance = 360
         let app = XCUIApplication()
         for mode in ["上下滚动", "无动画翻页", "EPUB"] {
-            app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample"]; app.launch()
+            app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample", "--import-test-dictionary"]
+            app.launchEnvironment["MOREAD_TEST_MDX"] = try fixture("sample-reading.mdx"); app.launch()
             let sample = app.buttons[mode == "EPUB" ? "add-epub-sample" : "add-sample"]
             XCTAssertTrue(sample.waitForExistence(timeout: 15)); sample.tap()
             let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
@@ -117,7 +153,17 @@ final class DictionaryTests: XCTestCase {
             XCTAssertTrue(app.textFields["dictionary-query"].waitForExistence(timeout: 10))
             let word = try XCTUnwrap(app.textFields["dictionary-query"].value as? String)
             XCTAssertFalse(word.isEmpty); XCTAssertNotEqual(word, "字词或短语")
-            app.buttons["完成"].tap(); XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 5))
+            let save = app.buttons["vocabulary-save"]
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)], timeout: 10), .completed, "Selected word: " + word)
+            save.tap(); XCTAssertTrue(app.staticTexts["vocabulary-notice"].waitForExistence(timeout: 5))
+            app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); manager(app); app.buttons["生词本"].tap()
+            let source = app.buttons["vocabulary-source-" + word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
+            XCTAssertTrue(source.waitForExistence(timeout: 5)); source.tap()
+            XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 10))
+            XCTAssertFalse(app.staticTexts["无法打开原文"].exists)
+            if mode == "EPUB" { XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10)) }
+            else { XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10)) }
+            let image = XCTAttachment(screenshot: app.screenshot()); image.name = "vocabulary-source-" + mode; image.lifetime = .keepAlways; add(image)
             app.terminate()
         }
     }
