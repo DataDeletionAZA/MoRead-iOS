@@ -169,6 +169,11 @@ final class AutoReadUITests: XCTestCase {
         shot(app, "epub-auto-page-end")
         app.buttons["auto-read-stop"].tap()
         app.buttons["目录"].tap(); app.buttons["第一章 雨后"].tap()
+        app.buttons["排版"].tap(); app.buttons["阅读辅助"].tap()
+        for key in ["english-learning", "english-bionic"] {
+            app.switches[key].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        }
+        app.navigationBars["阅读辅助"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
         settings(app, mode: "匀速滚动")
         shot(app, "epub-auto-scroll-start")
         app.webViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)).tap()

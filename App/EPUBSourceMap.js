@@ -66,7 +66,7 @@ function mapSource(blocks, selecting, translations = null, restoring = null, eng
         }
         return row.range;
     };
-    const state = window.__moreadTranslations ??= {signature: '[]', nodes: []};
+    const state = window.__moreadTranslations ??= {signature: '[]', nodes: [], initialized: false};
     const ranges = new Map(mapped.map(row => [row.block.start, row.range]));
     state.nodes.forEach(item => { if (ranges.has(item.blockStart)) item.range = ranges.get(item.blockStart); });
     const shownRows = () => {
@@ -74,14 +74,18 @@ function mapSource(blocks, selecting, translations = null, restoring = null, eng
         return mapped.filter(row => isVisible(row.range) || translatedBlocks.has(row.block.start));
     };
     if (!selecting && englishConfig && english && english.signature !== JSON.stringify(englishConfig)) {
+        // Each new chapter applies its initial layout without interrupting automatic reading.
+        const reconfigured = english.signature !== '';
         const first = shownRows()[0];
         const target = restoring ?? (first ? describe(visibleAnchor(first)) : null);
         english.apply(englishConfig, mapped);
         if (target) english.restore(target);
         const result = mapSource(blocks, selecting, translations, restoring, null);
-        return result ? {...result, changed:true} : null;
+        return result ? {...result, changed:result.changed || reconfigured} : null;
     }
     const changed = translations !== null && state.signature !== JSON.stringify(translations);
+    const reconfigured = changed && state.initialized;
+    if (translations !== null) state.initialized = true;
     if (changed) {
         const first = shownRows()[0];
         const anchor = first ? visibleAnchor(first) : null;
@@ -119,7 +123,7 @@ function mapSource(blocks, selecting, translations = null, restoring = null, eng
     if (!selecting) {
         const shown = shownRows();
         if (!shown.length) return null;
-        return {changed, start: shown[0].block.start, end: shown.at(-1).block.start + shown.at(-1).block.text.length, ...describe(visibleAnchor(shown[0]))};
+        return {changed:reconfigured, start: shown[0].block.start, end: shown.at(-1).block.start + shown.at(-1).block.text.length, ...describe(visibleAnchor(shown[0]))};
     }
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
