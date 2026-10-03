@@ -22,6 +22,7 @@ struct SpeechControls: View {
                     if currentBook.chapters.indices.contains(speech.position.chapter) {
                         Text(currentBook.chapters[speech.position.chapter].title).font(.headline)
                     }
+                    if !speech.spokenText.isEmpty { Text(speech.spokenText).font(.caption).lineLimit(3).accessibilityIdentifier("speech-spoken-text") }
                     speechButton(speech.isPreparing ? "正在准备…" : speech.isPlaying ? "暂停" : "继续", systemImage: speech.isPlaying ? "pause.fill" : "play.fill") {
                         if speech.isPlaying { speech.pause() } else { speech.resume() }
                     }.accessibilityIdentifier("speech-play-pause").disabled(speech.isPreparing)
@@ -46,6 +47,7 @@ struct SpeechControls: View {
                 }.disabled(!active).accessibilityIdentifier("speech-timer")
             } footer: { Text("按播放时长或自然读完的章节数停止。暂停时，倒计时也暂停。手动跳章不会扣除章节数。") }
             Section("朗读方式") {
+                NavigationLink("听书文字净化") { TextCleanupView(bookID: book.id, listeningOnly: true) }.accessibilityIdentifier("listening-cleanup-open")
                 NavigationLink { CloudSpeechView() } label: {
                     LabeledContent("声音来源", value: speech.cloudSettings.enabled ? speech.cloudSettings.service.label : "iPhone 系统声音")
                 }

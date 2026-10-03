@@ -34,4 +34,29 @@ final class SpeechTests: XCTestCase {
         XCTAssertEqual(spoken.replacingOccurrences(of: "\n", with: "").trimmingCharacters(in: .whitespaces), "雨停了。😀她打开书。第二段。")
         XCTAssertNil(SpeechText.next(in: " \n", from: 0))
     }
+    func testListeningCleanupKeepsSourceCoordinatesAndAudioIdentity() throws {
+        var ad = TextReplacementRule(); ad.pattern = "广告：请关注。"; ad.isRegex = false; ad.forListeningOnly = true
+        var name = TextReplacementRule(); name.pattern = "林遥"; name.replacement = "林小遥"; name.forListeningOnly = true; name.isRegex = false
+        var body = name; body.forListeningOnly = false; body.replacement = "正文规则"
+        let text = "广告：请关注。\n😀林遥打开书店。"
+        let first = try XCTUnwrap(SpeechText.next(in: text, from: 0))
+        XCTAssertTrue(try first.purified(rules: [ad, name]).text.isEmpty)
+        let source = try XCTUnwrap(SpeechText.next(in: text, from: first.end))
+        let cleaned = try source.purified(rules: [ad, name, body])
+        XCTAssertEqual(cleaned.text, "😀林小遥打开书店。")
+        XCTAssertEqual(cleaned.offset, source.offset); XCTAssertEqual(cleaned.end, source.end)
+        XCTAssertEqual(cleaned.sourceRange(forSpokenRange: NSRange(location: 4, length: 2)), NSRange(location: source.offset, length: source.end - source.offset))
+        XCTAssertTrue(cleaned.transformed)
+        XCTAssertFalse(try source.purified(rules: [body]).transformed)
+        XCTAssertEqual(source.sourceRange(forSpokenRange: NSRange(location: 1, length: 1)), NSRange(location: source.offset, length: 0))
+        XCTAssertEqual(source.sourceRange(forSpokenRange: NSRange(location: Int.max, length: Int.max)), NSRange(location: source.end, length: 0))
+        let settings = CloudSpeechSettings()
+        XCTAssertNotEqual(try CloudSpeechClient.cacheKey(settings: settings, text: source.text), try CloudSpeechClient.cacheKey(settings: settings, text: cleaned.text))
+        var disabled = name; disabled.enabled = false
+        XCTAssertEqual(try source.purified(rules: [disabled]), source)
+        name.replacement = String(repeating: "字", count: 4000)
+        let doubled = try XCTUnwrap(SpeechText.next(in: "林遥和林遥。", from: 0))
+        XCTAssertThrowsError(try doubled.purified(rules: [name]))
+    }
+
 }

@@ -17,12 +17,14 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private let audioQueue = DispatchQueue(label: "io.github.datadeletionaza.MoRead.audio")
     private var audioRequest = UUID()
     @Published private(set) var title = ""
+    @Published private(set) var spokenText = ""
     @Published private(set) var location: SpeechLocation?
     @Published var preferences = SpeechPreferences() {
         didSet { if let data = try? JSONEncoder().encode(preferences.validated()) { UserDefaults.standard.set(data, forKey: "speech.preferences") } }
     }
     @Published private(set) var cloudSettings = CloudSpeechSettings()
     private var cloudTask: Task<Void, Never>?
+    private var preparationTask: Task<Void, Never>?
     private var cloudGeneration = UUID()
     private var cloudPlayer: AVAudioPlayer?
     private var wantsPlayback = false
@@ -89,10 +91,11 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         stop(); cloudSettings = settings; UserDefaults.standard.set(data, forKey: "speech.cloud")
     }
     func stopAndWait() async {
-        let pending = cloudTask; stop(); await pending?.value
+        let pending = cloudTask, preparation = preparationTask; stop(); await preparation?.value; await pending?.value
     }
     private func cancelCloud() {
         cloudGeneration = UUID(); cloudTask?.cancel(); cloudTask = nil
+        preparationTask?.cancel(); preparationTask = nil
         cloudPlayer?.stop(); cloudPlayer = nil
     }
     @objc nonisolated private func voicesChanged() { Task { @MainActor [weak self] in self?.refreshVoices() } }
@@ -167,7 +170,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 guard succeeded else { self.library?.error = "无法启动听书，请检查设备的音频设置。"; self.stop(); return }
                 self.lastTick = .now; self.isPlaying = true
                 if let player = self.cloudPlayer { self.isPlaying = player.play() }
-                else if self.cloudTask != nil { self.isPlaying = false; self.isPreparing = true }
+                else if self.cloudTask != nil || self.preparationTask != nil { self.isPlaying = false; self.isPreparing = true }
                 else if self.current != nil { if self.synthesizer.isPaused { self.synthesizer.continueSpeaking() } }
                 else { self.speakNext() }
                 self.updateNowPlaying(); self.trace("activated")
@@ -189,7 +192,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         stopPreview(); audioRequest = UUID(); isPreparing = false; wantsPlayback = false; cancelCloud()
         timerTask?.cancel(); timerTask = nil; sleepTimer = nil; stoppedBookID = bookID; stopReason = reason
         library?.flush()
-        current = nil; segment = nil; chapter = nil; bookID = nil; isPlaying = false; location = nil
+        current = nil; segment = nil; chapter = nil; bookID = nil; spokenText = ""; isPlaying = false; location = nil
         synthesizer.stopSpeaking(at: .immediate); trace("stop")
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         audioQueue.async { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
@@ -207,7 +210,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let continuing = wantsPlayback
             current = nil; segment = nil; cancelCloud(); isPreparing = false; synthesizer.stopSpeaking(at: .immediate)
             position = ReadingPosition(chapter: id, offset: TextBoundary.floor(offset, in: target.text))
-            chapter = target; location = nil; trace("seek")
+            chapter = target; location = nil; spokenText = ""; trace("seek")
             if continuing { isPlaying = true; speakNext() } else { updateNowPlaying() }
         } catch { library.error = error.localizedDescription }
     }
@@ -223,16 +226,38 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             while book.chapters.indices.contains(position.chapter) {
                 if chapter?.id != position.chapter { chapter = try store.chapter(position.chapter, in: book) }
                 if let chapter, let next = SpeechText.next(in: chapter.text, from: position.offset, maximumLength: cloudSettings.enabled ? cloudSettings.maximumCharacters : 1000) {
-                    segment = next
-                    if cloudSettings.enabled { playCloud(next, book: book, store: store); return }
-                    let utterance = try utterance(next.text)
-                    current = utterance; isPlaying = false; isPreparing = true
-                    trace("enqueue-before"); synthesizer.speak(utterance); trace("enqueue-after"); updateNowPlaying(); return
+                    prepare(next, book: book, store: store); return
                 }
                 position = ReadingPosition(chapter: position.chapter + 1, offset: 0); chapter = nil
             }
-            stop()
+            stop(reason: "已读到书末")
         } catch { library.error = error.localizedDescription; stop() }
+    }
+    private func prepare(_ source: SpeechSegment, book: Book, store: LibraryStore) {
+        let token = cloudGeneration, root = store.root
+        isPlaying = false; isPreparing = true; updateNowPlaying()
+        preparationTask = Task { [weak self] in
+            do {
+                let worker = Task.detached { try source.purified(rules: TextReplacementStore(root: root).rules()) }
+                let next = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                try Task.checkCancellation()
+                guard let self, self.cloudGeneration == token, self.bookID == book.id, self.library?.maintenance != true else { return }
+                guard self.library?.books.contains(where: { $0.id == book.id && !$0.removed && $0.hasBody && $0.chapters == book.chapters }) == true else { self.stop(); return }
+                self.preparationTask = nil; self.isPreparing = false
+                guard self.wantsPlayback else { return }
+                self.segment = next; self.spokenText = next.text
+                if next.text.isEmpty { self.isPlaying = true; self.completeSegment(countPlayback: false); return }
+                if self.cloudSettings.enabled { self.playCloud(next, book: book, store: store); return }
+                let value = try self.utterance(next.text)
+                self.current = value; self.isPreparing = true
+                self.trace("enqueue-before"); self.synthesizer.speak(value); self.trace("enqueue-after"); self.updateNowPlaying()
+            } catch {
+                guard let self, self.cloudGeneration == token else { return }
+                self.preparationTask = nil
+                if !(error is CancellationError) { self.library?.error = error.localizedDescription }
+                self.stop()
+            }
+        }
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
@@ -268,9 +293,9 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard current === utterance else { return }
         completeSegment()
     }
-    private func completeSegment() {
+    private func completeSegment(countPlayback: Bool = true) {
         guard let segment else { return }
-        tickTimer()
+        if countPlayback { tickTimer() } else { lastTick = .now }
         guard bookID != nil else { return }
         if let library, let index = library.books.firstIndex(where: { $0.id == bookID }) {
             var book = library.books[index]
@@ -344,10 +369,10 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
     private func speaking(_ characterRange: NSRange, utterance: AVSpeechUtterance) {
         guard current === utterance, let segment, let library, let index = library.books.firstIndex(where: { $0.id == bookID }) else { return }
-        let range = NSRange(location: segment.offset + characterRange.location, length: characterRange.length)
+        let range = segment.sourceRange(forSpokenRange: characterRange)
         position.offset = range.location
         var book = library.books[index]
-        book.record(position: ReadingPosition(chapter: position.chapter, offset: range.location), visibleEnd: ReadingPosition(chapter: position.chapter, offset: range.location + range.length))
+        book.record(position: ReadingPosition(chapter: position.chapter, offset: range.location), visibleEnd: ReadingPosition(chapter: position.chapter, offset: segment.transformed ? segment.offset : range.location + range.length))
         library.update(book)
         location = SpeechLocation(bookID: book.id, chapter: position.chapter, range: range)
     }

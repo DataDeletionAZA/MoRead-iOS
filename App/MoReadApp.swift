@@ -182,6 +182,9 @@ final class LibraryModel: ObservableObject {
                             Chapter(id: 1, title: "短章二", text: "中午，江舟送来一张地图。两个人沿着河岸走向灯塔，途中停下来读第二封信。"),
                             Chapter(id: 2, title: "短章三", text: "傍晚，灯塔亮起了灯。林遥合上笔记，带着第三封信回到书店。")]
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--listening-cleanup-sample") {
+                chapters = [.init(id: 0, title: "净化测试一", text: "广告：请关注。\n😀林遥打开书店。\n广告：请关注。"), .init(id: 1, title: "净化测试二", text: "广告：请关注。"), .init(id: 2, title: "净化测试三", text: "林遥拿起书。")]
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--translation-sample") {
                 chapters[0].text = "After the rain, Lin opened the bookshop.\nA letter arrived at noon.\nThe map showed a lighthouse."
             }
@@ -212,9 +215,17 @@ final class LibraryModel: ObservableObject {
                     let chapter = try store.chapter(item.id, in: book)
                     var offset = 0
                     while let segment = SpeechText.next(in: chapter.text, from: offset, maximumLength: settings.maximumCharacters) {
-                        let key = try CloudSpeechClient.cacheKey(settings: settings, text: segment.text)
-                        try SpeechAudioCache.write(audio, in: store.directory(book.id), key: key, megabytes: settings.cacheMegabytes)
                         offset = segment.end
+                        var spoken = segment
+                        if ProcessInfo.processInfo.arguments.contains("--listening-cleanup-sample") {
+                            var ad = TextReplacementRule(); ad.pattern = "广告：请关注。"; ad.isRegex = false; ad.forListeningOnly = true
+                            var name = TextReplacementRule(); name.pattern = "林遥"; name.replacement = "小遥"; name.isRegex = false; name.forListeningOnly = true
+                            spoken = try segment.purified(rules: [ad, name])
+                        }
+                        if !spoken.text.isEmpty {
+                            let key = try CloudSpeechClient.cacheKey(settings: settings, text: spoken.text)
+                            try SpeechAudioCache.write(audio, in: store.directory(book.id), key: key, megabytes: settings.cacheMegabytes)
+                        }
                     }
                 }
             }
