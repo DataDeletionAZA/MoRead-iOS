@@ -120,6 +120,11 @@ public struct MDictReader: Sendable {
         declaredTitle = attrs["Title"] ?? ""
         title = declaredTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? url.deletingPathExtension().lastPathComponent : declaredTitle
     }
+    public func validateFirstRecord() throws {
+        guard let block = keys.first else { return }
+        let file = try FileHandle(forReadingFrom: url); defer { try? file.close() }
+        if let key = try readKeys(file, block: block).first { _ = try lookup(key.text) }
+    }
     public func lookup(_ word: String) throws -> Data? {
         try Task.checkCancellation()
         let target = normalize(word)

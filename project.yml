@@ -63,16 +63,30 @@ targets:
         UIBackgroundModes: [audio]
         LSSupportsOpeningDocumentsInPlace: true
         CFBundleDocumentTypes:
+          - CFBundleTypeName: Dictionaries
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [io.github.datadeletionaza.mdx]
           - CFBundleTypeName: Books
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.plain-text, org.idpf.epub-container]
           - CFBundleTypeName: Fonts
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.truetype-font, public.opentype-font, public.truetype-collection-font]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: io.github.datadeletionaza.mdx
+            UTTypeDescription: MDX Dictionary
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [mdx]
+              public.mime-type: [application/x-mdx, application/x-mdict]
   MoReadUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [UITests]
+    sources:
+      - path: UITests
+      - path: Tests/MoReadCoreTests/Resources/Dictionary
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: MoRead
     settings:

@@ -14,6 +14,7 @@ struct MoReadApp: App {
                 .tint(Color(rgb: tint))
                 .onOpenURL { url in Task {
                     if FontLibrary.extensions.contains(url.pathExtension.lowercased()) { model.showFonts = true; await model.importFonts([url]) }
+                    else if url.pathExtension.lowercased() == "mdx" { model.showDictionaries = true; await model.importDictionaries([url]) }
                     else { await model.queueImports([url]) }
                 } }
                 .onChange(of: model.books.filter { !$0.removed }.map(\.id)) { _, _ in speech.validateBooks(model.books) }
@@ -34,6 +35,10 @@ final class LibraryModel: ObservableObject {
     var readingBackgroundID = UUID()
     @Published var fonts: [ImportedFont] = []
     @Published var showFonts = false
+    @Published var showDictionaries = false
+    @Published var dictionaryRevision = UUID()
+    @Published var dictionaryNotice: String?
+    private(set) var dictionaryLibrary: LocalDictionaries?
     private var fontDescriptors: [UUID: CTFontDescriptor] = [:]
     @Published var textImport: TextImportDraft?
     var importQueue: [TextImportDraft] = []
@@ -63,6 +68,7 @@ final class LibraryModel: ObservableObject {
             organization = try storage.organization()
             organization.prune(keeping: Set(books.map(\.id)))
             store = storage
+            dictionaryLibrary = LocalDictionaries(root: root); dictionaryRevision = UUID()
             try reloadFonts()
             try loadReadingBackground()
             coverRevision = UUID()

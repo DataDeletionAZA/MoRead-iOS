@@ -18,8 +18,23 @@ struct RootView: View {
             NavigationStack { FontLibraryView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { model.showFonts = false } } } }
         }
         .sheet(item: $model.textImport, onDismiss: { Task { await model.nextImport() } }) { TextImportView(draft: $0) }
+        .sheet(isPresented: $model.showDictionaries) {
+            NavigationStack { DictionaryManagerView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { model.showDictionaries = false } } } }
+        }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-dictionary") {
+                for (key, ext) in [("MOREAD_TEST_MDX", "mdx"), ("MOREAD_TEST_MDD", "mdd")] {
+                    if let encoded = ProcessInfo.processInfo.environment[key], encoded.utf8.count <= 1_000_000, let data = Data(base64Encoded: encoded) {
+                        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + ext)
+                        do {
+                            try data.write(to: url); defer { try? FileManager.default.removeItem(at: url) }
+                            let id = ext == "mdd" ? try await model.dictionaryLibrary?.list().first?.id : nil
+                            await model.importDictionaries([url], resourcesFor: id)
+                        } catch { model.error = error.localizedDescription }
+                    }
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-companion-statistics"), model.books.isEmpty, companion.conversations.isEmpty, let card = companion.characters.first {
                 companion.perform {
                     guard let store = model.store else { return }
@@ -413,6 +428,7 @@ struct SettingsView: View {
                     NavigationLink("长期记忆") { PersonaMemorySettingsView() }
                 }
                 Section("阅读与外观") {
+                    NavigationLink("词典管理") { DictionaryManagerView() }
                     NavigationLink("字体库") { FontLibraryView() }
                     NavigationLink("主题与外观") { ThemeView() }
                 }

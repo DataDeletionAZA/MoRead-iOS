@@ -291,8 +291,8 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
         return source
     }
     func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
-        guard let action = content?.selectionAction(for: range) else { return nil }
-        return UIMenu(children: suggestedActions + [action])
+        guard let actions = content?.selectionActions(for: range) else { return nil }
+        return UIMenu(children: suggestedActions + actions)
     }
 }
 

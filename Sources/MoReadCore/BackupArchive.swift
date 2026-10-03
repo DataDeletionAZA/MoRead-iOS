@@ -125,6 +125,7 @@ public enum BackupArchive {
             completed += written
         }
         _ = try FontLibrary(root: staging).fonts()
+        try await LocalDictionaries(root: staging).validateBackup()
         let library = try LibraryStore(root: staging)
         let books = try library.books()
         _ = try library.organization()

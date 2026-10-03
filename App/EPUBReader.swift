@@ -108,10 +108,11 @@ struct EPUBReader: UIViewControllerRepresentable {
     let onLocation: (Data) -> Void
     let onSelection: (SourcePassage, Bool) -> Void
     let onVisiblePage: (SourcePassage?) -> Void
+    let onDictionary: (String) -> Void
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage)
+        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.isReading = isReading
@@ -138,6 +139,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let onLocation: (Data) -> Void
     private let onSelection: (SourcePassage, Bool) -> Void
     private let onVisiblePage: (SourcePassage?) -> Void
+    private let onDictionary: (String) -> Void
     private var navigator: EPUBNavigatorViewController?
     private var anchors: [EPUBAnchor] = []
     private var openTask: Task<Void, Never>?
@@ -154,11 +156,11 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
-    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
+    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String) -> Void) {
         self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage
-        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage
+        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage; self.onDictionary = onDictionary
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -195,7 +197,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 .moread-wave { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%23d67b16' stroke-width='1.3'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom; }
                 """)
                 var config = EPUBNavigatorViewController.Configuration(preferences: preferences,
-                    editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate))], decorationTemplates: templates)
+                    editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate)), EditingAction(title: "查字词", action: #selector(lookupSelection))], decorationTemplates: templates)
                 if let url = Bundle.main.url(forResource: "NotoSerifSC", withExtension: "ttf"), let file = FileURL(url: url) {
                     config.fontFamilyDeclarations.append(CSSFontFamilyDeclaration(fontFamily: "Noto Serif SC", alternates: [.serif], fontFaces: [CSSFontFace(file: file, weight: .variable(200...900))]).eraseToAnyHTMLFontFamilyDeclaration())
                 }
@@ -421,6 +423,10 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         let rest = NSRange(location: NSMaxRange(found), length: source.length - NSMaxRange(found))
         guard source.range(of: text, range: rest).location == NSNotFound else { return nil }
         return ReadingPosition(chapter: chapterIndex, offset: found.location)
+    }
+    @objc private func lookupSelection() {
+        guard isReading, let text = navigator?.currentSelection?.locator.text.highlight, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        onDictionary(text); navigator?.clearSelection()
     }
     @objc private func annotate() {
         guard let selected = navigator?.currentSelection else { return }

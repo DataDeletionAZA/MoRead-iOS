@@ -26,6 +26,7 @@ struct ReaderView: View {
     @State private var requestedOffset = 0
     @State private var navigationID = UUID()
     @State private var sheet: ReaderSheet?
+    @State private var dictionaryWord = ""
     @State private var selection: SourcePassage?
     @State private var bookmarkMessage: String?
     @State private var note = ""
@@ -47,7 +48,7 @@ struct ReaderView: View {
     }
     private var paperColor: Color { (paper == "custom" || paper == "image") ? Color(rgb: typography.backgroundRGB ?? 0xF7F2E3) : paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
-    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead; var id: String { rawValue } }
+    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead, dictionary; var id: String { rawValue } }
 
     var body: some View {
         Group {
@@ -59,7 +60,7 @@ struct ReaderView: View {
                         EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
+                        }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { dictionaryWord = $0; sheet = .dictionary }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
                     } else if let chapter {
                         let content = textContent(book: book, chapter: chapter)
                         if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
@@ -144,6 +145,7 @@ struct ReaderView: View {
                             } else {
                                 Form {
                                     Section("原文") { Text(passage.text).textSelection(.enabled) }
+                                    NavigationLink("查字词") { DictionaryLookupView(word: passage.text) }
                                     NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
                                     NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
                                     Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
@@ -232,6 +234,8 @@ struct ReaderView: View {
         NavigationStack {
             Group {
                 switch kind {
+                case .dictionary:
+                    DictionaryLookupView(word: dictionaryWord)
                 case .autoRead:
                     AutoReadSettingsView(settings: AutoReadSettings(data: autoReadData), speechActive: speech.isPlaying || speech.isPreparing) { settings in
                         autoReadData = settings.encoded()
@@ -248,6 +252,7 @@ struct ReaderView: View {
                     SpeechControls(book: book)
                 case .contents:
                     List {
+                        NavigationLink("查字词") { DictionaryLookupView() }
                         NavigationLink("书籍封面") { BookCoverEditor(bookID: bookID) }
                         NavigationLink("插图廊") { IllustrationGallery(bookID: bookID) }
                         NavigationLink("中英对照") { ParagraphTranslationView(bookID: bookID, chapter: chapter?.id ?? book.position.chapter) }
@@ -345,7 +350,7 @@ struct ReaderView: View {
                         if let markdown = try? model.store?.notesMarkdown(for: book) { ShareLink("导出笔记", item: markdown) }
                     }
                 }
-            }.navigationTitle(kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
+            }.navigationTitle(kind == .dictionary ? "本地词典" : kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
@@ -370,7 +375,7 @@ struct ReaderView: View {
         }, onTranslation: { range in
             selectionIsTranslation = true
             selection = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range))
-        })
+        }, onDictionary: { dictionaryWord = $0; sheet = .dictionary })
     }
     private func loadChapter(_ index: Int, offset: Int = 0, automatic: Bool = false) {
         if !automatic { autoRead.pause("阅读位置改变，已暂停") }
@@ -501,6 +506,7 @@ struct TextReader {
     let onPosition: (Int, NSRange) -> Void
     let onSelection: (NSRange) -> Void
     let onTranslation: (NSRange) -> Void
+    let onDictionary: (String) -> Void
     var attributedText: NSAttributedString {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.paragraphSpacing = typography.paragraphSpacing
         paragraph.firstLineHeadIndent = typography.firstLineIndent * fontSize
@@ -520,12 +526,15 @@ struct TextReader {
         }
         return value
     }
-    func selectionAction(for range: NSRange) -> UIAction? {
-        guard range.length > 0, let original = presentation.sourceRange(forDisplay: range), original.length > 0 else { return nil }
+    func selectionActions(for range: NSRange) -> [UIAction] {
+        guard range.location >= 0, range.length > 0, range.location <= text.utf16.count, range.length <= text.utf16.count - range.location,
+              let original = presentation.sourceRange(forDisplay: range), original.length > 0 else { return [] }
+        let action: UIAction
         if presentation.containsTranslation(in: range) {
-            return UIAction(title: "本段译文", image: UIImage(systemName: "character.book.closed")) { _ in onTranslation(original) }
-        }
-        return UIAction(title: "批注", image: UIImage(systemName: "pencil")) { _ in onSelection(original) }
+            action = UIAction(title: "本段译文", image: UIImage(systemName: "character.book.closed")) { _ in onTranslation(original) }
+        } else { action = UIAction(title: "批注", image: UIImage(systemName: "pencil")) { _ in onSelection(original) } }
+        let word = (text as NSString).substring(with: range)
+        return [action, UIAction(title: "查字词", image: UIImage(systemName: "character.book.closed")) { _ in onDictionary(word) }]
     }
 
 }

@@ -201,7 +201,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         let page: TextPageController
         if ranges.indices.contains(index) {
             page = TextPageController(index: index, container: containers[index], range: ranges[index], content: parentReader.content)
-            page.selectionAction = { [weak self] range in self?.parentReader.content.selectionAction(for: range) }
+            page.selectionActions = { [weak self] range in self?.parentReader.content.selectionActions(for: range) ?? [] }
             page.turnPage = { [weak self] direction in self?.turn(direction) }
         } else { page = TextPageController(index: index, message: index < 0 ? "上一章" : "下一章", paper: parentReader.content.paper) }
         pages[index] = page
@@ -320,7 +320,7 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
     let index: Int
     let range: NSRange
     var textView: UITextView?
-    var selectionAction: ((NSRange) -> UIAction?)?
+    var selectionActions: ((NSRange) -> [UIAction])?
     var turnPage: ((Int) -> Void)?
     init(index: Int, container: NSTextContainer, range: NSRange, content: TextReader) {
         self.index = index; self.range = range
@@ -352,7 +352,7 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
     }
     func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
         let selection = NSIntersectionRange(self.range, range)
-        guard let action = selectionAction?(selection) else { return nil }
-        return UIMenu(children: suggestedActions + [action])
+        guard let actions = selectionActions?(selection) else { return nil }
+        return UIMenu(children: suggestedActions + actions)
     }
 }
