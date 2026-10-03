@@ -99,13 +99,26 @@ final class AutoReadUITests: XCTestCase {
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); open(app)
         XCTAssertEqual(try visibleParagraph(), anchor)
         shot(app, "long-chapter-restored")
-        let last = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Paragraph 24.")).firstMatch
-        for _ in 0..<24 {
-            if last.exists && last.isHittable { break }
-            table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.75)).press(forDuration: 0.05, thenDragTo: table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4)))
+        let last = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph 24.", "reader-text")).firstMatch
+        func lastIsFullyVisible() -> Bool {
+            last.exists && last.isHittable && last.frame.minY >= table.frame.minY && last.frame.maxY <= table.frame.maxY
         }
-        XCTAssertTrue(last.isHittable)
+        for _ in 0..<24 {
+            if lastIsFullyVisible() { break }
+            table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.75)).press(forDuration: 0.05, thenDragTo: table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+        XCTAssertTrue(lastIsFullyVisible())
+        let nextChapter = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "第二天，", "reader-text")).firstMatch
+        if nextChapter.exists && nextChapter.isHittable { XCTAssertLessThanOrEqual(last.frame.maxY, nextChapter.frame.minY) }
         shot(app, "long-chapter-last-paragraph")
+        let endAnchor = try visibleParagraph()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: nil)], timeout: 10), .completed)
+        XCTAssertEqual(try visibleParagraph(), endAnchor)
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width < app.frame.height }, object: nil)], timeout: 10), .completed)
+        XCTAssertEqual(try visibleParagraph(), endAnchor)
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * 0.1, dy: app.navigationBars.firstMatch.frame.minY / 2)).tap()
         let beginning = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph 1.", "reader-text")).firstMatch
         let returned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in

@@ -191,9 +191,10 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
     private var source: SourcePassage?
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         let storage = NSTextStorage(), manager = AnnotationLayoutManager(), container = NSTextContainer(size: .zero)
-        container.widthTracksTextView = true; container.heightTracksTextView = false
         manager.addTextContainer(container); storage.addLayoutManager(manager)
         textView = ContinuousChapterTextView(frame: .zero, textContainer: container)
+        // UITextView enables width tracking during initialization, before the cell has its final frame.
+        container.widthTracksTextView = false; container.heightTracksTextView = false
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         backgroundColor = .clear; contentView.backgroundColor = .clear; contentView.clipsToBounds = true; selectionStyle = .none
         textView.backgroundColor = .clear; textView.isEditable = false
