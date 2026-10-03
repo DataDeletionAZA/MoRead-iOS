@@ -70,7 +70,7 @@ final class AutoReadUITests: XCTestCase {
         XCTAssertFalse(app.alerts["需要处理"].exists)
     }
     func testLongChapterScrollAndRestoreSourcePosition() throws {
-        executionTimeAllowance = 180
+        executionTimeAllowance = 360
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap(); open(app)

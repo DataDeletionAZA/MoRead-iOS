@@ -101,8 +101,8 @@ struct DictionaryWebView: UIViewRepresentable {
             while (node = walker.nextNode()) { if (!node.parentElement.closest('script,style,noscript,iframe,object,template') && node.nodeValue.trim()) rows.push(node.nodeValue.trim()); }
             return rows.join('\\n'); })()
             """
-            webView.evaluateJavaScript(script, in: nil, in: .defaultClient) { [weak self] result in
-                guard let self, active, case .success(let value) = result, let text = value as? String else { return }
+            webView.evaluateJavaScript(script) { [weak self] value, error in
+                guard let self, active, error == nil, let text = value as? String else { return }
                 parent.plainText = text
             }
         }

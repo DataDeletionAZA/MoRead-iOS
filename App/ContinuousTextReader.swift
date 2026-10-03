@@ -22,6 +22,8 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
     private let table = UITableView(frame: .zero, style: .plain)
     private let backdrop = ReaderTextView(frame: .zero)
     private var cache: [Int: (Chapter, TextReader)] = [:]
+    private var heights: [Int: CGFloat] = [:]
+    private lazy var measuringCell = ContinuousChapterCell(style: .default, reuseIdentifier: nil)
     private let owner = UUID()
     private var size = CGSize.zero
     private var generation = UUID()
@@ -86,7 +88,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         table.frame = view.bounds
         guard view.bounds.width > 100, view.bounds.height > 100, size != view.bounds.size else { return }
         if size != .zero { parentReader.content.autoRead.pause("排版改变，已暂停") }
-        size = view.bounds.size; table.estimatedRowHeight = size.height
+        size = view.bounds.size; table.estimatedRowHeight = size.height; heights.removeAll()
         guard rotationAnchor == nil else { return }
         reload(at: position)
     }
@@ -102,6 +104,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         if navigation || style {
             if style, !navigation { parent.content.autoRead.pause("排版改变，已暂停") }
             cache.removeAll()
+            if style { heights.removeAll() }
             reload(at: navigation ? ReadingPosition(chapter: parent.currentChapter, offset: parent.content.offset) : position)
         } else if old.content.speechRange != parent.content.speechRange {
             cache.removeAll()
@@ -147,10 +150,21 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         }
     }
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { parentReader.chapterCount }
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        if let height = heights[indexPath.row] { return height }
+        // Exact neighboring heights keep a jump stable when UIKit materializes adjacent chapters.
+        if abs(indexPath.row - position.chapter) <= 1, size.width > 100, let data = item(indexPath.row) {
+            measuringCell.configure(chapter: data.0, content: data.1, bookID: parentReader.bookID, minimumHeight: size.height, width: size.width)
+            heights[indexPath.row] = measuringCell.measuredHeight
+            return measuringCell.measuredHeight
+        }
+        return max(1, size.height)
+    }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "chapter", for: indexPath) as! ContinuousChapterCell
         if let data = item(indexPath.row) { cell.configure(chapter: data.0, content: data.1, bookID: parentReader.bookID, minimumHeight: size.height, width: size.width) }
         else { cell.showError(minimumHeight: size.height) }
+        heights[indexPath.row] = cell.measuredHeight
         return cell
     }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { positionCells(); report() }
@@ -207,6 +221,7 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
     private var viewportTop: NSLayoutConstraint!
     private(set) var content: TextReader?
     private var source: SourcePassage?
+    var measuredHeight: CGFloat { chapterHeight.constant }
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         let storage = NSTextStorage(), manager = AnnotationLayoutManager(), container = NSTextContainer(size: .zero)
         manager.addTextContainer(container); storage.addLayoutManager(manager)
