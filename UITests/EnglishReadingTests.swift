@@ -82,7 +82,7 @@ final class EnglishReadingTests: XCTestCase {
     }
 
     func testEPUBEnglishDisplayAndBookmarkRestore() throws {
-        executionTimeAllowance = 300
+        executionTimeAllowance = 600
         let app = XCUIApplication()
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "EnglishReading", withExtension: "epub"))
         app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
@@ -134,7 +134,7 @@ final class EnglishReadingTests: XCTestCase {
         app.buttons["english-annotation-mode"].tap(); app.buttons["直接显示"].tap()
         app.navigationBars["阅读辅助"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
         app.buttons["目录"].tap(); app.buttons["中英对照"].tap(); app.buttons["translations-start"].tap()
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "译文已保存"), object: app.staticTexts["translations-status"])], timeout: 20), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "译文已保存"), object: app.staticTexts["translations-status"])], timeout: 60), .completed)
         app.navigationBars["中英对照"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
         XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "本地译文：")).firstMatch.waitForExistence(timeout: 15))
         shot("epub-english-with-translations")

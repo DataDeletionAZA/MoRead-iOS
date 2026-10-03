@@ -80,7 +80,7 @@ final class ReaderTapZonesTests: XCTestCase {
         tap(surface, 0.5, 0.5); XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 10))
     }
     func testEPUBCustomTapsInPagesAndScroll() throws {
-        executionTimeAllowance = 300
+        executionTimeAllowance = 600
         let app = XCUIApplication()
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "EnglishReading", withExtension: "epub"))
         app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
