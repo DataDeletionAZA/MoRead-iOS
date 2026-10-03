@@ -274,7 +274,7 @@ struct ReaderView: View {
                         Button("进入沉浸阅读", systemImage: "arrow.up.left.and.arrow.down.right") { sheet = nil; immersive = true }.accessibilityIdentifier("enter-immersive")
                         NavigationLink("操作区域") { ReaderTapZonesView() }
                         Text(tapZones == nil ? "轻点正文中间可显示或收起阅读工具。" : "点按已设定的菜单区域可显示或收起阅读工具。").font(.caption).foregroundStyle(.secondary)
-                        if book.format == "txt" {
+                        Group {
                             Picker("繁简转换", selection: Binding(get: { self.book?.chineseConversion ?? .off }, set: { mode in
                                 guard var current = self.book else { return }
                                 current.chineseConversion = mode == .off ? nil : mode
@@ -283,6 +283,8 @@ struct ReaderView: View {
                                 ForEach(ChineseConversionMode.allCases, id: \.self) { Text($0.label).tag($0) }
                             }.accessibilityIdentifier("reader-chinese-conversion")
                             Text("只改变本书的文字显示，原文、书签和批注保留。编辑原文时显示书中原来的文字。").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if book.format == "txt" {
                             Picker("翻页方式", selection: Binding(get: { pageMode }, set: { value in
                                 requestedOffset = self.book?.position.offset ?? 0; navigationID = UUID(); pageMode = value
                             })) {
@@ -349,7 +351,7 @@ struct ReaderView: View {
                 EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, tapZones: tapZones, onTapAction: performTapAction, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                     didLocateEPUB = true
                     var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }, onEdit: { editingPassage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)-\(epubContentRevision)")
+                }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }, onEdit: { editingPassage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)-\(epubContentRevision)-\(book.chineseConversion?.rawValue ?? "off")")
             } else if let chapter {
                 let content = textContent(book: book, chapter: chapter)
                 if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {

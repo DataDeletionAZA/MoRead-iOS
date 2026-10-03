@@ -24,13 +24,27 @@ final class EPUBService {
     private lazy var assets = AssetRetriever(httpClient: http)
     private lazy var opener = PublicationOpener(parser: DefaultPublicationParser(httpClient: http, assetRetriever: assets, pdfFactory: DefaultPDFDocumentFactory()))
 
-    func open(_ url: URL, overrides: [String: String] = [:]) async throws -> Publication {
+    func open(_ url: URL, overrides: [String: String] = [:], conversion: ChineseConversionMode = .off) async throws -> Publication {
         guard let file = FileURL(url: url) else { throw MoReadError.invalid("书籍地址无效。") }
         let asset = try await assets.retrieve(url: file).get()
-        let publication = try await opener.open(asset: asset, allowUserInteraction: false, onCreatePublication: { _, container, _ in
+        let publication = try await opener.open(asset: asset, allowUserInteraction: false, onCreatePublication: { manifest, container, _ in
+            let pages = Set((manifest.readingOrder + manifest.resources).filter { $0.mediaType == .xhtml || $0.mediaType == .html }.map { $0.url().string.components(separatedBy: "#")[0] })
             container = container.map { href, resource in
-                guard let html = overrides[href.string] else { return resource }
-                return resource.map { _ in Data(html.utf8) }
+                let changed = overrides[href.string]
+                guard conversion != .off, pages.contains(href.string) else {
+                    return changed.map { html in resource.map { _ in Data(html.utf8) } } ?? resource
+                }
+                return DataResource {
+                    defer { resource.close() }
+                    do {
+                        let data: Data
+                        if let changed { data = Data(changed.utf8) }
+                        else { data = try await resource.read(range: 0..<UInt64(16 * 1024 * 1024 + 1)).get() }
+                        guard data.count <= 16 * 1024 * 1024, let html = String(data: data, encoding: .utf8) else { throw MoReadError.invalid("本页过大或文字编码无法识别。") }
+                        let worker = Task.detached { Data(try EPUBChineseText.convert(html: html, mode: conversion).utf8) }
+                        return .success(try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() })
+                    } catch { return .failure(.decoding(error)) }
+                }
             }
         }).get()
         guard !publication.isRestricted else { throw MoReadError.invalid("这本 EPUB 有加密保护，无法直接打开。") }
@@ -225,7 +239,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             guard let self, let book = model.books.first(where: { $0.id == self.bookID }), let store = model.store else { return }
             do {
                 let directory = store.directory(bookID)
-                let publication = try await EPUBService.shared.open(directory.appendingPathComponent("original.epub"), overrides: store.epubOverrides(bookID))
+                let publication = try await EPUBService.shared.open(directory.appendingPathComponent("original.epub"), overrides: store.epubOverrides(bookID), conversion: book.chineseConversion ?? .off)
                 try Task.checkCancellation()
                 anchors = try JSONDecoder().decode([EPUBAnchor].self, from: Data(contentsOf: directory.appendingPathComponent("epub-map.json")))
                 let locator: Locator?
@@ -276,6 +290,10 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         }
     }
     func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts controller: WKUserContentController) {
+        if model.books.first(where: { $0.id == bookID })?.chineseConversion != nil,
+           let url = Bundle.main.url(forResource: "EPUBChineseReading", withExtension: "js"), let script = try? String(contentsOf: url, encoding: .utf8) {
+            controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+        }
         if let url = Bundle.main.url(forResource: "EPUBEnglishReading", withExtension: "js"), let script = try? String(contentsOf: url, encoding: .utf8) {
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
         }
@@ -437,7 +455,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         locationTask = task
         return task
     }
-    private func sourcePassage(selecting: Bool) async throws -> (passage: SourcePassage, translation: Bool)? {
+    private func sourcePassage(selecting: Bool) async throws -> (passage: SourcePassage, translation: Bool, selectedText: String?)? {
         guard !model.maintenance, let reader = navigator, let href = reader.currentLocation?.href,
               let book = model.books.first(where: { $0.id == bookID && !$0.removed && $0.hasBody }), let store = model.store,
               let index = reader.publication.readingOrder.firstIndex(where: { $0.url().string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] }) else { return nil }
@@ -453,7 +471,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             translationCache = (index, chapter.revision, recordsRevision, rows); translations = rows
         }
         let restoring = !selecting && pendingTranslationLocator?.href.string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] ? pendingTranslationLocator : nil
-        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting, translations: translations, restoring: restoring, typography: selecting ? nil : typography, vocabulary: wordGlosses)).get()
+        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting, translations: translations, restoring: restoring, typography: selecting ? nil : typography, vocabulary: wordGlosses, conversion: book.chineseConversion ?? .off)).get()
         if restoring == pendingTranslationLocator, result is [String: Any] { pendingTranslationLocator = nil }
         try Task.checkCancellation()
         guard model.store === store, !model.maintenance, reader.currentLocation?.href == href,
@@ -468,7 +486,11 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             let locator = Locator(href: href, mediaType: .xhtml, locations: .init(otherLocations: ["cssSelector": selector]), text: text)
             passage.epubLocator = try JSONSerialization.data(withJSONObject: locator.json)
         }
-        return (passage, value["translation"] as? Bool ?? false)
+        if selecting, value["translation"] as? Bool != true {
+            let text = (value["text"] as? [String: Any])?["highlight"] as? String
+            guard passage.text.filter({ !$0.isWhitespace }) == text?.filter({ !$0.isWhitespace }) else { return nil }
+        }
+        return (passage, value["translation"] as? Bool ?? false, value["selectedText"] as? String)
     }
     private func position(for locator: Locator, book: Book) -> ReadingPosition? {
         guard let reader = navigator,
@@ -490,7 +512,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 let result = try await sourcePassage(selecting: true)
                 try Task.checkCancellation()
                 guard isReading else { return }
-                let matches = result.map { $0.translation || $0.passage.text.filter { !$0.isWhitespace } == text.filter { !$0.isWhitespace } } ?? false
+                let matches = result.map { $0.translation || $0.selectedText?.filter { !$0.isWhitespace } == text.filter { !$0.isWhitespace } } ?? false
                 onDictionary(text, matches ? result?.passage : nil); navigator?.clearSelection()
             } catch is CancellationError { }
             catch { if !Task.isCancelled, isReading { onDictionary(text, nil); navigator?.clearSelection() } }
@@ -502,7 +524,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         selectionTask = Task {
             do {
                 guard let result = try await sourcePassage(selecting: true), !result.translation,
-                      result.passage.text.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("请选择可准确定位的原文，译文可在段落翻译中编辑。") }
+                      result.selectedText?.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("请选择可准确定位的原文，译文可在段落翻译中编辑。") }
                 try Task.checkCancellation(); guard isReading else { return }
                 onEdit(result.passage); navigator?.clearSelection()
             } catch is CancellationError {} catch { model.error = error.localizedDescription }
@@ -514,7 +536,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         selectionTask = Task {
             do {
                 guard let result = try await sourcePassage(selecting: true), result.passage.epubLocator != nil,
-                      result.translation || result.passage.text.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("暂时无法准确定位这段原文，请选择更完整的一段再试。") }
+                      result.translation || result.selectedText?.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("暂时无法准确定位这段原文，请选择更完整的一段再试。") }
                 onSelection(result.passage, result.translation); navigator?.clearSelection()
             } catch is CancellationError {} catch { model.error = error.localizedDescription }
         }

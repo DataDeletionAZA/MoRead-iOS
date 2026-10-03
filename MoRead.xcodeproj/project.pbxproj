@@ -49,6 +49,7 @@
 		5D70A84D46807CB252198B38 /* WebSearchSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */; };
 		5D89CEABFD41BDBA8AE73225 /* TextCleanupGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3169C160A7B4A471594C8A3 /* TextCleanupGenerator.swift */; };
 		5EE628C3C053C15684FAEAA3 /* EnglishReading.epub in Resources */ = {isa = PBXBuildFile; fileRef = 779C00B9A9DC5E2E79CE27E5 /* EnglishReading.epub */; };
+		60E78571DE4BDC108CCE7CA0 /* ChineseReading.epub in Resources */ = {isa = PBXBuildFile; fileRef = 08FE0B9532D2D1BD6A1EFEA4 /* ChineseReading.epub */; };
 		673ADEA9197EEC5B7E307995 /* GlobalPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946AD37116378D50E6B49695 /* GlobalPromptView.swift */; };
 		6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */; };
 		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
@@ -84,6 +85,7 @@
 		C8DA5A8022B9593A149F589F /* ProactiveCompanion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5868308952DB53DF46DE561A /* ProactiveCompanion.swift */; };
 		C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */; };
 		CA7EB234670DC312ED289A17 /* ModelAssignmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12ACB5E65FF1D1A3EF772D3A /* ModelAssignmentsView.swift */; };
+		D25D6031E3B46FE59B97BEB3 /* EPUBChineseReading.js in Resources */ = {isa = PBXBuildFile; fileRef = 59451E0C0B75A4D754B7BEE4 /* EPUBChineseReading.js */; };
 		D2A3F338980736D1EF1739F8 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = B7F9C390F123F5C23A2B7705 /* THIRD_PARTY_NOTICES.md */; };
 		D9FA2B3028C57412A1F776F8 /* BookCharactersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBFE530A257E457150FA832 /* BookCharactersView.swift */; };
 		DA76CE3F28D08E3FE95FEB25 /* StorageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F48B66B02BAA67D887F3A7 /* StorageView.swift */; };
@@ -118,6 +120,7 @@
 		0371EE2DBBB8241269790E23 /* QuickBookmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBookmarkTests.swift; sourceTree = "<group>"; };
 		08188C57F9403EDB541C9DC8 /* BookCoverEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCoverEditor.swift; sourceTree = "<group>"; };
 		08D914D6EE1624B82890502A /* SpeechPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayer.swift; sourceTree = "<group>"; };
+		08FE0B9532D2D1BD6A1EFEA4 /* ChineseReading.epub */ = {isa = PBXFileReference; path = ChineseReading.epub; sourceTree = "<group>"; };
 		0B11F73FB9652E1D10E8E07D /* MoReadUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MoReadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0B2065DE60076241DE16C071 /* SpeechControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechControls.swift; sourceTree = "<group>"; };
 		0BBFE530A257E457150FA832 /* BookCharactersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCharactersView.swift; sourceTree = "<group>"; };
@@ -143,6 +146,7 @@
 		53B4578BD152B2D3D6C3307F /* EnglishReadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishReadingTests.swift; sourceTree = "<group>"; };
 		546E734B9EFFA77040D2A107 /* ChatAppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAppearanceView.swift; sourceTree = "<group>"; };
 		5868308952DB53DF46DE561A /* ProactiveCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProactiveCompanion.swift; sourceTree = "<group>"; };
+		59451E0C0B75A4D754B7BEE4 /* EPUBChineseReading.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = EPUBChineseReading.js; sourceTree = "<group>"; };
 		6223218633499F9251DA3279 /* DictionaryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryViews.swift; sourceTree = "<group>"; };
 		63A34BB006809EC9B94006F7 /* BookTextEditingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookTextEditingViews.swift; sourceTree = "<group>"; };
 		65E27ED35755FF90B161AB36 /* EnglishReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishReadingView.swift; sourceTree = "<group>"; };
@@ -230,6 +234,7 @@
 			children = (
 				9B003E598C7C2E719F60D4E0 /* Bilingual.epub */,
 				69B72192AAF05D6A68352E35 /* BrokenCover.epub */,
+				08FE0B9532D2D1BD6A1EFEA4 /* ChineseReading.epub */,
 				3F6C6B247B6CA03880290F94 /* Cover.epub */,
 				779C00B9A9DC5E2E79CE27E5 /* EnglishReading.epub */,
 				D277CD6F70690EC2BCEE1DD5 /* LongParagraph.epub */,
@@ -263,6 +268,7 @@
 				6223218633499F9251DA3279 /* DictionaryViews.swift */,
 				4A9F33ECFE79384F6EE570B4 /* DictionaryWebView.swift */,
 				65E27ED35755FF90B161AB36 /* EnglishReadingView.swift */,
+				59451E0C0B75A4D754B7BEE4 /* EPUBChineseReading.js */,
 				6A73A4FE243605E9786ACBB3 /* EPUBEnglishReading.js */,
 				9710D70B97A3A946E9FAED25 /* EPUBReader.swift */,
 				46775CDB9E64AFAC19C4E45F /* EPUBSourceMap.js */,
@@ -483,6 +489,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D25D6031E3B46FE59B97BEB3 /* EPUBChineseReading.js in Resources */,
 				1B27A06972B4AD87249824D6 /* EPUBEnglishReading.js in Resources */,
 				73EF20B796C051727252A811 /* EPUBSourceMap.js in Resources */,
 				23D5B1908720955DDBC039FC /* LICENSE in Resources */,
@@ -502,6 +509,7 @@
 			files = (
 				A35FF49FC387B28CAB6809D7 /* Bilingual.epub in Resources */,
 				9CFE93799DE4CA1F8D624F60 /* BrokenCover.epub in Resources */,
+				60E78571DE4BDC108CCE7CA0 /* ChineseReading.epub in Resources */,
 				0408C6FA4201DF73D7F676D7 /* Cover.epub in Resources */,
 				50DA8684B564A5762DC0C564 /* Dictionary in Resources */,
 				5EE628C3C053C15684FAEAA3 /* EnglishReading.epub in Resources */,

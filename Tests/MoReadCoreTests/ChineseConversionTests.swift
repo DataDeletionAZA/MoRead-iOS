@@ -81,6 +81,10 @@ final class ChineseConversionTests: XCTestCase {
         XCTAssertTrue(found[0].isValid(in: chapter, scope: scope)); XCTAssertFalse(found[0].text.contains("後文"))
         XCTAssertEqual(try BookSearch.find("主機板", in: chapter, bookID: id, scope: scope, conversion: .tw2sp), found)
         XCTAssertEqual(try BookSearch.find("主板", in: chapter, bookID: id, scope: scope, conversion: .off), [])
+        let styled = Chapter(id: 0, title: "混合", text: "主機板和软件。😀主機板。")
+        let partial = try BookSearch.find("机板和软件", in: styled, bookID: id, scope: .wholeBook, conversion: .tw2sp)
+        XCTAssertEqual(partial.count, 1); XCTAssertTrue(partial[0].isValid(in: styled, scope: .wholeBook))
+        XCTAssertEqual(partial[0].text, styled.text)
     }
     func testCancellationAndLargeChapter() async throws {
         let task = Task { withUnsafeCurrentTask { $0?.cancel() }; return try ChineseTextConversion("主機板", mode: .tw2sp) }

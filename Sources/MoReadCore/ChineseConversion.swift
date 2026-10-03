@@ -106,20 +106,26 @@ extension BookSearch {
     public static func find(_ query: String, in chapter: Chapter, bookID: UUID, scope: ReadingScope, conversion: ChineseConversionMode, limit: Int = 40) throws -> [SourcePassage] {
         if conversion == .off { return find(query, in: chapter, bookID: bookID, scope: scope, limit: limit) }
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, limit > 0 else { return [] }
-        let visible = scope.readableText(chapter), converted = try ChineseTextConversion(visible, mode: conversion)
-        let needle = try ChineseTextConversion(query, mode: conversion).text, text = converted.text as NSString, source = visible as NSString
-        var offset = 0, passages: [SourcePassage] = []
-        while offset < text.length, passages.count < limit {
-            try Task.checkCancellation()
-            let found = text.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive], range: NSRange(location: offset, length: text.length - offset))
-            guard found.location != NSNotFound else { break }
-            let start = TextBoundary.floor(max(0, found.location - 100), in: converted.text)
-            let end = TextBoundary.floor(min(text.length, NSMaxRange(found) + 180), in: converted.text)
-            if let range = converted.sourceRange(forDisplay: NSRange(location: start, length: end - start)), range.length > 0 {
-                let passage = SourcePassage(bookID: bookID, chapter: chapter, offset: range.location, text: source.substring(with: range))
-                if passages.last?.id != passage.id { passages.append(passage) }
+        let visible = scope.readableText(chapter), source = visible as NSString
+        var passages: [SourcePassage] = []
+        // Both forms also find partial words split by EPUB inline-style boundaries.
+        for mode in [conversion, conversion == .tw2sp ? .s2twp : .tw2sp] {
+            guard passages.count < limit else { break }
+            let converted = try ChineseTextConversion(visible, mode: mode)
+            let needle = try ChineseTextConversion(query, mode: mode).text, text = converted.text as NSString
+            var offset = 0
+            while offset < text.length, passages.count < limit {
+                try Task.checkCancellation()
+                let found = text.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive], range: NSRange(location: offset, length: text.length - offset))
+                guard found.location != NSNotFound else { break }
+                let start = TextBoundary.floor(max(0, found.location - 100), in: converted.text)
+                let end = TextBoundary.floor(min(text.length, NSMaxRange(found) + 180), in: converted.text)
+                if let range = converted.sourceRange(forDisplay: NSRange(location: start, length: end - start)), range.length > 0 {
+                    let passage = SourcePassage(bookID: bookID, chapter: chapter, offset: range.location, text: source.substring(with: range))
+                    if !passages.contains(where: { $0.id == passage.id }) { passages.append(passage) }
+                }
+                offset = NSMaxRange(found)
             }
-            offset = NSMaxRange(found)
         }
         return passages
     }

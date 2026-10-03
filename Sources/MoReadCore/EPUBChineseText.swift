@@ -40,7 +40,8 @@ public enum EPUBChineseText {
             let nodes = element.getChildNodes().compactMap { $0 as? TextNode }
             var mappings: [NodeConversion] = []
             for (index, node) in nodes.enumerated() {
-                let value = try ChineseTextConversion(node.getWholeText(), mode: mode)
+                let source = node.getWholeText().replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+                let value = try ChineseTextConversion(source, mode: mode)
                 guard value.text != value.source else { continue }
                 mappings.append(.init(index: index, conversion: value)); node.text(value.text)
             }

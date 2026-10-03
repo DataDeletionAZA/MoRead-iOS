@@ -1,7 +1,9 @@
 function mapSource(blocks, selecting, translations = null, restoring = null, englishConfig = null) {
-    const english = window.__moreadEnglish;
+    const english = window.__moreadEnglish, chinese = window.__moreadChinese;
+    chinese?.begin();
     const marker = '[data-moread-translation]';
     const flatten = element => {
+        if (chinese) return chinese.flatten(element) ?? {text: '', points: []};
         const points = [], walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
         let text = '', node;
         while ((node = walker.nextNode())) {
@@ -29,13 +31,14 @@ function mapSource(blocks, selecting, translations = null, restoring = null, eng
         cursors.set(element, start + wanted.length);
         const range = document.createRange();
         range.setStart(points[0].node, points[0].offset);
-        range.setEnd(points.at(-1).node, points.at(-1).offset + 1);
+        range.setEnd(points.at(-1).endNode ?? points.at(-1).node, points.at(-1).endOffset ?? points.at(-1).offset + 1);
         mapped.push({block, points, range});
     }
     if (!mapped.length) return null;
     const visible = rect => rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < innerWidth && rect.top < innerHeight;
     const isVisible = range => Array.from(range.getClientRects()).some(visible);
     const originalText = range => {
+        if (chinese) return chinese.originalText(range) ?? '';
         const fragment = range.cloneContents();
         fragment.querySelectorAll(marker).forEach(node => node.remove());
         return fragment.textContent;
@@ -58,7 +61,7 @@ function mapSource(blocks, selecting, translations = null, restoring = null, eng
         for (const point of row.points) {
             const range = document.createRange();
             range.setStart(point.node, point.offset);
-            range.setEnd(point.node, point.offset + (point.node.data.codePointAt(point.offset) > 0xFFFF ? 2 : 1));
+            range.setEnd(point.endNode ?? point.node, Math.max(point.endOffset ?? 0, point.node === (point.endNode ?? point.node) ? point.offset + (point.node.data.codePointAt(point.offset) > 0xFFFF ? 2 : 1) : 0));
             if (isVisible(range)) return range;
         }
         return row.range;
@@ -131,9 +134,9 @@ function mapSource(blocks, selecting, translations = null, restoring = null, eng
         for (let offset = 0; offset < block.text.length; offset++) {
             if (/\s/u.test(block.text[offset])) continue;
             const point = points[index++];
-            if (lower.comparePoint(point.node, point.offset + 1) > 0 && upper.comparePoint(point.node, point.offset) < 0) offsets.push(block.start + offset);
+            if (lower.comparePoint(point.endNode ?? point.node, point.endOffset ?? point.offset + 1) > 0 && upper.comparePoint(point.node, point.offset) < 0) offsets.push(block.start + offset);
         }
     }
     if (!offsets.length) return null;
-    return {start: offsets[0], end: offsets.at(-1) + 1, ...describe(selected)};
+    return {start: offsets[0], end: offsets.at(-1) + 1, selectedText: selection.toString(), ...describe(selected)};
 }

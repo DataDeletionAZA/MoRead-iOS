@@ -85,6 +85,8 @@ final class BookTextEditingTests: XCTestCase {
                 if app.menuItems["编辑原文"].exists { return app.menuItems["编辑原文"] }
                 let button = app.collectionViews.buttons["编辑原文"]; return button.exists ? button : nil
             }
+            let nextPage = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
+            if action() == nil, !nextPage.exists, word.exists, word.isHittable { word.tap() }
             for _ in 0..<6 where action() == nil {
                 let next = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
                 if next.waitForExistence(timeout: 2) { next.tap() }

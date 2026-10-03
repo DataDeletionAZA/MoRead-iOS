@@ -93,6 +93,8 @@ final class EnglishReadingTests: XCTestCase {
         let web = app.webViews.firstMatch
         XCTAssertTrue(web.waitForExistence(timeout: 20))
         XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 01.")).firstMatch.waitForExistence(timeout: 15))
+        app.buttons["排版"].tap(); app.buttons["reader-chinese-conversion"].tap(); app.buttons["简体（大陆用语）"].tap(); app.buttons["完成"].tap()
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 01.")).firstMatch.waitForExistence(timeout: 15))
         app.buttons["排版"].tap(); app.buttons["阅读辅助"].tap()
         for key in ["english-learning", "english-bionic"] { app.switches[key].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
         app.navigationBars["阅读辅助"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
