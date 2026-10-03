@@ -320,7 +320,7 @@ final class ReadingTests: XCTestCase {
             let book = books.matching(NSPredicate(format: epub ? "label CONTAINS %@" : "NOT (label CONTAINS %@)", "EPUB")).firstMatch
             XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
             if epub { XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20)) }
-            else { XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10)) }
+            else { XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10)) }
             tap("目录"); tap("插图廊")
             let picture = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "illustration-row-")).firstMatch
             XCTAssertTrue(picture.waitForExistence(timeout: 10)); picture.tap(); tap("illustration-read-source")
@@ -375,7 +375,7 @@ final class ReadingTests: XCTestCase {
         for _ in 0..<6 { if app.staticTexts["lighthouse first clue."].exists { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["lighthouse first clue."].exists); tap("illustration-read-source")
         XCTAssertTrue(app.navigationBars["First"].waitForExistence(timeout: 10))
-        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("lighthouse first clue."))
+        XCTAssertTrue((app.textViews["reader-text"].firstMatch.value as? String ?? "").contains("lighthouse first clue."))
         app.navigationBars["First"].buttons.element(boundBy: 0).tap(); tap("完成")
         app.terminate(); launch(); openChat()
         XCTAssertTrue(pictures.firstMatch.waitForExistence(timeout: 5)); XCTAssertEqual(pictures.count, 1)
@@ -599,7 +599,7 @@ final class ReadingTests: XCTestCase {
         func openKnowledge() {
             app.tabBars.buttons["书架"].tap()
             app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
-            XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10)); tap("目录"); tap("章节提纲")
+            XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10)); tap("目录"); tap("章节提纲")
         }
         func closeKnowledge() { app.navigationBars["章节提纲"].buttons.element(boundBy: 0).tap(); tap("完成"); app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap() }
         func preview(_ model: String) {
@@ -719,13 +719,13 @@ final class ReadingTests: XCTestCase {
         revealListElement(age, in: app); XCTAssertTrue(age.label.contains("二十岁"))
         XCTAssertFalse(app.buttons["characters-edit-小遥"].exists)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Character-attributes-and-alias"; shot.lifetime = .keepAlways; add(shot)
-        age.tap(); XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
-        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("二十岁"))
+        age.tap(); XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue((app.textViews["reader-text"].firstMatch.value as? String ?? "").contains("二十岁"))
         openPeople(); tap("全书"); tap("characters-generate"); tap("characters-confirm")
         XCTAssertTrue(app.staticTexts["已保存 2 位人物。"].waitForExistence(timeout: 15))
         search("江舟"); tap("characters-relation-江舟-0")
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
-        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("江舟是林遥的老师。"))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue((app.textViews["reader-text"].firstMatch.value as? String ?? "").contains("江舟是林遥的老师。"))
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-characters", "--characters-profile"]; app.launch(); openBook(); openPeople()
         search("小遥"); tap("characters-card-林遥")
         let description = app.textViews["extracted-card-description"]
@@ -779,7 +779,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(name.value as? String, "林遥同伴"); XCTAssertEqual(description.value as? String, editedDescription)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Manual-character-profile"; shot.lifetime = .keepAlways; add(shot)
         app.buttons["取消"].tap(); tap("展开资料与原文依据"); tap("characters-locate-林遥同伴-0")
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 5))
     }
     func testExtractedCharacterCardEditingExportCancelSaveAndRestart() {
         executionTimeAllowance = 240
@@ -850,7 +850,7 @@ final class ReadingTests: XCTestCase {
         func openBook() {
             let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
             XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
-            XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
         }
         func openPeople() { tap("目录"); tap("书中人物"); XCTAssertTrue(app.navigationBars["书中人物"].waitForExistence(timeout: 5)) }
         func generate() { tap("characters-generate"); XCTAssertTrue(app.navigationBars["确认人物提取"].waitForExistence(timeout: 5)); tap("characters-confirm") }
@@ -864,7 +864,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["江舟"].exists)
         tap("characters-locate-林遥-0")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["书中人物"])], timeout: 5), .completed)
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 5))
         openPeople(); tap("全书"); tap("characters-generate")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "包括尚未读到的章节")).firstMatch.waitForExistence(timeout: 5))
         tap("取消"); XCTAssertTrue(app.staticTexts["characters-summary"].label.contains("已读"))
@@ -882,8 +882,10 @@ final class ReadingTests: XCTestCase {
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Book-characters-search"; shot.lifetime = .keepAlways; add(shot)
         tap("characters-locate-江舟-0")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["书中人物"])], timeout: 5), .completed)
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
-        XCTAssertTrue((app.textViews["reader-text"].value as? String ?? "").contains("江舟送来了灯塔地图"))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 5))
+        let source = app.textViews.matching(NSPredicate(format: "identifier == %@ AND value CONTAINS %@", "reader-text", "江舟送来了灯塔地图")).firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5)); XCTAssertTrue(source.isHittable)
         app.terminate(); launch(["--characters-fail"]); openBook(); openPeople(); generate()
         XCTAssertTrue(app.staticTexts["已保存 2 位人物。"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["人物整理服务暂不可用。"].exists)
@@ -910,7 +912,7 @@ final class ReadingTests: XCTestCase {
         func openBook() {
             let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
             XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
-            XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
         }
         func openKnowledge() { tap("目录"); tap("章节提纲"); XCTAssertTrue(app.navigationBars["章节提纲"].waitForExistence(timeout: 5)) }
         func generate() { tap("knowledge-generate-0"); XCTAssertTrue(app.navigationBars["确认章节整理"].waitForExistence(timeout: 5)); tap("knowledge-confirm") }
@@ -930,7 +932,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(outline.label, "林遥推开书店的大门，开始了这一天的阅读。")
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Chapter-outline"; shot.lifetime = .keepAlways; add(shot)
         tap("原文依据（1）"); tap("knowledge-locate-0-0")
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 5))
         tap("书签"); tap("添加当前位置书签"); tap("完成")
         app.terminate(); launch(["--knowledge-fail"]); openBook(); openKnowledge()
         XCTAssertTrue(outline.waitForExistence(timeout: 5)); generate()
@@ -1304,18 +1306,20 @@ final class ReadingTests: XCTestCase {
         app.buttons["add-sample"].tap()
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
         book.tap()
-        for _ in 0..<6 { app.textViews["reader-text"].swipeUp() }
+        for _ in 0..<6 { app.tables["continuous-reader"].swipeUp() }
+        XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 10))
         app.buttons["批注"].tap()
         let generated = app.staticTexts.matching(NSPredicate(format: "label == %@", "这是一条本地模拟的随读段评。"))
         XCTAssertTrue(generated.firstMatch.waitForExistence(timeout: 15))
-        let completed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in generated.count == 2 }, object: nil)
+        let completed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in generated.count == 3 }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 10), .completed)
         XCTAssertTrue(app.staticTexts["阿翎的段评"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "第二天，一封没有署名的信放在门口。")).firstMatch.exists)
         app.buttons["完成"].tap(); app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap()
         XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
         app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-annotations"]; app.launch(); book.tap()
         app.buttons["批注"].tap()
-        XCTAssertTrue(generated.firstMatch.waitForExistence(timeout: 10)); XCTAssertEqual(generated.count, 2)
+        XCTAssertTrue(generated.firstMatch.waitForExistence(timeout: 10)); XCTAssertEqual(generated.count, 3)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
         app.buttons["完成"].tap(); app.buttons["书签"].tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.exists)
@@ -1342,7 +1346,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
         book.tap()
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
         func screenshot(_ name: String) { let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = name; shot.lifetime = .keepAlways; add(shot) }
         screenshot("Background-TXT-scroll")
         app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["无动画翻页"].tap(); app.buttons["完成"].tap()
@@ -1419,7 +1423,7 @@ final class ReadingTests: XCTestCase {
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["排版"].tap(); app.buttons["字体与段落"].tap()
         XCTAssertTrue(app.buttons["reader-custom-font"].label.contains(renamedFont))
         app.buttons["管理与导入字体"].tap()
@@ -1430,7 +1434,7 @@ final class ReadingTests: XCTestCase {
         app.navigationBars["字体库"].buttons.firstMatch.tap()
         XCTAssertFalse(app.buttons["reader-custom-font"].exists)
         app.navigationBars["字体与段落"].buttons.firstMatch.tap(); app.buttons["完成"].tap()
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
     }
     func testTypographyPreservesAnchorAndSurvivesRelaunch() {
         let app = XCUIApplication()
@@ -1770,8 +1774,8 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.buttons["取消导入"].waitForExistence(timeout: 10)); app.buttons["取消导入"].tap()
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
         XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
-        XCTAssertTrue((app.textViews["reader-text"].value as? String)?.contains("她在第一页写下今天的日期") == true)
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue((app.textViews["reader-text"].firstMatch.value as? String)?.contains("她在第一页写下今天的日期") == true)
         app.buttons["下一章"].tap()
         XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 5))
     }
@@ -1781,7 +1785,7 @@ final class ReadingTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap()
         XCTAssertTrue(app.staticTexts["书签已保存"].exists); app.buttons["完成"].tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -1900,7 +1904,7 @@ final class ReadingTests: XCTestCase {
             let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         }
         comparison(); app.buttons["translations-start"].tap()
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "译文已保存"), object: app.staticTexts["translations-status"])], timeout: 20), .completed)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "translations-status", "译文已保存")).firstMatch.waitForExistence(timeout: 20))
         let firstID = try XCTUnwrap(app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "translation-source-")).allElementsBoundByIndex.first).identifier
         close()
         XCTAssertTrue(translated.firstMatch.waitForExistence(timeout: 10))
@@ -2068,9 +2072,9 @@ final class ReadingTests: XCTestCase {
         app.buttons["add-sample"].tap()
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
         XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()
-        XCTAssertTrue(app.textViews["reader-text"].waitForExistence(timeout: 10))
-        XCTAssertTrue((app.textViews["reader-text"].value as? String)?.contains("她在第一页写下今天的日期") == true)
-        app.textViews["reader-text"].swipeUp()
+        XCTAssertTrue(app.textViews["reader-text"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue((app.textViews["reader-text"].firstMatch.value as? String)?.contains("她在第一页写下今天的日期") == true)
+        app.tables["continuous-reader"].swipeUp()
         app.buttons["下一章"].tap()
         XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 5))
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)

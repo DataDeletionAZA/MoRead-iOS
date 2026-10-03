@@ -83,6 +83,12 @@ final class AutoReadUITests: XCTestCase {
         XCTAssertTrue(try visibleParagraph().hasPrefix("Paragraph 1."))
         for _ in 0..<3 { table.swipeUp(velocity: .slow) }
         XCTAssertTrue(app.navigationBars["第一章 雨后"].exists)
+        let nextParagraph = try XCTUnwrap(table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph ", "reader-text")).allElementsBoundByIndex
+            .filter { $0.frame.minY > table.frame.minY + 40 && $0.frame.minY < table.frame.midY }
+            .sorted { $0.frame.minY < $1.frame.minY }.first)
+        let distance = nextParagraph.frame.minY - table.frame.minY - 8
+        let drag = table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.8))
+        drag.press(forDuration: 0.05, thenDragTo: drag.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 1)
         let anchor = try visibleParagraph()
         XCTAssertFalse(anchor.hasPrefix("Paragraph 1."))
         shot(app, "long-chapter-middle")

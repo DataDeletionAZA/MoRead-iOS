@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreText
 import MoReadCore
 
 struct ContinuousTextReader: UIViewControllerRepresentable {
@@ -240,7 +241,28 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
         guard let content else { return nil }
         let rect = visible.offsetBy(dx: -textView.textContainerInset.left, dy: -textView.textContainerInset.top)
         let glyphs = textView.layoutManager.glyphRange(forBoundingRect: rect, in: textView.textContainer)
-        let range = textView.layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        // TextKit includes the previous line when the viewport begins in paragraph spacing.
+        var visibleGlyphs: NSRange?
+        textView.layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, _, line, _ in
+            let range = NSIntersectionRange(line, glyphs)
+            guard range.length > 0 else { return }
+            var bounds = self.textView.layoutManager.boundingRect(forGlyphRange: range, in: self.textView.textContainer)
+            let index = self.textView.layoutManager.characterIndexForGlyph(at: range.location)
+            let paragraph = self.textView.textStorage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle
+            bounds.size.height = max(0, bounds.height - (paragraph?.lineSpacing ?? 0))
+            guard bounds.intersects(rect) else { return }
+            if bounds.minY < rect.minY || bounds.maxY > rect.maxY {
+                let characters = self.textView.layoutManager.characterRange(forGlyphRange: range, actualGlyphRange: nil)
+                let text = self.textView.textStorage.attributedSubstring(from: characters)
+                let ink = CTLineGetBoundsWithOptions(CTLineCreateWithAttributedString(text), .useGlyphPathBounds)
+                let baseline = self.textView.layoutManager.lineFragmentRect(forGlyphAt: range.location, effectiveRange: nil).minY + self.textView.layoutManager.location(forGlyphAt: range.location).y
+                if !ink.isEmpty { bounds.origin.y = baseline - ink.maxY; bounds.size.height = ink.height }
+                guard bounds.intersects(rect) else { return }
+            }
+            visibleGlyphs = visibleGlyphs.map { NSUnionRange($0, range) } ?? range
+        }
+        guard let visibleGlyphs else { return nil }
+        let range = textView.layoutManager.characterRange(forGlyphRange: visibleGlyphs, actualGlyphRange: nil)
         guard range.length > 0 else { return nil }
         return content.presentation.sourceRange(forDisplay: range)
     }
