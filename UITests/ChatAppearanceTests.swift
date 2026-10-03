@@ -15,8 +15,13 @@ final class ChatAppearanceTests: XCTestCase {
         app.buttons[save ? "保存" : "取消"].tap(); app.buttons["完成"].tap()
     }
     private func reveal(_ element: XCUIElement, app: XCUIApplication) {
-        for _ in 0..<7 where !element.isHittable { app.swipeUp() }
-        XCTAssertTrue(element.isHittable)
+        let visible = app.frame.insetBy(dx: 0, dy: 50)
+        func ready() -> Bool { element.exists && element.isHittable && visible.contains(CGPoint(x: element.frame.midX, y: element.frame.midY)) }
+        for _ in 0..<7 {
+            if ready() { break }
+            if element.exists && element.frame.midY < visible.minY { app.swipeDown() } else { app.swipeUp() }
+        }
+        XCTAssertTrue(ready())
     }
     private func screenshot(_ app: XCUIApplication, _ name: String) {
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = name; shot.lifetime = .keepAlways; add(shot)

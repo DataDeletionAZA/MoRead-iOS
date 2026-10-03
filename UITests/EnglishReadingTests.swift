@@ -148,15 +148,15 @@ final class EnglishReadingTests: XCTestCase {
         let frame = translated.frame
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + 12, dy: frame.minY + 12)).press(forDuration: 1.2)
         func selectionAction() -> XCUIElement? {
-            if app.menuItems["批注"].exists { return app.menuItems["批注"] }
-            let button = app.collectionViews.buttons["批注"]; return button.exists ? button : nil
+            if app.menuItems["批注"].exists && app.menuItems["批注"].isHittable { return app.menuItems["批注"] }
+            let button = app.collectionViews.buttons["批注"]; return button.exists && button.isHittable ? button : nil
         }
         for _ in 0..<3 where selectionAction() == nil {
             let next = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
             if next.waitForExistence(timeout: 2) { next.tap() }
         }
-        let action = try XCTUnwrap(selectionAction()), actionFrame = action.frame
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: actionFrame.midX, dy: actionFrame.midY)).tap()
+        let action = try XCTUnwrap(selectionAction())
+        action.tap()
         XCTAssertTrue(app.navigationBars["本段对照"].waitForExistence(timeout: 10))
         let original = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "translation-source-")).firstMatch
         XCTAssertTrue(original.waitForExistence(timeout: 5))
