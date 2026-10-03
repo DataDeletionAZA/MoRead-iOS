@@ -121,6 +121,7 @@ struct EPUBReader: UIViewControllerRepresentable {
         controller.setAnnotations(annotations)
         controller.setSpeechLocation(speechLocation)
         controller.setRecordsRevision(model.recordsRevision)
+        controller.setVocabularyRevision(model.vocabularyRevision)
     }
     static func dismantleUIViewController(_ controller: EPUBHostController, coordinator: ()) { controller.close() }
 }
@@ -155,6 +156,8 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var speechLocation: SpeechLocation?
     private var speechAnchor: String?
     private var recordsRevision: UUID?
+    private var vocabularyRevision: UUID?
+    private var wordGlosses: [String: DictionaryGloss] = [:]
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
@@ -230,6 +233,9 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         }
     }
     func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts controller: WKUserContentController) {
+        if let url = Bundle.main.url(forResource: "EPUBEnglishReading", withExtension: "js"), let script = try? String(contentsOf: url, encoding: .utf8) {
+            controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+        }
         guard paper == "image", let data = model.readingBackgroundData else { return }
         let rgb = typography.backgroundRGB ?? 0xF7F2E3
         let shade = "rgba(\((rgb >> 16) & 255),\((rgb >> 8) & 255),\(rgb & 255),\(1 - (typography.backgroundOpacity ?? 0.25)))"
@@ -257,6 +263,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         guard fontSize != self.fontSize || lineSpacing != self.lineSpacing || paper != self.paper || typography != self.typography else { return }
         bookmarkPull?.cancel()
         self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; navigator?.submitPreferences(preferences)
+        refreshVisiblePage(recordPosition: false)
     }
     func setAnnotations(_ value: [Annotation]) {
         guard value != annotations else { return }
@@ -265,6 +272,12 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     func setRecordsRevision(_ value: UUID) {
         guard value != recordsRevision else { return }
         recordsRevision = value
+        refreshVisiblePage(recordPosition: false)
+    }
+    func setVocabularyRevision(_ value: UUID) {
+        guard value != vocabularyRevision else { return }
+        vocabularyRevision = value
+        model.perform { wordGlosses = EnglishReading.unlearned(try model.vocabulary?.words() ?? []) }
         refreshVisiblePage(recordPosition: false)
     }
     private func renderAnnotations() {
@@ -397,7 +410,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             translationCache = (index, chapter.revision, recordsRevision, rows); translations = rows
         }
         let restoring = !selecting && pendingTranslationLocator?.href.string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] ? pendingTranslationLocator : nil
-        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting, translations: translations, restoring: restoring)).get()
+        let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting, translations: translations, restoring: restoring, typography: selecting ? nil : typography, vocabulary: wordGlosses)).get()
         if restoring == pendingTranslationLocator, result is [String: Any] { pendingTranslationLocator = nil }
         try Task.checkCancellation()
         guard model.store === store, !model.maintenance, reader.currentLocation?.href == href,
@@ -405,7 +418,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
               start >= 0, end > start, end <= chapter.text.utf16.count,
               TextBoundary.floor(start, in: chapter.text) == start, TextBoundary.floor(end, in: chapter.text) == end,
               try store.chapter(index, in: book).revision == chapter.revision else { return nil }
-        if value["changed"] as? Bool == true { autoRead.pause("译文显示改变，已暂停") }
+        if value["changed"] as? Bool == true { autoRead.pause("正文排版改变，已暂停") }
         var passage = SourcePassage(bookID: bookID, chapter: chapter, offset: start, text: (chapter.text as NSString).substring(with: NSRange(location: start, length: end - start)))
         if let selector = value["selector"] as? String {
             let text = try Locator.Text(json: value["text"])
@@ -468,8 +481,24 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         }
     }
     func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
-        guard abs(point.x - view.bounds.midX) < view.bounds.width / 6 else { return }
-        onToggleControls()
+        guard isReading, !closed else { return }
+        Task {
+            guard let reader = self.navigator, let href = reader.currentLocation?.href else { return }
+            let result = await reader.evaluateJavaScript("(() => { const s = window.__moreadEnglish, tap = s?.lastTap; if (s) s.lastTap = null; return tap && Date.now() - tap.time < 2000 ? tap : null; })()")
+            guard !closed, isReading, reader.currentLocation?.href == href else { return }
+            if let hit = (try? result.get()) as? [String: Any], let word = hit["word"] as? String,
+               let start = hit["start"] as? Int, let end = hit["end"] as? Int,
+               let index = reader.publication.readingOrder.firstIndex(where: { $0.url().string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] }),
+               let book = model.books.first(where: { $0.id == bookID }), let chapter = try? model.store?.chapter(index, in: book),
+               start >= 0, end > start, end <= chapter.text.utf16.count {
+                let text = (chapter.text as NSString).substring(with: NSRange(location: start, length: end - start))
+                if VocabularyWord.normalize(text) == word {
+                    let passage = SourcePassage(bookID: bookID, chapter: chapter, offset: start, text: text)
+                    onDictionary(text, passage); return
+                }
+            }
+            if abs(point.x - view.bounds.midX) < view.bounds.width / 6 { onToggleControls() }
+        }
     }
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) { autoRead.pause("正文暂不可用，已暂停"); model.error = "阅读操作失败，请重新打开这本书。" }
     func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: RelativeURL, withError error: ReadError) { autoRead.pause("正文暂不可用，已暂停"); model.error = "书内资源无法读取，请检查 EPUB 文件是否完整。" }

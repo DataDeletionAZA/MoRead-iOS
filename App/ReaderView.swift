@@ -58,49 +58,7 @@ struct ReaderView: View {
             if let initialSourceError {
                 ContentUnavailableView("无法打开原文", systemImage: "book.closed", description: Text(initialSourceError))
             } else if let book {
-                VStack(spacing: 0) {
-                    if book.format == "epub" {
-                        EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
-                            didLocateEPUB = true
-                            var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
-                        }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
-                    } else if let chapter {
-                        let content = textContent(book: book, chapter: chapter)
-                        if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
-                            ContinuousTextReader(bookID: bookID, chapterCount: book.chapters.count, currentChapter: chapter.id, content: content, revision: model.recordsRevision, chapterContent: { index in
-                                guard book.chapters.indices.contains(index), let store = model.store else { return nil }
-                                do {
-                                    let source = index == self.chapter?.id ? self.chapter! : try store.chapter(index, in: book)
-                                    let rows = try ParagraphTranslationStore(library: store, bookID: bookID).load(chapter: index)
-                                    let presentation = TranslatedText(source: source.text, translations: rows, visible: records.translationsVisible ?? true)
-                                    return (source, textContent(book: book, chapter: source, presentation: presentation))
-                                } catch {
-                                    DispatchQueue.main.async { model.error = error.localizedDescription }
-                                    return nil
-                                }
-                            }, onRead: { position, end, passage in
-                                guard sheet == nil, selection == nil, chat == nil, scenePhase == .active, var updated = self.book else { return }
-                                if self.chapter?.id != position.chapter {
-                                    model.perform { self.chapter = try model.store?.chapter(position.chapter, in: updated); refreshTranslations() }
-                                }
-                                updated.record(position: position, visibleEnd: end); model.update(updated)
-                                visiblePage = passage
-                            })
-                        } else {
-                            PagedTextReader(content: content, mode: ReaderPageMode(rawValue: pageMode) ?? .slide,
-                                            hasPreviousChapter: chapter.id > 0, hasNextChapter: chapter.id + 1 < book.chapters.count,
-                                            onChapter: { direction in loadChapter(chapter.id + direction, offset: direction < 0 ? Int.max : 0) })
-                                .id(pageMode)
-                        }
-                        if !immersive { HStack {
-                            Button("上一章", systemImage: "chevron.left") { loadChapter(chapter.id - 1) }.disabled(chapter.id == 0)
-                            Spacer()
-                            Text("\(chapter.id + 1) / \(book.chapters.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            Spacer()
-                            Button("下一章", systemImage: "chevron.right") { loadChapter(chapter.id + 1) }.disabled(chapter.id + 1 >= book.chapters.count)
-                        }.font(.subheadline).padding(.horizontal, 20).padding(.vertical, 10) }
-                    } else { ProgressView("正在打开…").frame(maxWidth: .infinity, maxHeight: .infinity) }
-                }.background(paperColor)
+                readerContent(book: book).background(paperColor)
                     .navigationTitle(chapter?.title ?? book.title)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar(.hidden, for: .tabBar)
@@ -141,31 +99,7 @@ struct ReaderView: View {
                     }
                     .sheet(item: $sheet, onDismiss: startPendingAutoRead) { kind in readerSheet(kind, book: book) }
                     .sheet(item: $chat) { target in NavigationStack { CompanionChat(conversationID: target.id, selection: chatSelection) } }
-                    .sheet(item: $selection) { passage in
-                        NavigationStack {
-                            if selectionIsTranslation {
-                                ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision)
-                                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { selection = nil } } }
-                            } else {
-                                Form {
-                                    Section("原文") { Text(passage.text).textSelection(.enabled) }
-                                    NavigationLink("查字词") { DictionaryLookupView(word: passage.text, source: passage) }
-                                    NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
-                                    NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
-                                    Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
-                                    Button("和角色聊这一段", systemImage: "bubble.left.and.bubble.right") {
-                                        selection = nil
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openChat(passage) }
-                                    }
-                                    Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline"); Text("波浪线").tag("wave") }
-                                }.navigationTitle("记录这一段")
-                                    .toolbar {
-                                        ToolbarItem(placement: .cancellationAction) { Button("取消") { selection = nil } }
-                                        ToolbarItem(placement: .confirmationAction) { Button("保存") { saveAnnotation(passage) } }
-                                    }
-                            }
-                        }
-                    }
+                    .sheet(item: $selection) { passage in selectionSheet(passage: passage) }
             } else { ContentUnavailableView("书籍已移除", systemImage: "book.closed") }
         }
         .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
@@ -313,7 +247,7 @@ struct ReaderView: View {
                             })) { Text("左右翻页").tag(false); Text("上下滚动").tag(true) }.accessibilityIdentifier("epub-page-mode")
                         }
                         NavigationLink("字体与段落") { ReaderTypographyView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }), isEPUB: book.format == "epub") }
-                        if book.format == "txt" { NavigationLink("阅读辅助") { EnglishReadingView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() })) } }
+                        NavigationLink("阅读辅助") { EnglishReadingView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() })) }
                         Section("文字") {
                             Stepper(value: $fontSize, in: 14...36, step: 1) { LabeledContent("字号", value: "\(Int(fontSize))") }.accessibilityIdentifier("reader-font-size-stepper")
                             Slider(value: $fontSize, in: 14...36, step: 1).accessibilityLabel("字号")
@@ -361,6 +295,78 @@ struct ReaderView: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
+    @ViewBuilder private func readerContent(book: Book) -> some View {
+        VStack(spacing: 0) {
+            if book.format == "epub" {
+                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                    didLocateEPUB = true
+                    var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
+                }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
+            } else if let chapter {
+                let content = textContent(book: book, chapter: chapter)
+                if (ReaderPageMode(rawValue: pageMode) ?? .scroll) == .scroll {
+                    ContinuousTextReader(bookID: bookID, chapterCount: book.chapters.count, currentChapter: chapter.id, content: content, revision: model.recordsRevision, chapterContent: { index in
+                        guard book.chapters.indices.contains(index), let store = model.store else { return nil }
+                        do {
+                            let source = index == self.chapter?.id ? self.chapter! : try store.chapter(index, in: book)
+                            let rows = try ParagraphTranslationStore(library: store, bookID: bookID).load(chapter: index)
+                            let presentation = TranslatedText(source: source.text, translations: rows, visible: records.translationsVisible ?? true)
+                            return (source, textContent(book: book, chapter: source, presentation: presentation))
+                        } catch {
+                            DispatchQueue.main.async { model.error = error.localizedDescription }
+                            return nil
+                        }
+                    }, onRead: { position, end, passage in
+                        guard sheet == nil, selection == nil, chat == nil, scenePhase == .active, var updated = self.book else { return }
+                        if self.chapter?.id != position.chapter {
+                            model.perform { self.chapter = try model.store?.chapter(position.chapter, in: updated); refreshTranslations() }
+                        }
+                        updated.record(position: position, visibleEnd: end); model.update(updated)
+                        visiblePage = passage
+                    })
+                } else {
+                    PagedTextReader(content: content, mode: ReaderPageMode(rawValue: pageMode) ?? .slide,
+                                    hasPreviousChapter: chapter.id > 0, hasNextChapter: chapter.id + 1 < book.chapters.count,
+                                    onChapter: { direction in loadChapter(chapter.id + direction, offset: direction < 0 ? Int.max : 0) })
+                        .id(pageMode)
+                }
+                if !immersive { HStack {
+                    Button("上一章", systemImage: "chevron.left") { loadChapter(chapter.id - 1) }.disabled(chapter.id == 0)
+                    Spacer()
+                    Text("\(chapter.id + 1) / \(book.chapters.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("下一章", systemImage: "chevron.right") { loadChapter(chapter.id + 1) }.disabled(chapter.id + 1 >= book.chapters.count)
+                }.font(.subheadline).padding(.horizontal, 20).padding(.vertical, 10) }
+            } else { ProgressView("正在打开…").frame(maxWidth: .infinity, maxHeight: .infinity) }
+        }
+    }
+
+    private func selectionSheet(passage: SourcePassage) -> some View {
+        NavigationStack {
+            if selectionIsTranslation {
+                ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { selection = nil } } }
+            } else {
+                Form {
+                    Section("原文") { Text(passage.text).textSelection(.enabled) }
+                    NavigationLink("查字词") { DictionaryLookupView(word: passage.text, source: passage) }
+                    NavigationLink("本段对照") { ParagraphTranslationView(bookID: bookID, chapter: passage.chapter, range: NSRange(location: passage.offset, length: passage.text.utf16.count), sourceRevision: passage.revision) }
+                    NavigationLink("为这一段生成插图") { IllustrationGenerator(bookID: bookID, source: passage) }
+                    Section("我的笔记") { TextEditor(text: $note).frame(minHeight: 120).accessibilityLabel("笔记") }
+                    Button("和角色聊这一段", systemImage: "bubble.left.and.bubble.right") {
+                        selection = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openChat(passage) }
+                    }
+                    Picker("标记样式", selection: $style) { Text("荧光").tag("highlight"); Text("下划线").tag("underline"); Text("波浪线").tag("wave") }
+                }.navigationTitle("记录这一段")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("取消") { selection = nil } }
+                        ToolbarItem(placement: .confirmationAction) { Button("保存") { saveAnnotation(passage) } }
+                    }
+            }
+        }
+    }
+
     private func textContent(book: Book, chapter: Chapter, presentation: TranslatedText? = nil) -> TextReader {
         TextReader(autoRead: autoRead, onAutoNext: {
             guard chapter.id + 1 < book.chapters.count else { return false }
