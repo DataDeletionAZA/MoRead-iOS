@@ -64,7 +64,7 @@ struct ReaderView: View {
                 ContentUnavailableView("无法打开原文", systemImage: "book.closed", description: Text(initialSourceError))
             } else if let book {
                 readerContent(book: book).background(paperColor)
-                    .navigationTitle(chapter?.title ?? book.title)
+                    .navigationTitle(displayedChinese(chapter?.title ?? book.title))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar(.hidden, for: .tabBar)
                     .toolbar(immersive ? .hidden : .visible, for: .navigationBar, .bottomBar)
@@ -116,6 +116,12 @@ struct ReaderView: View {
         .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: book?.chapters.map(\.revision)) { _, _ in
             if let book, book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
+        }
+        .onChange(of: book?.chineseConversion) { _, _ in
+            guard let book else { return }
+            autoRead.pause("文字显示改变，已暂停")
+            requestedOffset = book.position.offset; navigationID = UUID(); visiblePage = nil
+            refreshTranslations()
         }
         .onChange(of: model.recordsRevision) { _, _ in
             if let book { model.perform { if let value = try model.store?.records(for: book) { records = value }; refreshTranslations() } }
@@ -248,7 +254,7 @@ struct ReaderView: View {
                         }
                         Section("章节") {
                             ForEach(book.chapters) { item in
-                                Button(item.title) {
+                                Button(displayedChinese(item.title)) {
                                     if book.format == "txt" { loadChapter(item.id) }
                                     else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: item.id, offset: 0)) }
                                     sheet = nil
@@ -269,6 +275,14 @@ struct ReaderView: View {
                         NavigationLink("操作区域") { ReaderTapZonesView() }
                         Text(tapZones == nil ? "轻点正文中间可显示或收起阅读工具。" : "点按已设定的菜单区域可显示或收起阅读工具。").font(.caption).foregroundStyle(.secondary)
                         if book.format == "txt" {
+                            Picker("繁简转换", selection: Binding(get: { self.book?.chineseConversion ?? .off }, set: { mode in
+                                guard var current = self.book else { return }
+                                current.chineseConversion = mode == .off ? nil : mode
+                                _ = model.update(current, immediate: true)
+                            })) {
+                                ForEach(ChineseConversionMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                            }.accessibilityIdentifier("reader-chinese-conversion")
+                            Text("只改变本书的文字显示，原文、书签和批注保留。编辑原文时显示书中原来的文字。").font(.caption).foregroundStyle(.secondary)
                             Picker("翻页方式", selection: Binding(get: { pageMode }, set: { value in
                                 requestedOffset = self.book?.position.offset ?? 0; navigationID = UUID(); pageMode = value
                             })) {
@@ -306,7 +320,7 @@ struct ReaderView: View {
                             else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset, locator: passage.epubLocator)) }
                             sheet = nil
                         } label: {
-                            VStack(alignment: .leading, spacing: 8) { Text(book.chapters[passage.chapter].title).font(.caption).foregroundStyle(.secondary); Text(passage.text).lineLimit(4) }.foregroundStyle(.primary)
+                            VStack(alignment: .leading, spacing: 8) { Text(displayedChinese(book.chapters[passage.chapter].title)).font(.caption).foregroundStyle(.secondary); Text(displayedChinese(passage.text)).lineLimit(4) }.foregroundStyle(.primary)
                         }
                     }.searchable(text: $query, prompt: "搜索全书原文")
                         .onChange(of: query) { _, value in search(value, book: book) }
@@ -344,7 +358,7 @@ struct ReaderView: View {
                         do {
                             let source = index == self.chapter?.id ? self.chapter! : try store.chapter(index, in: book)
                             let rows = try ParagraphTranslationStore(library: store, bookID: bookID).load(chapter: index)
-                            let presentation = TranslatedText(source: source.text, translations: rows, visible: records.translationsVisible ?? true)
+                            let presentation = try TranslatedText(source: source.text, translations: rows, visible: records.translationsVisible ?? true).converted(book.chineseConversion ?? .off)
                             return (source, textContent(book: book, chapter: source, presentation: presentation))
                         } catch {
                             DispatchQueue.main.async { model.error = error.localizedDescription }
@@ -440,11 +454,14 @@ struct ReaderView: View {
             refreshTranslations()
         }
     }
+    private func displayedChinese(_ text: String) -> String {
+        (try? ChineseTextConversion(text, mode: book?.chineseConversion ?? .off).text) ?? text
+    }
     private func refreshTranslations() {
         guard let chapter, let storage = model.store else { return }
         do {
             let rows = try ParagraphTranslationStore(library: storage, bookID: bookID).load(chapter: chapter.id)
-            translatedText = TranslatedText(source: chapter.text, translations: rows, visible: records.translationsVisible ?? true)
+            translatedText = try TranslatedText(source: chapter.text, translations: rows, visible: records.translationsVisible ?? true).converted(book?.chineseConversion ?? .off)
         } catch { translatedText = TranslatedText(source: chapter.text); model.error = error.localizedDescription }
     }
     private func openChat(_ passage: SourcePassage? = nil) {
@@ -470,7 +487,7 @@ struct ReaderView: View {
                     sheet = nil
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(bookmark.label)
+                        Text(displayedChinese(bookmark.label))
                         if let date = bookmark.createdAt { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                     }
                 }.accessibilityIdentifier("bookmark-" + bookmark.id.uuidString)
@@ -549,17 +566,18 @@ struct ReaderView: View {
         searchTask = Task {
             do {
                 try await Task.sleep(for: .milliseconds(300))
-                let found = try await Task.detached {
+                let worker = Task.detached {
                     let store = try LibraryStore(root: root)
                     var found: [SourcePassage] = []
                     for index in book.chapters.indices {
                         try Task.checkCancellation()
                         let chapter = try store.chapter(index, in: book)
-                        found += BookSearch.find(value, in: chapter, bookID: book.id, scope: .wholeBook, limit: 100 - found.count)
+                        found += try BookSearch.find(value, in: chapter, bookID: book.id, scope: .wholeBook, conversion: book.chineseConversion ?? .off, limit: 100 - found.count)
                         if found.count >= 100 { break }
                     }
                     return found
-                }.value
+                }
+                let found = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 try Task.checkCancellation(); results = found
             } catch is CancellationError {} catch { model.error = error.localizedDescription }
         }

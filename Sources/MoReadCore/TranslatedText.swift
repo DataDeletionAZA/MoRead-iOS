@@ -7,8 +7,11 @@ public struct TranslatedText: Equatable, Sendable {
         public var textRange: NSRange { NSRange(location: displayRange.location + 1, length: displayRange.length - 1) }
     }
     public let source: String
-    public let text: String
-    public let insertions: [Insertion]
+    public private(set) var text: String
+    public private(set) var insertions: [Insertion]
+    private var baseInsertions: [Insertion]
+    private var conversion: ChineseTextConversion?
+    public private(set) var chineseConversionMode = ChineseConversionMode.off
     public init(source: String, translations: [ParagraphTranslation] = [], visible: Bool = true) {
         self.source = source
         let original = source as NSString
@@ -23,18 +26,33 @@ public struct TranslatedText: Equatable, Sendable {
             }
         }
         parts.append(original.substring(from: cursor))
-        text = parts.joined(); self.insertions = insertions
+        text = parts.joined(); self.insertions = insertions; self.baseInsertions = insertions
+    }
+    public func converted(_ mode: ChineseConversionMode) throws -> Self {
+        var value = self
+        let conversion = try ChineseTextConversion(self.conversion?.source ?? text, mode: mode)
+        value.conversion = conversion; value.text = conversion.text; value.chineseConversionMode = mode
+        value.insertions = baseInsertions.map { insertion in
+            let start = conversion.displayOffset(forSource: insertion.displayRange.location)
+            let end = conversion.displayOffset(forSource: NSMaxRange(insertion.displayRange), trailing: true)
+            return .init(sourceRange: insertion.sourceRange, displayRange: NSRange(location: start, length: end - start))
+        }
+        return value
     }
     public func displayOffset(forSource offset: Int, afterInsertion: Bool = true) -> Int {
+        let base = baseDisplayOffset(forSource: offset, afterInsertion: afterInsertion)
+        return conversion?.displayOffset(forSource: base) ?? base
+    }
+    private func baseDisplayOffset(forSource offset: Int, afterInsertion: Bool = true) -> Int {
         let safe = TextBoundary.floor(offset, in: source)
-        return safe + insertions.lazy.filter {
+        return safe + baseInsertions.lazy.filter {
             NSMaxRange($0.sourceRange) < safe || (afterInsertion && NSMaxRange($0.sourceRange) == safe)
         }.reduce(0) { $0 + $1.displayRange.length }
     }
     public func sourceOffset(forDisplay offset: Int, trailing: Bool = false) -> Int {
-        let safe = TextBoundary.floor(offset, in: text)
+        let safe = conversion?.sourceOffset(forDisplay: offset, trailing: trailing) ?? TextBoundary.floor(offset, in: text)
         var added = 0
-        for insertion in insertions {
+        for insertion in baseInsertions {
             if safe < insertion.displayRange.location { break }
             if safe < NSMaxRange(insertion.displayRange) { return trailing ? NSMaxRange(insertion.sourceRange) : insertion.sourceRange.location }
             added += insertion.displayRange.length
@@ -53,9 +71,11 @@ public struct TranslatedText: Equatable, Sendable {
     public func displayRanges(forSource range: NSRange) -> [NSRange] {
         guard valid(range, length: source.utf16.count), range.length > 0 else { return [] }
         let end = NSMaxRange(range)
-        let cuts = [range.location] + insertions.map { NSMaxRange($0.sourceRange) }.filter { $0 > range.location && $0 < end } + [end]
+        let cuts = [range.location] + baseInsertions.map { NSMaxRange($0.sourceRange) }.filter { $0 > range.location && $0 < end } + [end]
         return zip(cuts, cuts.dropFirst()).compactMap { lower, upper in
-            let start = displayOffset(forSource: lower), end = displayOffset(forSource: upper, afterInsertion: false)
+            let baseStart = baseDisplayOffset(forSource: lower), baseEnd = baseDisplayOffset(forSource: upper, afterInsertion: false)
+            let start = conversion?.displayOffset(forSource: baseStart) ?? baseStart
+            let end = conversion?.displayOffset(forSource: baseEnd, trailing: true) ?? baseEnd
             return end > start ? NSRange(location: start, length: end - start) : nil
         }
     }

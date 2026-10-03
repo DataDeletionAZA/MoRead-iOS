@@ -99,6 +99,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         updatePaper()
         let navigation = old.content.navigationID != parent.content.navigationID
         let style = old.content.font != parent.content.font || old.content.fontSize != parent.content.fontSize
+            || old.content.presentation.chineseConversionMode != parent.content.presentation.chineseConversionMode
             || old.content.lineSpacing != parent.content.lineSpacing || old.content.typography != parent.content.typography
             || old.content.ink != parent.content.ink || old.content.wordGlosses != parent.content.wordGlosses || old.revision != parent.revision
         if navigation || style {

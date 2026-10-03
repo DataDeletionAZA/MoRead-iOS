@@ -185,6 +185,10 @@ final class LibraryModel: ObservableObject {
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--listening-cleanup-sample") {
                 chapters = [.init(id: 0, title: "净化测试一", text: "广告：请关注。\n😀林遥打开书店。\n广告：请关注。"), .init(id: 1, title: "净化测试二", text: "广告：请关注。"), .init(id: 2, title: "净化测试三", text: "林遥拿起书。")]
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--chinese-conversion-sample") {
+                chapters[0].text = "林遙把滑鼠放在主機板旁，開啟軟體閱讀書店的來信。\n資料庫記錄了雨後的故事。這封信提到了遊標與解析度。"
+                chapters[1].text = "第二封信仍在桌上。滑鼠和主機板留在書店。"
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--translation-sample") {
                 chapters[0].text = "After the rain, Lin opened the bookshop.\nA letter arrived at noon.\nThe map showed a lighthouse."
             }

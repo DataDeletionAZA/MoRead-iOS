@@ -50,6 +50,7 @@ public struct Book: Codable, Identifiable, Hashable, Sendable {
     public var state: String
     public var removed: Bool
     public var epubLocator: Data?
+    public var chineseConversion: ChineseConversionMode?
     public var bodyCleared: Bool?
     public var hasBody: Bool { bodyCleared != true }
     public init(id: UUID = UUID(), title: String, author: String = "", format: String = "txt", chapters: [Chapter]) {

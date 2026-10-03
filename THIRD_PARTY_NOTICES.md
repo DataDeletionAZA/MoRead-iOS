@@ -9,3 +9,9 @@
 - Noto Serif SC，可变中文衬线字体，SIL Open Font License 1.1：https://github.com/google/fonts/tree/main/ofl/notoserifsc ，原字体随应用提供，许可全文保存在 `licenses/notoserifsc-OFL.txt`。
 
 依赖与内置字体的许可全文汇集于 `licenses/THIRD_PARTY_LICENSES.txt`，并可在应用“设置 → 开源许可”中查看。
+
+## OpenCC conversion dictionaries
+
+The unmodified dictionary files in `Sources/MoReadCore/Resources/ChineseConversion` come from [OpenccJava v1.4.2](https://github.com/laisuk/OpenccJava/tree/ab7297362fe3579c758d017ca653d4ac0377be7c/dicts). The lexicons are maintained by OpenCC contributors and licensed under [Apache-2.0](licenses/opencc-Apache-2.0.txt). The two conversion chains follow the dictionary order in that release.
+
+The matching rules, delimiter set and conversion reference fixtures follow OpenccJava v1.4.2 ([MIT license](licenses/openccjava-MIT.txt)).
