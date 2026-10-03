@@ -63,7 +63,7 @@ struct CharacterList: View {
                     }
                     Spacer()
                     if companion.settings.selectedCharacter == card.id { Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint) }
-                    Button("编辑", systemImage: "pencil") { editing = card }.labelStyle(.iconOnly).buttonStyle(.borderless)
+                    Button("编辑", systemImage: "pencil") { editing = card }.labelStyle(.iconOnly).buttonStyle(.borderless).accessibilityIdentifier("edit-character-" + card.name)
                 }
             }.navigationTitle("共读伙伴")
                 .toolbar {
@@ -99,6 +99,9 @@ struct CharacterEditor: View {
                     TextField("名字", text: $card.name)
                     NavigationLink("世界书（\(card.worldBook.count) 条）") { WorldBookEditor(entries: $card.worldBook) }.accessibilityIdentifier("edit-world-book")
                     NavigationLink("角色记忆") { PersonaMemoryView(characterID: card.id) }
+                    NavigationLink("聊天外观") {
+                        ChatAppearanceView(appearance: Binding(get: { card.chatAppearance?.validated() ?? ChatAppearance() }, set: { card.chatAppearance = $0.validated() }), name: card.name)
+                    }.accessibilityIdentifier("edit-chat-appearance")
                     NavigationLink("可用工具") { CharacterToolsView(enabled: $card.enabledTools) }
                 }
                 Section("人物设定") { TextEditor(text: $card.description).frame(minHeight: 130) }
@@ -220,6 +223,7 @@ struct CompanionChat: View {
     @State private var followsLatest = true
     private var conversation: Conversation? { companion.conversations.first { $0.id == conversationID } }
     private var generating: Bool { companion.activeConversation == conversationID }
+    private var appearance: ChatAppearance { companion.characters.first { $0.id == conversation?.characterID }?.chatAppearance?.validated() ?? ChatAppearance() }
     var body: some View {
         VStack(spacing: 0) {
             if let selection {
@@ -229,7 +233,7 @@ struct CompanionChat: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
                         if conversation?.messages.isEmpty != false {
-                            Text(companion.characters.first { $0.id == conversation?.characterID }?.greeting ?? "想聊些什么？").foregroundStyle(.secondary).padding(.top, 30)
+                            Text(companion.characters.first { $0.id == conversation?.characterID }?.greeting ?? "想聊些什么？").font(chatFont(appearance, library: library)).modifier(ChatBubble(appearance: appearance, fromUser: false)).padding(.top, 20)
                         }
                         ForEach(conversation?.messages ?? []) { message in messageRow(message) }
                         Color.clear.frame(height: 1).id("chat-bottom")
@@ -249,18 +253,20 @@ struct CompanionChat: View {
                         proxy.scrollTo("chat-bottom", anchor: .bottom)
                     }
             }
-            if generating { Button("停止回复", systemImage: "stop.circle") { companion.stop() }.padding(8) }
-            suggestionButtons
-            Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
-                .font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).accessibilityIdentifier("chat-identity")
-            HStack(alignment: .bottom, spacing: 12) {
-                TextField(selection != nil ? "问问这一段…" : conversation?.bookID == nil ? "聊聊，或问问书库里的内容…" : "聊聊这本书…", text: $draft, axis: .vertical).lineLimit(1...6).padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("chat-input")
-                Button {
-                    send(draft)
-                } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 32)) }
-                .accessibilityLabel("发送").disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || companion.busy)
-            }.padding()
-        }.navigationTitle(conversation?.title ?? "伴读").navigationBarTitleDisplayMode(.inline)
+            VStack(spacing: 0) {
+                if generating { Button("停止回复", systemImage: "stop.circle") { companion.stop() }.padding(8) }
+                suggestionButtons
+                Button("身份：\(companion.settings.currentIdentity.label)", systemImage: "person.crop.circle") { showIdentity = true }
+                    .font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).accessibilityIdentifier("chat-identity")
+                HStack(alignment: .bottom, spacing: 12) {
+                    TextField(selection != nil ? "问问这一段…" : conversation?.bookID == nil ? "聊聊，或问问书库里的内容…" : "聊聊这本书…", text: $draft, axis: .vertical).lineLimit(1...6).padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("chat-input")
+                    Button {
+                        send(draft)
+                    } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 32)) }
+                    .accessibilityLabel("发送").disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || companion.busy)
+                }.padding()
+            }.background(.regularMaterial)
+        }.background { ChatBackground(appearance: appearance) }.navigationTitle(conversation?.title ?? "伴读").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } }
                 if conversation?.bookID == nil { ToolbarItem(placement: .primaryAction) { Button("重点书籍", systemImage: "books.vertical") { showFocus = true }.disabled(companion.busy) } }
@@ -294,23 +300,23 @@ struct CompanionChat: View {
     }
     private func messageRow(_ message: ChatMessage) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(message.role == "user" ? message.identity?.label ?? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(message.role == "user" ? message.identity?.label ?? companion.settings.userName : companion.characters.first { $0.id == conversation?.characterID }?.name ?? "伙伴").font(chatFont(appearance, library: library, size: 12, style: .caption1).weight(.semibold)).opacity(0.8)
             if message.content.isEmpty && message.status == "receiving" { ProgressView(companion.memoryStatus ?? "正在阅读与思考…") }
             else { Text(.init(message.content)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-            if message.status == "interrupted" { Text("回复已中断，可重试").font(.caption).foregroundStyle(.secondary) }
+            if message.status == "interrupted" { Text("回复已中断，可重试").font(chatFont(appearance, library: library, size: 12, style: .caption1)).foregroundStyle(.secondary) }
             if let traces = message.toolTrace, !traces.isEmpty { toolTraceViews(traces) }
-            if let notice = message.retrievalNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+            if let notice = message.retrievalNotice { Text(notice).font(chatFont(appearance, library: library, size: 12, style: .caption1)).foregroundStyle(.secondary) }
             ForEach((message.toolTrace ?? []).compactMap(\.illustration), id: \.illustrationID) { reference in
                 ChatIllustrationButton(reference: reference) { illustration = $0 }
             }
             if !message.sources.isEmpty {
                 ScrollView(.horizontal) {
                     HStack { ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, passage in
-                        Button("来源 \(index + 1)") { showSource(passage) }.font(.caption).buttonStyle(.bordered)
+                        Button("来源 \(index + 1)") { showSource(passage) }.font(chatFont(appearance, library: library, size: 12, style: .caption1)).buttonStyle(.bordered)
                     } }
                 }
             }
-        }.padding(16).background(message.role == "user" ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 16))
+        }.font(chatFont(appearance, library: library)).modifier(ChatBubble(appearance: appearance, fromUser: message.role == "user", isTail: isTail(message)))
             .id(message.id)
             .contextMenu {
                 Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content }
@@ -318,18 +324,22 @@ struct CompanionChat: View {
                 Button("从此处分支", systemImage: "arrow.triangle.branch") { if let id = companion.fork(conversationID, through: message.id) { conversationID = id } }.disabled(companion.busy)
             }
     }
+    private func isTail(_ message: ChatMessage) -> Bool {
+        guard let messages = conversation?.messages, let index = messages.firstIndex(where: { $0.id == message.id }), index + 1 < messages.count else { return true }
+        return messages[index + 1].role != message.role
+    }
     @ViewBuilder private func toolTraceViews(_ traces: [ChatToolTrace]) -> some View {
         DisclosureGroup("查询过程（\(traces.count) 步）") {
             ForEach(traces) { trace in
                 VStack(alignment: .leading, spacing: 4) {
                     Label(trace.title + " · " + (trace.state == "succeeded" ? "完成" : trace.state == "failed" ? "未完成" : trace.state == "interrupted" ? "已停止" : "进行中"), systemImage: trace.state == "succeeded" ? "checkmark.circle" : "magnifyingglass")
-                    if !trace.preview.isEmpty { Text(trace.preview).font(.caption).textSelection(.enabled) }
+                    if !trace.preview.isEmpty { Text(trace.preview).font(chatFont(appearance, library: library, size: 12, style: .caption1)).textSelection(.enabled) }
                     ForEach(trace.webSources ?? [], id: \.url) { source in
                         if let url = try? WebSearchClient.webURL(source.url) { Link(source.title, destination: url).accessibilityIdentifier("web-source-" + source.url) }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
             }
-        }.font(.caption)
+        }.font(chatFont(appearance, library: library, size: 12, style: .caption1))
         ForEach(traces.filter { $0.organizationPlan != nil }) { trace in
             if let plan = trace.organizationPlan {
                 let status = library.organization.organizationDecisions?[plan.id]

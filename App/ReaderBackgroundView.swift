@@ -13,6 +13,9 @@ struct ReaderBackgroundView: View {
     private var typography: ReaderTypography { ReaderTypography(data: settings) }
     var body: some View {
         Form {
+            NavigationLink("从图片库选择") { ImageLibraryView(select: { image in
+                model.perform { try model.selectReadingBackground(image.id); paper = "image" }
+            }) }
             PhotosPicker("从照片选择背景", selection: $selection, matching: .images)
             if importing { ProgressView("正在处理图片…") }
             if let image = model.readingBackground {
@@ -86,17 +89,22 @@ final class ReaderTextView: UITextView {
 
 extension LibraryModel {
     func saveReadingBackground(_ data: Data?) throws {
-        guard !maintenance, let root = store?.root else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
-        let url = root.appendingPathComponent("reader-background.jpg")
-        let image = try data.map { try ReaderImage.thumbnail($0, maximum: 2048) }
-        if let data { try data.write(to: url, options: .atomic) }
-        else if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
-        readingBackground = image; readingBackgroundData = data; readingBackgroundID = UUID()
+        guard !maintenance, let imageLibrary else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
+        let image = try data.map { try imageLibrary.add($0, name: "阅读背景") }
+        try reloadImages()
+        try selectReadingBackground(image?.id)
+    }
+    func selectReadingBackground(_ id: UUID?) throws {
+        guard !maintenance, let imageLibrary else { throw MoReadError.invalid("书库忙碌，请稍后再试。") }
+        try imageLibrary.selectBackground(id)
+        try loadReadingBackground()
     }
     func loadReadingBackground() throws {
         readingBackground = nil; readingBackgroundData = nil; readingBackgroundID = UUID()
-        guard let url = store?.root.appendingPathComponent("reader-background.jpg"), FileManager.default.fileExists(atPath: url.path) else { return }
-        let data = try CharacterCardImporter.read(url, limit: 4 * 1024 * 1024)
+        guard let imageLibrary else { return }
+        if try imageLibrary.migrateLegacyBackground() != nil { try reloadImages() }
+        guard let id = try imageLibrary.selectedBackground(), images.contains(where: { $0.id == id }) else { return }
+        let data = try imageLibrary.data(id)
         readingBackground = try ReaderImage.thumbnail(data, maximum: 2048); readingBackgroundData = data
     }
 }

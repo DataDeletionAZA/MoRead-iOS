@@ -15,6 +15,7 @@ public struct LoreEntry: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct CharacterCard: Codable, Identifiable, Hashable, Sendable {
+    public var chatAppearance: ChatAppearance?
     public var enabledTools: [String]?
     public var id: UUID = UUID()
     public var name: String

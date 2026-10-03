@@ -57,7 +57,7 @@ struct FontLibraryView: View {
                         }
                     removing = nil
                 }
-            } message: { font in Text("删除“\(font.name)”后，使用它的正文会恢复内置字体。") }
+            } message: { font in Text("删除“\(font.name)”后，使用它的正文和聊天文字会恢复内置字体。") }
     }
     private func select(_ id: UUID?) {
         var value = ReaderTypography(data: typographyData); value.customFontID = id; typographyData = value.encoded()

@@ -124,6 +124,8 @@ public enum BackupArchive {
             guard written == file.bytes, checksum == entry.checksum, digest == file.sha256 else { throw MoReadError.invalid("备份中的文件损坏，原书库保持不变。") }
             completed += written
         }
+        _ = try ImageLibrary(root: staging).images()
+        _ = try ImageLibrary(root: staging).selectedBackground()
         _ = try FontLibrary(root: staging).fonts()
         try await LocalDictionaries(root: staging).validateBackup()
         _ = try VocabularyStore(root: staging).words()

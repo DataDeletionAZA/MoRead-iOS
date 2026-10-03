@@ -33,6 +33,8 @@ final class LibraryModel: ObservableObject {
     @Published var readingBackground: UIImage?
     var readingBackgroundData: Data?
     var readingBackgroundID = UUID()
+    @Published var images: [ImportedImage] = []
+    let imageCache = NSCache<NSString, UIImage>()
     @Published var fonts: [ImportedFont] = []
     @Published var showFonts = false
     @Published var showDictionaries = false
@@ -72,6 +74,7 @@ final class LibraryModel: ObservableObject {
             store = storage
             dictionaryLibrary = LocalDictionaries(root: root); dictionaryRevision = UUID(); vocabularyRevision = UUID()
             try reloadFonts()
+            try reloadImages()
             try loadReadingBackground()
             coverRevision = UUID()
             recordsRevision = UUID()

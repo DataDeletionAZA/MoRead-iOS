@@ -23,6 +23,23 @@ struct RootView: View {
         }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--chat-appearance-sample"), model.images.isEmpty, let root = model.store?.root {
+                model.perform {
+                    let image = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 600)).image { context in
+                        UIColor(red: 0.15, green: 0.4, blue: 0.6, alpha: 1).setFill(); context.fill(CGRect(x: 0, y: 0, width: 400, height: 600))
+                        UIColor(red: 0.9, green: 0.65, blue: 0.35, alpha: 1).setFill(); context.fill(CGRect(x: 60, y: 120, width: 280, height: 160))
+                    }
+                    try image.jpegData(compressionQuality: 0.85)!.write(to: root.appendingPathComponent("reader-background.jpg"))
+                    try model.loadReadingBackground()
+                    let second = CharacterCard(name: "夏夏", description: "一起读书的伙伴")
+                    companion.saveCard(second, select: false)
+                    for card in companion.characters {
+                        var chat = Conversation(title: card.name + "的书店话题", bookID: nil, characterID: card.id)
+                        chat.messages = [.init(role: "assistant", content: "雨停了，书店里还亮着灯。"), .init(role: "user", content: "我们聊聊这一段吧。")]
+                        try companion.store?.save(chat); companion.conversations.append(chat)
+                    }
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-dictionary") {
                 for (key, ext) in [("MOREAD_TEST_MDX", "mdx"), ("MOREAD_TEST_MDD", "mdd")] {
                     if let encoded = ProcessInfo.processInfo.environment[key], encoded.utf8.count <= 1_000_000, let data = Data(base64Encoded: encoded) {
@@ -439,6 +456,7 @@ struct SettingsView: View {
                     NavigationLink("词典管理") { DictionaryManagerView() }
                     NavigationLink("生词本") { VocabularyView() }
                     NavigationLink("字体库") { FontLibraryView() }
+                    NavigationLink("图片库") { ImageLibraryView() }
                     NavigationLink("主题与外观") { ThemeView() }
                 }
                 Section("听书") { NavigationLink("云端声音与缓存") { CloudSpeechView() } }
