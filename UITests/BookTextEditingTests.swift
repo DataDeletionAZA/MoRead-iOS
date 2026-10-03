@@ -70,10 +70,17 @@ final class BookTextEditingTests: XCTestCase {
         let paragraph = web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 01.")).firstMatch
         XCTAssertTrue(paragraph.waitForExistence(timeout: 15))
         app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
+        var selectedWord = "book"
         func editor() throws -> XCUIElement {
-            let line = web.staticTexts.allElementsBoundByIndex.first { $0.isHittable && $0.label.contains("After the rain") }
-            let frame = try XCTUnwrap(line).frame
-            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + min(80, frame.width / 2), dy: frame.minY + 12)).press(forDuration: 1.2)
+            let word = web.staticTexts.matching(NSPredicate(format: "label == %@", selectedWord)).firstMatch
+            if word.exists, word.isHittable {
+                word.press(forDuration: 1.2)
+            } else {
+                let line = web.staticTexts.allElementsBoundByIndex.first { $0.isHittable && $0.label.contains("After the rain") }
+                let frame = try XCTUnwrap(line).frame
+                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + min(80, frame.width / 2), dy: frame.minY + 12)).press(forDuration: 1.2)
+            }
+            screenshot(app, "epub-source-selection")
             func action() -> XCUIElement? {
                 if app.menuItems["编辑原文"].exists { return app.menuItems["编辑原文"] }
                 let button = app.collectionViews.buttons["编辑原文"]; return button.exists ? button : nil
@@ -84,7 +91,9 @@ final class BookTextEditingTests: XCTestCase {
             }
             try XCTUnwrap(action()).tap()
             let edit = app.textViews["source-edit-text"]
-            XCTAssertTrue(edit.waitForExistence(timeout: 10)); return edit
+            XCTAssertTrue(edit.waitForExistence(timeout: 10))
+            XCTAssertFalse((edit.value as? String ?? "").isEmpty)
+            return edit
         }
         var edit = try editor(), before = try XCTUnwrap(edit.value as? String)
         edit.tap(); edit.typeText("CANCELLED")
@@ -97,6 +106,7 @@ final class BookTextEditingTests: XCTestCase {
             app.buttons["source-edit-save"].tap()
             XCTAssertTrue(edit.waitForNonExistence(timeout: 30))
             XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", String(marker.prefix(7)))).firstMatch.waitForExistence(timeout: 20))
+            selectedWord = marker
         }
         screenshot(app, "epub-edited-source")
         app.buttons["目录"].tap(); app.buttons["第二章 来信"].tap()
