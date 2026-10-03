@@ -9,6 +9,7 @@ struct TextCleanupView: View {
     @EnvironmentObject private var speech: SpeechPlayer
     @State private var rules: [TextReplacementRule] = []
     @State private var editing: TextReplacementRule?
+    @State private var generating = false
     @State private var preview: BookTextCleanupPreview?
     @State private var task: Task<Void, Never>?
     @State private var confirmation = false
@@ -29,6 +30,7 @@ struct TextCleanupView: View {
                     save(selected + rules.filter { $0.forListeningOnly != listeningOnly })
                 }
                 Button("添加规则", systemImage: "plus") { var value = TextReplacementRule(); value.isRegex = false; value.forListeningOnly = listeningOnly; editing = value }.accessibilityIdentifier("cleanup-add")
+                Button("AI 生成规则", systemImage: "sparkles") { generating = true }.accessibilityIdentifier("cleanup-ai-open")
             } header: { Text(listeningOnly ? "听书净化规则" : "正文替换规则") } footer: { Text(listeningOnly ? "规则按顺序处理每句朗读文字，适用于 TXT 和 EPUB 的系统声音及云端声音。修改从下一句开始生效；书里的原文、书签和批注位置保持不变。" : "按从上到下的顺序应用。保存规则后，先预览再确认，才会修改这本书。规则也可用于其他 TXT 书籍。") }
             if listeningOnly {
                 Section {
@@ -80,6 +82,9 @@ struct TextCleanupView: View {
                 if let index = updated.firstIndex(where: { $0.id == value.id }) { updated[index] = value } else { updated.append(value) }
                 save(updated)
             }
+        }
+        .sheet(isPresented: $generating) {
+            TextCleanupGenerator(bookID: bookID, listeningOnly: listeningOnly) { value in save(rules + [value]) }
         }
         .alert("修改整本书正文？", isPresented: $confirmation) {
             Button("取消", role: .cancel) {}
@@ -150,7 +155,7 @@ struct TextCleanupView: View {
     }
 }
 
-private struct TextReplacementEditor: View {
+struct TextReplacementEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var rule: TextReplacementRule
     let save: (TextReplacementRule) -> Void
@@ -158,9 +163,18 @@ private struct TextReplacementEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("名称", text: $rule.name).accessibilityIdentifier("cleanup-rule-name")
-                TextField("匹配内容", text: $rule.pattern, axis: .vertical).accessibilityIdentifier("cleanup-pattern")
-                TextField("替换为（留空表示删除）", text: $rule.replacement, axis: .vertical).accessibilityIdentifier("cleanup-replacement")
+                VStack(alignment: .leading) {
+                    Text("名称").font(.caption).foregroundStyle(.secondary)
+                    TextField("名称", text: $rule.name).accessibilityIdentifier("cleanup-rule-name")
+                }
+                VStack(alignment: .leading) {
+                    Text("匹配内容").font(.caption).foregroundStyle(.secondary)
+                    TextField("匹配内容", text: $rule.pattern, axis: .vertical).accessibilityIdentifier("cleanup-pattern")
+                }
+                VStack(alignment: .leading) {
+                    Text("替换为（留空表示删除）").font(.caption).foregroundStyle(.secondary)
+                    TextField("替换为（留空表示删除）", text: $rule.replacement, axis: .vertical).accessibilityIdentifier("cleanup-replacement")
+                }
                 Toggle("忽略英文大小写", isOn: $rule.ignoreCase)
                 Section {
                     Toggle("使用正则表达式", isOn: $rule.isRegex).accessibilityIdentifier("cleanup-regex")
