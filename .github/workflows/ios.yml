@@ -9,6 +9,9 @@ on:
         type: string
         required: false
         default: ''
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.test || 'all' }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
