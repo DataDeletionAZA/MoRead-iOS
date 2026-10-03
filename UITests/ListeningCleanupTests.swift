@@ -1,7 +1,7 @@
 import XCTest
 
 final class ListeningCleanupTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     func testPurifiedPlaybackPreviewAndEmptyChapterTimer() {
         executionTimeAllowance = 300
         var wave = Data()

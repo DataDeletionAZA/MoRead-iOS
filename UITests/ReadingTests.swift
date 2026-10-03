@@ -513,7 +513,7 @@ final class ReadingTests: XCTestCase {
         tap("删除这张插图"); app.alerts.buttons["删除"].tap()
         XCTAssertTrue(app.navigationBars["插图廊"].waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, 1)
     }
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func revealListElement(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<35 {
             let top = app.navigationBars.firstMatch.exists ? app.navigationBars.firstMatch.frame.maxY + 8 : app.frame.minY + 60

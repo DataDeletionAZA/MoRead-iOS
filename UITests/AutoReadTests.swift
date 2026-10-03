@@ -1,7 +1,7 @@
 import XCTest
 
 final class AutoReadUITests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func status(_ app: XCUIApplication, _ text: String, timeout: Double = 10) {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", text), object: app.staticTexts["auto-read-status"])], timeout: timeout), .completed)
     }

@@ -1,7 +1,7 @@
 import XCTest
 
 final class EnglishReadingTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     func testInlineAndPopupVocabularyPreserveReadingText() {
         executionTimeAllowance = 300
         let app = XCUIApplication()

@@ -1,7 +1,7 @@
 import XCTest
 
 final class ChineseConversionTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     func testAllTXTPageModesOriginalSelectionBookmarksAndRestart() throws {
         executionTimeAllowance = 600
         let app = XCUIApplication()

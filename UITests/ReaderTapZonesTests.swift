@@ -1,7 +1,7 @@
 import XCTest
 
 final class ReaderTapZonesTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func configure(_ app: XCUIApplication) {
         app.buttons["排版"].tap(); app.buttons["操作区域"].tap()
         let enabled = app.switches["tap-zones-enabled"]

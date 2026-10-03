@@ -1,7 +1,7 @@
 import XCTest
 
 final class QuickBookmarkTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func pull(_ app: XCUIApplication, distance: CGFloat = 190) {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.35))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: distance)), withVelocity: .slow, thenHoldForDuration: 0.4)

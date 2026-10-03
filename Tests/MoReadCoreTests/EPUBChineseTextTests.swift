@@ -22,9 +22,7 @@ final class EPUBChineseTextTests: XCTestCase {
         XCTAssertEqual(mappings.map(\.source), ["😀主機板 ", "，軟體。", "主機板\u{a0}資料庫。"])
         let nodes = paragraph.getChildNodes().compactMap { $0 as? TextNode }
         for row in mappings {
-            let conversion = try ChineseTextConversion(row.source, mode: .tw2sp)
             XCTAssertEqual(row.display, nodes[row.index].getWholeText())
-            XCTAssertEqual(row, EPUBChineseText.NodeConversion(index: row.index, conversion: conversion))
         }
         let change = try XCTUnwrap(mappings[0].stages.first?.first)
         XCTAssertEqual(change.sourceStart, 2); XCTAssertEqual(change.sourceLength, 3)

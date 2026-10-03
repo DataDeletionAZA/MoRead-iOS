@@ -1,7 +1,7 @@
 import XCTest
 
 final class BookTextEditingTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func openBook(_ app: XCUIApplication) {
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
         XCTAssertTrue(book.waitForExistence(timeout: 10)); book.tap()

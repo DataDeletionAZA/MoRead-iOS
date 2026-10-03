@@ -1,7 +1,7 @@
 import XCTest
 
 final class DictionaryTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func fixture(_ name: String) throws -> String {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: nil, subdirectory: "Dictionary"))
         return try Data(contentsOf: url).base64EncodedString()

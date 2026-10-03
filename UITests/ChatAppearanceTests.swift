@@ -1,7 +1,7 @@
 import XCTest
 
 final class ChatAppearanceTests: XCTestCase {
-    override func setUp() { super.setUp(); continueAfterFailure = false }
+    override func setUp() { super.setUp(); continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     private func openEditor(_ app: XCUIApplication, name: String = "阿翎") {
         app.tabBars.buttons["伴读"].tap()
         app.staticTexts["角色与世界书"].tap()
