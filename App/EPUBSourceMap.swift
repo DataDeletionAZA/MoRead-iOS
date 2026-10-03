@@ -2,21 +2,7 @@ import Foundation
 import MoReadCore
 import ReadiumShared
 
-struct EPUBSourceBlock: Encodable {
-    let start: Int
-    let text: String
-    let selector: String
-
-    static func blocks(in chapter: Chapter, anchors: [EPUBAnchor]) throws -> [Self] {
-        let anchors = anchors.filter { $0.chapter == chapter.id }.sorted { $0.offset < $1.offset }
-        let source = chapter.text as NSString
-        return try anchors.enumerated().compactMap { index, anchor in
-            let end = (index + 1 < anchors.count ? anchors[index + 1].offset : source.length) - 1
-            guard anchor.offset >= 0, end > anchor.offset, end < source.length,
-                  let selector = try Locator(jsonString: anchor.locator)?.locations.cssSelector else { return nil }
-            return Self(start: anchor.offset, text: source.substring(with: NSRange(location: anchor.offset, length: end - anchor.offset)), selector: selector)
-        }
-    }
+extension EPUBSourceBlock {
     static func script(blocks: [Self], selecting: Bool, translations: [ParagraphTranslation]? = nil, restoring: Locator? = nil, typography: ReaderTypography? = nil, vocabulary: [String: DictionaryGloss] = [:]) throws -> String {
         guard let url = Bundle.main.url(forResource: "EPUBSourceMap", withExtension: "js") else { throw MoReadError.invalid("无法读取 EPUB 正文定位组件。") }
         let script = try String(contentsOf: url, encoding: .utf8)

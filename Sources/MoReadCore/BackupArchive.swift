@@ -158,6 +158,7 @@ public enum BackupArchive {
                 if entry.visible(in: book) { try library.validateKnowledge(entry) }
             }
             if book.format == "epub", book.hasBody {
+                _ = try library.epubOverrides(book.id)
                 guard manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("original.epub").path), manager.fileExists(atPath: library.directory(book.id).appendingPathComponent("epub-map.json").path) else { throw MoReadError.invalid("备份缺少 EPUB 正文或定位信息。") }
             }
         }

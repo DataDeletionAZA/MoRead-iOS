@@ -57,6 +57,62 @@ final class BookTextEditingTests: XCTestCase {
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); openBook(app)
         XCTAssertTrue((body.value as? String ?? "").contains("EDITED4"))
     }
+    func testEPUBSelectionEditPersistsInRendererSearchAndBookmarks() throws {
+        executionTimeAllowance = 360
+        let app = XCUIApplication(), url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "EnglishReading", withExtension: "epub"))
+        app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-epub"]
+        app.launch()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 20))
+        let paragraph = web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 01.")).firstMatch
+        XCTAssertTrue(paragraph.waitForExistence(timeout: 15))
+        app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
+        func editor() throws -> XCUIElement {
+            let line = web.staticTexts.allElementsBoundByIndex.first { $0.isHittable && $0.label.contains("After the rain") }
+            let frame = try XCTUnwrap(line).frame
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.minX + min(80, frame.width / 2), dy: frame.minY + 12)).press(forDuration: 1.2)
+            func action() -> XCUIElement? {
+                if app.menuItems["编辑原文"].exists { return app.menuItems["编辑原文"] }
+                let button = app.collectionViews.buttons["编辑原文"]; return button.exists ? button : nil
+            }
+            for _ in 0..<6 where action() == nil {
+                let next = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
+                if next.waitForExistence(timeout: 2) { next.tap() }
+            }
+            try XCTUnwrap(action()).tap()
+            let edit = app.textViews["source-edit-text"]
+            XCTAssertTrue(edit.waitForExistence(timeout: 10)); return edit
+        }
+        var edit = try editor(), before = try XCTUnwrap(edit.value as? String)
+        edit.tap(); edit.typeText("CANCELLED")
+        app.buttons["取消"].tap(); XCTAssertFalse(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "CANCELLED")).firstMatch.exists)
+        for marker in ["REVISED", "UPDATED\nNEXTLINE"] {
+            edit = try editor(); before = try XCTUnwrap(edit.value as? String)
+            edit.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0)).withOffset(CGVector(dx: 0, dy: 20)).tap()
+            edit.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: before.count) + marker)
+            XCTAssertEqual(edit.value as? String, marker)
+            app.buttons["source-edit-save"].tap()
+            XCTAssertTrue(edit.waitForNonExistence(timeout: 30))
+            XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", String(marker.prefix(7)))).firstMatch.waitForExistence(timeout: 20))
+        }
+        screenshot(app, "epub-edited-source")
+        app.buttons["目录"].tap(); app.buttons["第二章 来信"].tap()
+        app.buttons["书签"].tap(); app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.tap()
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "UPDATED")).firstMatch.waitForExistence(timeout: 15))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "UPDATED")).firstMatch.waitForExistence(timeout: 15))
+        screenshot(app, "epub-edited-source-restarted")
+        app.buttons["搜索"].tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("NEXTLINE")
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "NEXTLINE")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10)); result.tap()
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "NEXTLINE")).firstMatch.waitForExistence(timeout: 10))
+        screenshot(app, "epub-edited-source-search")
+    }
     func testChapterRecognitionPreviewCancelMergeSplitAndBookmarks() {
         executionTimeAllowance = 360
         let app = XCUIApplication(); start(app)

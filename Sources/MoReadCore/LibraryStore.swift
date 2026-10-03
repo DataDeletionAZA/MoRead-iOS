@@ -153,7 +153,7 @@ public final class LibraryStore {
         let staging = root.appendingPathComponent(".clear-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? manager.removeItem(at: staging) }
-        let contentNames = Set(book.chapters.map { "chapter-\($0.id).json" } + ["original.txt", "original.epub", "epub-map.json", "vectors.sqlite", "vectors.sqlite-journal"])
+        let contentNames = Set(book.chapters.map { "chapter-\($0.id).json" } + ["original.txt", "original.epub", "epub-map.json", "epub-overrides.json", "vectors.sqlite", "vectors.sqlite-journal"])
         for url in try manager.contentsOfDirectory(at: original, includingPropertiesForKeys: nil) where !contentNames.contains(url.lastPathComponent) && !(url.lastPathComponent.hasPrefix("speech-") && url.pathExtension == "mp3") {
             try manager.copyItem(at: url, to: staging.appendingPathComponent(url.lastPathComponent))
         }

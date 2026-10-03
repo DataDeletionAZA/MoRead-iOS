@@ -65,8 +65,8 @@ extension LibraryStore {
         }
         return try applyTextEdits(book: book, chapters: chapters, changes: changes, originalRecords: originalRecords)
     }
-    func applyTextEdits(book: Book, chapters: [Chapter], changes: [Int: TextCleanupResult], originalRecords: Data) throws -> Book {
-        guard !changes.isEmpty else { return book }
+    func applyTextEdits(book: Book, chapters: [Chapter], changes: [Int: TextCleanupResult], originalRecords: Data, extraFiles: [String: Data] = [:], epubAnchors: [EPUBAnchor]? = nil) throws -> Book {
+        guard !changes.isEmpty || !extraFiles.isEmpty else { return book }
         var updated = book; updated.chapters = chapters.map(ChapterInfo.init)
         func position(_ value: ReadingPosition) -> ReadingPosition {
             guard let change = changes[value.chapter] else { return value }
@@ -81,7 +81,7 @@ extension LibraryStore {
             var annotation = records.annotations[index]
             let passage = annotation.passage
             if let sourceThrough = annotation.sourceThrough { annotation.sourceThrough = position(sourceThrough) }
-            if let result = changes[passage.chapter], passage.bookID == book.id,
+            if let result = changes[passage.chapter], passage.bookID == book.id, book.chapters.indices.contains(passage.chapter),
                passage.revision == book.chapters[passage.chapter].revision,
                let mapped = result.mapUnchangedRange(NSRange(location: passage.offset, length: passage.text.utf16.count)),
                (result.text as NSString).substring(with: mapped) == passage.text {
@@ -89,9 +89,31 @@ extension LibraryStore {
             }
             records.annotations[index] = annotation
         }
-        return try commitTextChapters(book: book, updated: updated, chapters: chapters, records: records, originalRecords: originalRecords)
+        if let anchors = epubAnchors {
+            func locator(_ position: ReadingPosition, text: String? = nil) throws -> Data? {
+                guard chapters.indices.contains(position.chapter),
+                      let anchor = anchors.last(where: { $0.chapter == position.chapter && $0.offset <= position.offset }) ?? anchors.first(where: { $0.chapter == position.chapter }),
+                      var json = try JSONSerialization.jsonObject(with: Data(anchor.locator.utf8)) as? [String: Any] else { return nil }
+                let chapter = chapters[position.chapter], source = chapter.text as NSString
+                let start = TextBoundary.floor(position.offset, in: chapter.text)
+                let end = TextBoundary.floor(start + (text?.utf16.count ?? 80), in: chapter.text)
+                let before = TextBoundary.floor(max(anchor.offset, start - 80), in: chapter.text)
+                json["text"] = ["before": source.substring(with: NSRange(location: min(before, start), length: max(0, start - before))),
+                                "highlight": text ?? source.substring(with: NSRange(location: start, length: end - start))]
+                return try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+            }
+            updated.epubLocator = try locator(updated.position)
+            for index in records.bookmarks.indices { records.bookmarks[index].locator = try locator(records.bookmarks[index].position) }
+            for index in records.annotations.indices {
+                let passage = records.annotations[index].passage
+                if passage.bookID == book.id, chapters.indices.contains(passage.chapter), passage.isValid(in: chapters[passage.chapter], scope: .wholeBook) {
+                    records.annotations[index].passage.epubLocator = try locator(.init(chapter: passage.chapter, offset: passage.offset), text: passage.text)
+                }
+            }
+        }
+        return try commitTextChapters(book: book, updated: updated, chapters: chapters, records: records, originalRecords: originalRecords, extraFiles: extraFiles)
     }
-    func commitTextChapters(book: Book, updated: Book, chapters: [Chapter], records: BookRecords, originalRecords: Data) throws -> Book {
+    func commitTextChapters(book: Book, updated: Book, chapters: [Chapter], records: BookRecords, originalRecords: Data, extraFiles: [String: Data] = [:]) throws -> Book {
         let original = directory(book.id), recordsURL = original.appendingPathComponent("records.json")
         let manager = FileManager.default, staging = root.appendingPathComponent(".text-edit-" + UUID().uuidString, isDirectory: true)
         try Task.checkCancellation()
@@ -101,6 +123,10 @@ extension LibraryStore {
         for chapter in chapters {
             try Task.checkCancellation()
             try encoder.encode(chapter).write(to: staging.appendingPathComponent("chapter-\(chapter.id).json"), options: .atomic)
+        }
+        for (name, data) in extraFiles {
+            guard ["epub-map.json", "epub-overrides.json"].contains(name) else { throw MoReadError.invalid("正文修订文件名无效。") }
+            try data.write(to: staging.appendingPathComponent(name), options: .atomic)
         }
         try encoder.encode(records).write(to: staging.appendingPathComponent("records.json"), options: .atomic)
         try encoder.encode(updated).write(to: staging.appendingPathComponent("book.json"), options: .atomic)

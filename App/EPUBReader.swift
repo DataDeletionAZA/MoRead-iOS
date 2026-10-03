@@ -6,12 +6,6 @@ import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
 
-struct EPUBAnchor: Codable {
-    let chapter: Int
-    let offset: Int
-    let locator: String
-}
-
 struct EPUBJump {
     let bookID: UUID
     let chapter: Int
@@ -30,11 +24,17 @@ final class EPUBService {
     private lazy var assets = AssetRetriever(httpClient: http)
     private lazy var opener = PublicationOpener(parser: DefaultPublicationParser(httpClient: http, assetRetriever: assets, pdfFactory: DefaultPDFDocumentFactory()))
 
-    func open(_ url: URL) async throws -> Publication {
+    func open(_ url: URL, overrides: [String: String] = [:]) async throws -> Publication {
         guard let file = FileURL(url: url) else { throw MoReadError.invalid("书籍地址无效。") }
         let asset = try await assets.retrieve(url: file).get()
-        let publication = try await opener.open(asset: asset, allowUserInteraction: false).get()
+        let publication = try await opener.open(asset: asset, allowUserInteraction: false, onCreatePublication: { _, container, _ in
+            container = container.map { href, resource in
+                guard let html = overrides[href.string] else { return resource }
+                return resource.map { _ in Data(html.utf8) }
+            }
+        }).get()
         guard !publication.isRestricted else { throw MoReadError.invalid("这本 EPUB 有加密保护，无法直接打开。") }
+        guard !publication.readingOrder.isEmpty else { throw MoReadError.invalid("EPUB 的阅读顺序为空。") }
         return publication
     }
 
@@ -42,6 +42,14 @@ final class EPUBService {
         let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard fileSize < 500 * 1024 * 1024 else { throw MoReadError.invalid("EPUB 超过 500 MB，请先缩小书籍文件。") }
         let publication = try await open(url)
+        let (chapters, anchors) = try await extract(publication)
+        let cover = try await embeddedCover(in: publication)
+        try Task.checkCancellation()
+        return try store.importBook(title: publication.metadata.title ?? url.deletingPathExtension().lastPathComponent,
+                                    author: publication.metadata.authors.map(\.name).joined(separator: "、"),
+                                    chapters: chapters, original: url, format: "epub", readingMap: JSONEncoder().encode(anchors), cover: cover)
+    }
+    private func extract(_ publication: Publication) async throws -> ([MoReadCore.Chapter], [EPUBAnchor]) {
         let links = publication.readingOrder
         guard !links.isEmpty, links.count <= 50_000 else { throw MoReadError.invalid("EPUB 的阅读顺序无效。") }
         var chapters = links.enumerated().map { MoReadCore.Chapter(id: $0.offset, title: $0.element.title ?? "第 \($0.offset + 1) 章", text: "") }
@@ -66,11 +74,34 @@ final class EPUBService {
                 chapters[index].text += text + "\n"
             }
         }
-        let cover = try await embeddedCover(in: publication)
+        return (chapters, anchors)
+    }
+    func replaceSelectedText(_ passage: SourcePassage, with replacement: String, store: LibraryStore) async throws -> Book {
+        let book = try store.book(passage.bookID), source = try store.chapter(passage.chapter, in: book)
+        guard book.format == "epub", book.hasBody, !book.removed, passage.isValid(in: source, scope: .wholeBook) else { throw MoReadError.invalid("选中的原文已变化，请重新选择。") }
+        let directory = store.directory(book.id), original = directory.appendingPathComponent("original.epub")
+        let records = try Data(contentsOf: directory.appendingPathComponent("records.json")), oldOverrides = try store.epubOverrides(book.id)
+        let anchors = try JSONDecoder().decode([EPUBAnchor].self, from: Data(contentsOf: directory.appendingPathComponent("epub-map.json")))
+        let publication = try await open(original, overrides: oldOverrides)
+        guard publication.readingOrder.indices.contains(passage.chapter), let resource = publication.get(publication.readingOrder[passage.chapter]) else { throw MoReadError.invalid("无法读取所选章节的排版内容。") }
+        defer { resource.close() }
+        let href = publication.readingOrder[passage.chapter].url().string.components(separatedBy: "#")[0]
+        let data = try await resource.read(range: 0..<UInt64(16 * 1024 * 1024 + 1)).get()
+        guard data.count <= 16 * 1024 * 1024, let html = String(data: data, encoding: .utf8) else { throw MoReadError.invalid("本页过大或文字编码无法识别。") }
+        let worker = Task.detached {
+            try EPUBTextEditing.replace(html: html, chapter: source, anchors: anchors, range: NSRange(location: passage.offset, length: passage.text.utf16.count), with: replacement)
+        }
+        let edited = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+        var overrides = oldOverrides; overrides[href] = edited
+        let updated = try await open(original, overrides: overrides)
+        let (chapters, newAnchors) = try await extract(updated)
         try Task.checkCancellation()
-        return try store.importBook(title: publication.metadata.title ?? url.deletingPathExtension().lastPathComponent,
-                                    author: publication.metadata.authors.map(\.name).joined(separator: "、"),
-                                    chapters: chapters, original: url, format: "epub", readingMap: JSONEncoder().encode(anchors), cover: cover)
+        guard chapters.count == book.chapters.count, chapters.enumerated().allSatisfy({ $0.offset == passage.chapter || ChapterInfo($0.element) == book.chapters[$0.offset] }) else { throw MoReadError.invalid("修订影响了其他章节，原书籍已保留。") }
+        let root = store.root, savedOverrides = overrides
+        let commit = Task.detached {
+            try LibraryStore(root: root).commitEPUBEdit(book: book, passage: passage, chapters: chapters, anchors: newAnchors, overrides: savedOverrides, originalRecords: records, originalOverrides: oldOverrides)
+        }
+        return try await withTaskCancellationHandler { try await commit.value } onCancel: { commit.cancel() }
     }
     private func embeddedCover(in publication: Publication) async throws -> Data? {
         var links = publication.linksWithRel(.cover)
@@ -112,10 +143,11 @@ struct EPUBReader: UIViewControllerRepresentable {
     let onSelection: (SourcePassage, Bool) -> Void
     let onVisiblePage: (SourcePassage?) -> Void
     let onDictionary: (String, SourcePassage?) -> Void
+    let onEdit: (SourcePassage) -> Void
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, tapZones: tapZones, onTapAction: onTapAction, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary)
+        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, tapZones: tapZones, onTapAction: onTapAction, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary, onEdit: onEdit)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.tapZones = tapZones
@@ -148,6 +180,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let onSelection: (SourcePassage, Bool) -> Void
     private let onVisiblePage: (SourcePassage?) -> Void
     private let onDictionary: (String, SourcePassage?) -> Void
+    private let onEdit: (SourcePassage) -> Void
     private var navigator: EPUBNavigatorViewController?
     private var anchors: [EPUBAnchor] = []
     private var openTask: Task<Void, Never>?
@@ -166,12 +199,12 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
-    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, tapZones: ReaderTapZones?, onTapAction: @escaping (ReaderTapAction) -> Void, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void) {
+    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, tapZones: ReaderTapZones?, onTapAction: @escaping (ReaderTapAction) -> Void, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void, onEdit: @escaping (SourcePassage) -> Void) {
         self.tapZones = tapZones; self.onTapAction = onTapAction
         self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage; self.initialPassageScope = initialPassageScope
-        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage; self.onDictionary = onDictionary
+        self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage; self.onDictionary = onDictionary; self.onEdit = onEdit
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -192,7 +225,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
             guard let self, let book = model.books.first(where: { $0.id == self.bookID }), let store = model.store else { return }
             do {
                 let directory = store.directory(bookID)
-                let publication = try await EPUBService.shared.open(directory.appendingPathComponent("original.epub"))
+                let publication = try await EPUBService.shared.open(directory.appendingPathComponent("original.epub"), overrides: store.epubOverrides(bookID))
                 try Task.checkCancellation()
                 anchors = try JSONDecoder().decode([EPUBAnchor].self, from: Data(contentsOf: directory.appendingPathComponent("epub-map.json")))
                 let locator: Locator?
@@ -201,14 +234,18 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                           passage.bookID == bookID, passage.isValid(in: try store.chapter(passage.chapter, in: current), scope: initialPassageScope ?? ReadingScope(through: current.readThrough)),
                           let exact = self.locator(for: passage, publication: publication) else { throw MoReadError.invalid("原文或已读范围已经变化，请重新打开。") }
                     locator = exact
-                } else { locator = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) } }
+                } else {
+                    let saved = try book.epubLocator.flatMap { try Locator(json: JSONSerialization.jsonObject(with: $0)) }
+                    let link = publication.readingOrder[min(book.position.chapter, publication.readingOrder.count - 1)]
+                    locator = saved ?? Locator(href: link.url(), mediaType: link.mediaType ?? .xhtml, locations: .init(progression: 0))
+                }
                 pendingTranslationLocator = locator
                 var templates = HTMLDecorationTemplate.defaultTemplates()
                 templates["wave"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-wave'/>", stylesheet: """
                 .moread-wave { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%23d67b16' stroke-width='1.3'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom; }
                 """)
                 var config = EPUBNavigatorViewController.Configuration(preferences: preferences,
-                    editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate)), EditingAction(title: "查字词", action: #selector(lookupSelection))], decorationTemplates: templates)
+                    editingActions: EditingAction.defaultActions + [EditingAction(title: "批注", action: #selector(annotate)), EditingAction(title: "编辑原文", action: #selector(editSelection)), EditingAction(title: "查字词", action: #selector(lookupSelection))], decorationTemplates: templates)
                 if let url = Bundle.main.url(forResource: "NotoSerifSC", withExtension: "ttf"), let file = FileURL(url: url) {
                     config.fontFamilyDeclarations.append(CSSFontFamilyDeclaration(fontFamily: "Noto Serif SC", alternates: [.serif], fontFaces: [CSSFontFace(file: file, weight: .variable(200...900))]).eraseToAnyHTMLFontFamilyDeclaration())
                 }
@@ -457,6 +494,18 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 onDictionary(text, matches ? result?.passage : nil); navigator?.clearSelection()
             } catch is CancellationError { }
             catch { if !Task.isCancelled, isReading { onDictionary(text, nil); navigator?.clearSelection() } }
+        }
+    }
+    @objc private func editSelection() {
+        guard isReading, let selected = navigator?.currentSelection else { return }
+        selectionTask?.cancel()
+        selectionTask = Task {
+            do {
+                guard let result = try await sourcePassage(selecting: true), !result.translation,
+                      result.passage.text.filter({ !$0.isWhitespace }) == selected.locator.text.highlight?.filter({ !$0.isWhitespace }) else { throw MoReadError.invalid("请选择可准确定位的原文，译文可在段落翻译中编辑。") }
+                try Task.checkCancellation(); guard isReading else { return }
+                onEdit(result.passage); navigator?.clearSelection()
+            } catch is CancellationError {} catch { model.error = error.localizedDescription }
         }
     }
     @objc private func annotate() {

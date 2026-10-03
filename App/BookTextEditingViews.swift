@@ -44,8 +44,13 @@ struct TextSelectionEditor: View {
             defer { library.maintenanceTitle = nil; library.cancelMaintenance = nil; task = nil }
             do {
                 await speech.stopAndWait(); await companion.stopAndWait(); try Task.checkCancellation()
-                let worker = Task.detached { try LibraryStore(root: root).replaceSelectedText(passage, with: replacement) }
-                _ = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                let store = try LibraryStore(root: root)
+                if try store.book(passage.bookID).format == "epub" {
+                    _ = try await EPUBService.shared.replaceSelectedText(passage, with: replacement, store: store)
+                } else {
+                    let worker = Task.detached { try store.replaceSelectedText(passage, with: replacement) }
+                    _ = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                }
                 library.load(); companion.load(); onSaved()
             } catch is CancellationError {} catch { self.error = error.localizedDescription }
         }
