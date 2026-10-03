@@ -53,7 +53,7 @@ struct ReaderView: View {
     private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
     enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead, dictionary; var id: String { rawValue } }
 
-    var body: some View {
+    private var readingScreen: some View {
         Group {
             if let initialSourceError {
                 ContentUnavailableView("无法打开原文", systemImage: "book.closed", description: Text(initialSourceError))
@@ -102,12 +102,20 @@ struct ReaderView: View {
                     .sheet(item: $selection) { passage in selectionSheet(passage: passage) }
             } else { ContentUnavailableView("书籍已移除", systemImage: "book.closed") }
         }
+    }
+
+    private var observedReader: some View {
+        readingScreen
         .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: model.recordsRevision) { _, _ in
             if let book { model.perform { if let value = try model.store?.records(for: book) { records = value }; refreshTranslations() } }
         }
         .onChange(of: model.vocabularyRevision) { _, _ in model.perform { wordGlosses = EnglishReading.unlearned(try model.vocabulary?.words() ?? []) } }
+    }
+
+    var body: some View {
+        observedReader
         .overlay { autoReadOverlay }
         .onDisappear { autoRead.stop(); companion.setAnnotationReader(nil, library: model); recordTime(); model.flush(); searchTask?.cancel() }
         .onChange(of: scenePhase) { _, phase in
