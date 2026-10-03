@@ -176,10 +176,10 @@ struct EPUBReader: UIViewControllerRepresentable {
 }
 
 @MainActor
-final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
+final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate {
     private let autoRead: AutoReadSession
     private let autoReadOwner = UUID()
-    var isReading: Bool { didSet { if !isReading { bookmarkPull?.cancel() } } }
+    var isReading: Bool { didSet { if !isReading { bookmarkPull?.cancel() }; updateKeyboard() } }
     private let onBookmark: () -> String
     var tapZones: ReaderTapZones?
     private let onTapAction: (ReaderTapAction) -> Void
@@ -222,8 +222,37 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+    override var keyboardReady: Bool { !closed && isReading }
+    override func turnWithKey(_ forward: Bool) {
+        guard !closed, isReading, let navigator, navigator.currentSelection == nil else { return }
+        var surface = navigator.view.hitTest(CGPoint(x: navigator.view.bounds.midX, y: navigator.view.bounds.midY), with: nil)
+        while let node = surface, !(node is WKWebView) { surface = node.superview }
+        Task { await turnPage(forward, surface: surface) }
+    }
+    private func turnPage(_ forward: Bool, surface: UIView?) async {
+        guard !closed, isReading, let reader = navigator, reader.currentSelection == nil else { return }
+        if reader.settings.scroll, let web = surface as? WKWebView {
+            let result = await reader.evaluateJavaScript("getComputedStyle(document.documentElement).writingMode.startsWith('vertical')")
+            guard let horizontal = (try? result.get()) as? Bool, !closed, isReading else { return }
+            let scroll = web.scrollView, inset = scroll.adjustedContentInset
+            let position = horizontal ? scroll.contentOffset.x : scroll.contentOffset.y
+            let length = horizontal ? scroll.bounds.width : scroll.bounds.height
+            let lower = horizontal ? -inset.left : -inset.top
+            let upper = max(lower, (horizontal ? scroll.contentSize.width + inset.right : scroll.contentSize.height + inset.bottom) - length)
+            let step = length * 0.9 * (!forward ? -1 : 1) * (horizontal ? -1 : 1)
+            let target = min(upper, max(lower, position + step))
+            if abs(target - position) > 0.5 {
+                var offset = scroll.contentOffset
+                if horizontal { offset.x = target } else { offset.y = target }
+                scroll.setContentOffset(offset, animated: !UIAccessibility.isReduceMotionEnabled); return
+            }
+        }
+        if !forward { _ = await reader.goBackward(options: NavigatorGoOptions(animated: !UIAccessibility.isReduceMotionEnabled)) }
+        else { _ = await reader.goForward(options: NavigatorGoOptions(animated: !UIAccessibility.isReduceMotionEnabled)) }
+    }
     override func viewDidLoad() {
         super.viewDidLoad()
+        keyboardSession = autoRead
         view.addGestureRecognizer(AutoReadTouch(autoRead))
         autoRead.attach(autoReadOwner) { [weak self] amount in
             guard let self else { return .waiting }
@@ -583,24 +612,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 let action = tapZones.action(x: local.x - surface.bounds.minX, y: local.y - surface.bounds.minY, width: surface.bounds.width, height: surface.bounds.height)
                 switch action {
                 case .previousPage, .nextPage:
-                    if reader.settings.scroll, let web = surface as? WKWebView {
-                        let result = await reader.evaluateJavaScript("getComputedStyle(document.documentElement).writingMode.startsWith('vertical')")
-                        guard let horizontal = (try? result.get()) as? Bool, !closed, isReading else { return }
-                        let scroll = web.scrollView, inset = scroll.adjustedContentInset
-                        let position = horizontal ? scroll.contentOffset.x : scroll.contentOffset.y
-                        let length = horizontal ? scroll.bounds.width : scroll.bounds.height
-                        let lower = horizontal ? -inset.left : -inset.top
-                        let upper = max(lower, (horizontal ? scroll.contentSize.width + inset.right : scroll.contentSize.height + inset.bottom) - length)
-                        let step = length * 0.9 * (action == .previousPage ? -1 : 1) * (horizontal ? -1 : 1)
-                        let target = min(upper, max(lower, position + step))
-                        if abs(target - position) > 0.5 {
-                            var offset = scroll.contentOffset
-                            if horizontal { offset.x = target } else { offset.y = target }
-                            scroll.setContentOffset(offset, animated: !UIAccessibility.isReduceMotionEnabled); return
-                        }
-                    }
-                    if action == .previousPage { _ = await reader.goBackward(options: NavigatorGoOptions(animated: !UIAccessibility.isReduceMotionEnabled)) }
-                    else { _ = await reader.goForward(options: NavigatorGoOptions(animated: !UIAccessibility.isReduceMotionEnabled)) }
+                    await turnPage(action == .nextPage, surface: surface)
                 case .toggleBookmark:
                     guard await refreshVisiblePage(recordPosition: true).value, !closed, isReading else { return }
                     onTapAction(action)

@@ -21,7 +21,7 @@ struct PagedTextReader: UIViewControllerRepresentable {
 }
 
 @MainActor
-final class TextPagesController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
+final class TextPagesController: ReaderKeyboardController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
     private var parentReader: PagedTextReader
     private var textStorage = NSTextStorage()
     private var layout = AnnotationLayoutManager()
@@ -54,10 +54,17 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
 
     init(_ parent: PagedTextReader) { parentReader = parent; anchor = parent.content.presentation.displayOffset(forSource: parent.content.offset); super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    func deactivate() { bookmarkPull?.cancel(); parentReader.content.autoRead.detach(autoReadOwner); active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
+    func deactivate() { NotificationCenter.default.removeObserver(self); bookmarkPull?.cancel(); parentReader.content.autoRead.detach(autoReadOwner); active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
     func cancel() { generation = UUID(); pagination?.cancel(); pagination = nil }
+    override var keyboardReady: Bool { active && parentReader.content.isReading }
+    override func turnWithKey(_ forward: Bool) {
+        guard active, parentReader.content.isReading, !transitioning, pagination == nil, !needsPagination,
+              ((visible ?? pager?.viewControllers?.first as? TextPageController)?.textView?.selectedRange.length ?? 0) == 0 else { return }
+        turn(forward ? 1 : -1)
+    }
     override func viewDidLoad() {
         super.viewDidLoad()
+        keyboardSession = parentReader.content.autoRead
         view.addGestureRecognizer(AutoReadTouch(parentReader.content.autoRead))
         parentReader.content.autoRead.attach(autoReadOwner) { [weak self] amount in
             guard let self, active, parentReader.content.isReading, !needsPagination, pagination == nil, !transitioning,
@@ -122,6 +129,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         loadViewIfNeeded()
         let old = parentReader.content
         parentReader = parent
+        updateKeyboard()
         let content = parent.content
         pager?.gestureRecognizers.filter { $0 is UITapGestureRecognizer }.forEach { $0.isEnabled = content.tapZones == nil }
         footer.isHidden = content.immersive; footerHeight.constant = content.immersive ? 0 : 44

@@ -120,3 +120,89 @@ final class ReaderTapZonesTests: XCTestCase {
         app.buttons["完成"].tap()
     }
 }
+
+extension ReaderTapZonesTests {
+    func testKeyboardRecordingPagingInputIsolationAndRestart() throws {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--translation-pages-sample"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["无动画翻页"].tap()
+        app.buttons["按键翻页"].tap()
+        let enabled = app.switches["reader-keys-enabled"]
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10)); XCTAssertEqual(enabled.value as? String, "0"); enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["record-next-key"].tap()
+        XCTAssertTrue(app.staticTexts["recorded-key"].waitForExistence(timeout: 10))
+        app.typeKey("j", modifierFlags: [])
+        XCTAssertEqual(app.staticTexts["recorded-key"].label, "J")
+        XCTAssertTrue(app.buttons["record-key-save"].isEnabled); app.buttons["record-key-save"].tap()
+        let keyShot = XCTAttachment(screenshot: app.screenshot()); keyShot.name = "reader-key-bindings"; keyShot.lifetime = .keepAlways; add(keyShot)
+        app.buttons["reader-keys-save"].tap(); app.buttons["完成"].tap()
+        let page = app.staticTexts["reader-page-number"]
+        XCTAssertTrue(page.waitForExistence(timeout: 15))
+        func pageIs(_ number: Int) {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", "本章 \(number) /"), object: page)], timeout: 10), .completed)
+        }
+        pageIs(1); app.typeKey("j", modifierFlags: []); pageIs(2)
+        app.typeKey(.leftArrow, modifierFlags: []); pageIs(1)
+        app.buttons["搜索"].tap(); let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("j")
+        XCTAssertEqual(search.value as? String, "j")
+        app.typeKey("j", modifierFlags: []); XCTAssertNotEqual(search.value as? String, "j")
+        if app.buttons["close"].exists { app.buttons["close"].tap() }
+        app.buttons["完成"].tap(); pageIs(1)
+        app.typeKey("j", modifierFlags: []); pageIs(2)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap(); pageIs(2)
+        app.typeKey(.leftArrow, modifierFlags: []); pageIs(1)
+        for mode in ["滑动翻页", "覆盖翻页", "仿真翻页"] {
+            app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons[mode].tap(); app.buttons["完成"].tap()
+            pageIs(1); app.typeKey("j", modifierFlags: []); pageIs(2)
+            app.typeKey(.leftArrow, modifierFlags: []); pageIs(1)
+        }
+        app.buttons["排版"].tap(); app.buttons["reader-page-mode"].tap(); app.buttons["上下滚动"].tap(); app.buttons["完成"].tap()
+        let table = app.tables["continuous-reader"]
+        XCTAssertTrue(table.waitForExistence(timeout: 10)); let before = table.screenshot().pngRepresentation
+        app.typeKey("j", modifierFlags: []); XCTAssertNotEqual(table.screenshot().pngRepresentation, before)
+        app.typeKey(.leftArrow, modifierFlags: [])
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in table.screenshot().pngRepresentation == before }, object: nil)], timeout: 10), .completed)
+        XCTAssertFalse(app.alerts["需要处理"].exists)
+    }
+}
+
+extension ReaderTapZonesTests {
+    func testEPUBKeyboardPagesScrollAndDisable() throws {
+        executionTimeAllowance = 180
+        let app = XCUIApplication(), url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "EnglishReading", withExtension: "epub"))
+        app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-epub"]; app.launch()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 20))
+        app.buttons["排版"].tap(); app.buttons["按键翻页"].tap()
+        let enabled = app.switches["reader-keys-enabled"]
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10)); XCTAssertEqual(enabled.value as? String, "0"); enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["reader-keys-save"].tap(); app.buttons["完成"].tap()
+        for scrolling in [false, true] {
+            if scrolling {
+                app.buttons["排版"].tap(); app.buttons["epub-page-mode"].tap(); app.buttons["上下滚动"].tap(); app.buttons["完成"].tap()
+            }
+            XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 01.")).firstMatch.waitForExistence(timeout: 15))
+            let before = web.screenshot().pngRepresentation
+            app.typeKey(.rightArrow, modifierFlags: [])
+            XCTAssertNotEqual(web.screenshot().pngRepresentation, before)
+            app.typeKey(.leftArrow, modifierFlags: [])
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in web.screenshot().pngRepresentation == before }, object: nil)], timeout: 10), .completed)
+        }
+        app.buttons["排版"].tap(); app.buttons["按键翻页"].tap()
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["reader-keys-save"].tap(); app.buttons["完成"].tap()
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap()
+        app.buttons["排版"].tap(); app.buttons["按键翻页"].tap()
+        XCTAssertEqual(enabled.value as? String, "0")
+    }
+}

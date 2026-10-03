@@ -273,6 +273,7 @@ struct ReaderView: View {
                     Form {
                         Button("进入沉浸阅读", systemImage: "arrow.up.left.and.arrow.down.right") { sheet = nil; immersive = true }.accessibilityIdentifier("enter-immersive")
                         NavigationLink("操作区域") { ReaderTapZonesView() }
+                        NavigationLink("按键翻页") { ReaderKeysView() }
                         Text(tapZones == nil ? "轻点正文中间可显示或收起阅读工具。" : "点按已设定的菜单区域可显示或收起阅读工具。").font(.caption).foregroundStyle(.secondary)
                         Group {
                             Picker("繁简转换", selection: Binding(get: { self.book?.chineseConversion ?? .off }, set: { mode in

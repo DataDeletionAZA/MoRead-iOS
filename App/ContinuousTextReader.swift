@@ -17,7 +17,7 @@ struct ContinuousTextReader: UIViewControllerRepresentable {
 }
 
 @MainActor
-final class ContinuousTextController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate {
+final class ContinuousTextController: ReaderKeyboardController, UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate {
     private var parentReader: ContinuousTextReader
     private let table = UITableView(frame: .zero, style: .plain)
     private let backdrop = ReaderTextView(frame: .zero)
@@ -40,8 +40,16 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         super.init(nibName: nil, bundle: nil)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+    override var keyboardReady: Bool { active && parentReader.content.isReading }
+    override func turnWithKey(_ forward: Bool) {
+        guard active, !restoring, parentReader.content.isReading,
+              table.visibleCells.allSatisfy({ (($0 as? ContinuousChapterCell)?.textView.selectedRange.length ?? 0) == 0 }) else { return }
+        let step = table.bounds.height * 0.9 * (forward ? 1 : -1)
+        table.setContentOffset(CGPoint(x: 0, y: min(max(0, table.contentSize.height - table.bounds.height), max(0, table.contentOffset.y + step))), animated: !UIAccessibility.isReduceMotionEnabled)
+    }
     override func viewDidLoad() {
         super.viewDidLoad()
+        keyboardSession = parentReader.content.autoRead
         table.dataSource = self; table.delegate = self
         table.separatorStyle = .none; table.allowsSelection = false
         table.contentInsetAdjustmentBehavior = .never
@@ -66,6 +74,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
         updatePaper()
     }
     func close() {
+        NotificationCenter.default.removeObserver(self)
         active = false; generation = UUID(); parentReader.content.autoRead.detach(owner)
         table.delegate = nil; table.dataSource = nil; cache.removeAll()
     }
@@ -95,6 +104,7 @@ final class ContinuousTextController: UIViewController, UITableViewDataSource, U
     func update(_ parent: ContinuousTextReader) {
         let old = parentReader
         parentReader = parent
+        updateKeyboard()
         loadViewIfNeeded()
         updatePaper()
         let navigation = old.content.navigationID != parent.content.navigationID
