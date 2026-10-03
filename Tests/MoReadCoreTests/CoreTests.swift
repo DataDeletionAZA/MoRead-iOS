@@ -2,6 +2,19 @@ import XCTest
 @testable import MoReadCore
 
 final class CoreTests: XCTestCase {
+    func testBookmarkLocationIgnoresJSONKeyOrderButPreservesExactSource() {
+        let position = ReadingPosition(chapter: 1, offset: 42)
+        let first = Data(##"{"href":"chapter.xhtml","locations":{"cssSelector":"#p"},"text":{"highlight":"A"}}"##.utf8)
+        let reordered = Data(##"{ "text": {"highlight":"A"}, "locations":{"cssSelector":"#p"}, "href":"chapter.xhtml" }"##.utf8)
+        let bookmark = Bookmark(position: position, label: "chapter", locator: first)
+        XCTAssertNotEqual(first, reordered)
+        XCTAssertTrue(bookmark.isAt(position: position, locator: reordered))
+        XCTAssertFalse(bookmark.isAt(position: ReadingPosition(chapter: 1, offset: 43), locator: reordered))
+        XCTAssertFalse(bookmark.isAt(position: position, locator: Data(#"{"href":"other.xhtml"}"#.utf8)))
+        XCTAssertFalse(bookmark.isAt(position: position, locator: nil))
+        XCTAssertFalse(bookmark.isAt(position: position, locator: Data("invalid".utf8)))
+        XCTAssertTrue(Bookmark(position: position, label: "TXT").isAt(position: position, locator: nil))
+    }
     func testReaderTypographyRoundTripAndBounds() throws {
         var value = ReaderTypography()
         value.customFontID = UUID(); value.epubScroll = true

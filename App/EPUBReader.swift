@@ -94,6 +94,8 @@ final class EPUBService {
 
 struct EPUBReader: UIViewControllerRepresentable {
     let autoRead: AutoReadSession
+    let isReading: Bool
+    let onBookmark: () -> String
     let book: Book
     let initialPassage: SourcePassage?
     let fontSize: Double
@@ -109,9 +111,10 @@ struct EPUBReader: UIViewControllerRepresentable {
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(autoRead: autoRead, book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage)
+        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, book: book, initialPassage: initialPassage, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
+        controller.isReading = isReading
         controller.setPreferences(fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper)
         controller.setAnnotations(annotations)
         controller.setSpeechLocation(speechLocation)
@@ -124,6 +127,9 @@ struct EPUBReader: UIViewControllerRepresentable {
 final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private let autoRead: AutoReadSession
     private let autoReadOwner = UUID()
+    var isReading: Bool { didSet { if !isReading { bookmarkPull?.cancel() } } }
+    private let onBookmark: () -> String
+    private var bookmarkPull: BookmarkPull?
     private var closed = false
     private let bookID: UUID
     private let initialPassage: SourcePassage?
@@ -135,7 +141,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var navigator: EPUBNavigatorViewController?
     private var anchors: [EPUBAnchor] = []
     private var openTask: Task<Void, Never>?
-    private var locationTask: Task<Void, Never>?
+    private var locationTask: Task<Bool, Never>?
     private var selectionTask: Task<Void, Never>?
     private var fontSize: Double
     private var lineSpacing: Double
@@ -148,8 +154,8 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
-    init(autoRead: AutoReadSession, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
-        self.autoRead = autoRead
+    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, book: Book, initialPassage: SourcePassage?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void) {
+        self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
         bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
         self.initialPassage = initialPassage
         self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage
@@ -206,6 +212,15 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                 reader.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                 view.addSubview(reader.view); reader.didMove(toParent: self)
                 renderAnnotations()
+                bookmarkPull = BookmarkPull(in: reader.view, canStart: { [weak self] in
+                    guard let self, let navigator else { return false }
+                    return !closed && isReading && navigator.currentLocation != nil && !navigator.settings.scroll && navigator.currentSelection == nil && !model.maintenance
+                }, save: { [weak self] in
+                    guard let self else { return "阅读页已关闭" }
+                    let capture = refreshVisiblePage(recordPosition: true)
+                    guard await capture.value, !closed, isReading, !Task.isCancelled else { return "阅读位置已改变，请重试" }
+                    return onBookmark()
+                })
                 spinner.removeFromSuperview()
             } catch is CancellationError {} catch { model.error = error.localizedDescription; spinner.stopAnimating() }
         }
@@ -236,6 +251,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
     }
     func setPreferences(fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String) {
         guard fontSize != self.fontSize || lineSpacing != self.lineSpacing || paper != self.paper || typography != self.typography else { return }
+        bookmarkPull?.cancel()
         self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; navigator?.submitPreferences(preferences)
     }
     func setAnnotations(_ value: [Annotation]) {
@@ -289,7 +305,7 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         super.viewWillTransition(to: size, with: coordinator)
     }
     func close() {
-        closed = true; autoRead.detach(autoReadOwner)
+        closed = true; bookmarkPull?.cancel(); autoRead.detach(autoReadOwner)
         openTask?.cancel(); locationTask?.cancel(); selectionTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
@@ -334,16 +350,17 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
         guard notification.object as? UUID == bookID else { return }
         refreshVisiblePage(recordPosition: false)
     }
-    private func refreshVisiblePage(recordPosition: Bool) {
+    @discardableResult private func refreshVisiblePage(recordPosition: Bool) -> Task<Bool, Never> {
         locationTask?.cancel()
-        locationTask = Task { [weak self] in
-            guard let self, !Task.isCancelled, !closed else { return }
+        let task = Task { [weak self] in
+            guard let self, !Task.isCancelled, !closed else { return false }
             onVisiblePage(nil)
             do {
                 let passage = try await sourcePassage(selecting: false)?.passage
                 try Task.checkCancellation(); onVisiblePage(passage)
                 if let data = passage?.epubLocator { onLocation(data) }
                 else if recordPosition, let locator = navigator?.currentLocation { onLocation(try JSONSerialization.data(withJSONObject: locator.json)) }
+                else { return false }
                 if recordPosition, passage == nil, let exact = await navigator?.firstVisibleElementLocator(), !Task.isCancelled,
                    var book = model.books.first(where: { $0.id == bookID }), let position = position(for: exact, book: book) {
                     book.record(position: position, visibleEnd: position); model.update(book)
@@ -353,8 +370,12 @@ final class EPUBHostController: UIViewController, EPUBNavigatorDelegate {
                     let position = ReadingPosition(chapter: passage.chapter, offset: passage.offset)
                     book.record(position: position, visibleEnd: position); model.update(book)
                 }
-            } catch is CancellationError {} catch { onVisiblePage(nil) }
+                try Task.checkCancellation()
+                return !closed && !model.maintenance
+            } catch is CancellationError { return false } catch { onVisiblePage(nil); return false }
         }
+        locationTask = task
+        return task
     }
     private func sourcePassage(selecting: Bool) async throws -> (passage: SourcePassage, translation: Bool)? {
         guard !model.maintenance, let reader = navigator, let href = reader.currentLocation?.href,

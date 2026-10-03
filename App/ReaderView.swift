@@ -56,7 +56,7 @@ struct ReaderView: View {
             } else if let book {
                 VStack(spacing: 0) {
                     if book.format == "epub" {
-                        EPUBReader(autoRead: autoRead, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                        EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                             didLocateEPUB = true
                             var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
                         }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)")
@@ -356,7 +356,7 @@ struct ReaderView: View {
         }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.chapter == chapter.id },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
-                   immersive: immersive, onToggleControls: { immersive.toggle() },
+                   immersive: immersive, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
                    isReading: sheet == nil && selection == nil && chat == nil && scenePhase == .active,
                    onPosition: { start, visible in
             guard sheet == nil, selection == nil, chat == nil, scenePhase == .active,
@@ -421,17 +421,19 @@ struct ReaderView: View {
             }
         }
     }
-    private func addBookmark() {
-        guard let book else { return }
-        guard !records.bookmarks.contains(where: { $0.position == book.position && $0.locator == book.epubLocator }) else { bookmarkMessage = "这里已经有书签了"; return }
-        model.perform {
+    @discardableResult private func addBookmark() -> String {
+        guard let book else { return "书籍已移除" }
+        do {
+            var added = false
             records = try model.modifyRecords(for: book) { value in
-                if !value.bookmarks.contains(where: { $0.position == book.position && $0.locator == book.epubLocator }) {
+                if !value.bookmarks.contains(where: { $0.isAt(position: book.position, locator: book.epubLocator) }) {
                     value.bookmarks.append(Bookmark(position: book.position, label: chapter?.title ?? book.title, locator: book.epubLocator))
+                    added = true
                 }
             }
-            bookmarkMessage = "书签已保存"
-        }
+            bookmarkMessage = added ? "书签已保存" : "这里已经有书签了"
+        } catch { model.error = error.localizedDescription; bookmarkMessage = "书签未能保存，请重试" }
+        return bookmarkMessage ?? "书签未能保存，请重试"
     }
     private func saveAnnotation(_ passage: SourcePassage) {
         guard let book else { return }
@@ -494,6 +496,7 @@ struct TextReader {
     let speechRange: NSRange?
     let immersive: Bool
     let onToggleControls: () -> Void
+    let onBookmark: () -> String
     let isReading: Bool
     let onPosition: (Int, NSRange) -> Void
     let onSelection: (NSRange) -> Void

@@ -50,10 +50,11 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
     private var needsPagination = true
     private var dragPage: TextPageController?
     private var dragDirection = 0
+    private var bookmarkPull: BookmarkPull?
 
     init(_ parent: PagedTextReader) { parentReader = parent; anchor = parent.content.presentation.displayOffset(forSource: parent.content.offset); super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    func deactivate() { parentReader.content.autoRead.detach(autoReadOwner); active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
+    func deactivate() { bookmarkPull?.cancel(); parentReader.content.autoRead.detach(autoReadOwner); active = false; cancel(); pager?.dataSource = nil; pager?.delegate = nil }
     func cancel() { generation = UUID(); pagination?.cancel(); pagination = nil }
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -99,8 +100,18 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
             pageHost.addGestureRecognizer(pan)
         }
     }
+    private func installBookmarkPull() {
+        bookmarkPull = BookmarkPull(in: pageHost, canStart: { [weak self] in
+            guard let self else { return false }
+            let page = visible ?? pager?.viewControllers?.first as? TextPageController
+            return active && parentReader.content.isReading && !transitioning && pagination == nil && !needsPagination && page?.textView?.selectedRange.length == 0
+        }, save: { [weak self] in
+            self?.parentReader.content.onBookmark() ?? "阅读页已关闭"
+        })
+    }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        if bookmarkPull == nil { installBookmarkPull() }
         pager?.view.frame = pageHost.bounds
         if !transitioning { visible?.view.frame = pageHost.bounds }
         guard pageHost.bounds.width > 100, pageHost.bounds.height > 100 else { return }
@@ -116,6 +127,7 @@ final class TextPagesController: UIViewController, UIPageViewControllerDataSourc
         let navigation = old.navigationID != content.navigationID
         let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography
         if old.presentation != content.presentation { anchor = content.presentation.displayOffset(forSource: old.presentation.sourceOffset(forDisplay: anchor)) }
+        if navigation || geometry || !content.isReading { bookmarkPull?.cancel() }
         if navigation { anchor = content.presentation.displayOffset(forSource: content.offset); if transitioning { needsPagination = true } }
         view.backgroundColor = content.paper
         if geometry { needsPagination = true; view.setNeedsLayout() }

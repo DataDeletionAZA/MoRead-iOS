@@ -26,6 +26,14 @@ public struct Bookmark: Codable, Identifiable, Hashable, Sendable {
     public init(position: ReadingPosition, label: String, locator: Data? = nil) {
         self.position = position; self.label = label; self.locator = locator
     }
+    public func isAt(position: ReadingPosition, locator: Data?) -> Bool {
+        guard self.position == position else { return false }
+        if self.locator == locator { return true }
+        guard let saved = self.locator, let locator,
+              let left = try? JSONSerialization.jsonObject(with: saved) as? NSDictionary,
+              let right = try? JSONSerialization.jsonObject(with: locator) as? NSDictionary else { return false }
+        return left.isEqual(right)
+    }
 }
 
 public struct BookRecords: Codable, Sendable {
