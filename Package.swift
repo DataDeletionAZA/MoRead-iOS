@@ -8,6 +8,6 @@ let package = Package(
     dependencies: [.package(url: "https://github.com/readium/ZIPFoundation.git", from: "3.0.1")],
     targets: [
         .target(name: "MoReadCore", dependencies: [.product(name: "ReadiumZIPFoundation", package: "ZIPFoundation")], resources: [.process("Resources")]),
-        .testTarget(name: "MoReadCoreTests", dependencies: ["MoReadCore"])
+        .testTarget(name: "MoReadCoreTests", dependencies: ["MoReadCore"], resources: [.copy("Resources/Dictionary")])
     ]
 )
