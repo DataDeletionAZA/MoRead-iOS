@@ -63,6 +63,9 @@ extension LibraryStore {
             if result.text != chapter.text { changes[info.id] = result; chapter.text = result.text }
             chapters.append(chapter)
         }
+        return try applyTextEdits(book: book, chapters: chapters, changes: changes, originalRecords: originalRecords)
+    }
+    func applyTextEdits(book: Book, chapters: [Chapter], changes: [Int: TextCleanupResult], originalRecords: Data) throws -> Book {
         guard !changes.isEmpty else { return book }
         var updated = book; updated.chapters = chapters.map(ChapterInfo.init)
         func position(_ value: ReadingPosition) -> ReadingPosition {
@@ -86,17 +89,24 @@ extension LibraryStore {
             }
             records.annotations[index] = annotation
         }
+        return try commitTextChapters(book: book, updated: updated, chapters: chapters, records: records, originalRecords: originalRecords)
+    }
+    func commitTextChapters(book: Book, updated: Book, chapters: [Chapter], records: BookRecords, originalRecords: Data) throws -> Book {
+        let original = directory(book.id), recordsURL = original.appendingPathComponent("records.json")
         let manager = FileManager.default, staging = root.appendingPathComponent(".text-edit-" + UUID().uuidString, isDirectory: true)
         try Task.checkCancellation()
         defer { try? manager.removeItem(at: staging) }
         try manager.copyItem(at: original, to: staging)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        for chapter in chapters where changes[chapter.id] != nil {
+        for chapter in chapters {
             try Task.checkCancellation()
             try encoder.encode(chapter).write(to: staging.appendingPathComponent("chapter-\(chapter.id).json"), options: .atomic)
         }
         try encoder.encode(records).write(to: staging.appendingPathComponent("records.json"), options: .atomic)
         try encoder.encode(updated).write(to: staging.appendingPathComponent("book.json"), options: .atomic)
+        for old in book.chapters where old.id >= chapters.count {
+            try manager.removeItem(at: staging.appendingPathComponent("chapter-\(old.id).json"))
+        }
         for info in updated.chapters {
             let chapter = try JSONDecoder().decode(Chapter.self, from: Data(contentsOf: staging.appendingPathComponent("chapter-\(info.id).json")))
             guard ChapterInfo(chapter) == info else { throw MoReadError.invalid("新正文未通过校验，原书籍已保留。") }
@@ -106,10 +116,10 @@ extension LibraryStore {
         try Self.swapDirectories(original, staging)
         return updated
     }
-    private func editableTextBook(_ id: UUID) throws -> Book {
+    func editableTextBook(_ id: UUID) throws -> Book {
         let book = try book(id)
-        guard book.format == "txt", book.hasBody, !book.removed else { throw MoReadError.invalid("请选择有正文的 TXT 书籍。") }
+        guard book.format == "txt", book.hasBody, !book.removed, !book.chapters.isEmpty else { throw MoReadError.invalid("请选择有正文的 TXT 书籍。") }
         return book
     }
-    private func textRecordDigest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    func textRecordDigest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 }

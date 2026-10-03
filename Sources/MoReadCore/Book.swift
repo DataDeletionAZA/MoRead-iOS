@@ -17,8 +17,9 @@ public struct Chapter: Codable, Identifiable, Hashable, Sendable {
     public var id: Int
     public var title: String
     public var text: String
-    public init(id: Int, title: String, text: String) {
-        self.id = id; self.title = title; self.text = text
+    public var hasSourceHeading: Bool?
+    public init(id: Int, title: String, text: String, hasSourceHeading: Bool? = nil) {
+        self.id = id; self.title = title; self.text = text; self.hasSourceHeading = hasSourceHeading
     }
     public var revision: String { SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined() }
 }

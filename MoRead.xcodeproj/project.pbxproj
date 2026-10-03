@@ -25,6 +25,7 @@
 		2039C65A5D88300F6E99792A /* TextCleanupProposalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76BCF7C44D6BD8B98D8B600 /* TextCleanupProposalTests.swift */; };
 		23D5B1908720955DDBC039FC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = E13CDB21AB706B03ADB8D9DE /* LICENSE */; };
 		24BE19737D07CA5C65B7F2A0 /* LibraryOrganizationPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */; };
+		27B9DFBC8BADD21737A08E75 /* BookTextEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9EA040869A0124E4500FE5F /* BookTextEditingTests.swift */; };
 		27BC9AA1292D1582650458E5 /* ImageGenerationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEBBC3B9D8EA30E701591BD /* ImageGenerationViews.swift */; };
 		282A768FD9A6BA6A2B84D073 /* NotoSerifSC.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9CB4AB0E592A32B4110298DE /* NotoSerifSC.ttf */; };
 		2952BBFC4CC92AA2324F9C63 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F6DDCCD83B86E80F1E0E726 /* ReadiumShared */; };
@@ -51,6 +52,7 @@
 		673ADEA9197EEC5B7E307995 /* GlobalPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946AD37116378D50E6B49695 /* GlobalPromptView.swift */; };
 		6E42EE6B0F1068866638C81D /* CompanionToolModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218F583B73AD03F67062FC1 /* CompanionToolModel.swift */; };
 		6EAAE7003CF1ECDF5A7FB889 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 273B7BD2FBC9672415970DB2 /* ReadiumStreamer */; };
+		702F67ACA89BFFE28E9615CB /* BookTextEditingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A34BB006809EC9B94006F7 /* BookTextEditingViews.swift */; };
 		73EF20B796C051727252A811 /* EPUBSourceMap.js in Resources */ = {isa = PBXBuildFile; fileRef = 46775CDB9E64AFAC19C4E45F /* EPUBSourceMap.js */; };
 		75AD0A5C70524BD568EEF9F3 /* BookCoverEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08188C57F9403EDB541C9DC8 /* BookCoverEditor.swift */; };
 		7D8FB626E4755162007FEC36 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12B808B9926C791C07C1201 /* KeychainStore.swift */; };
@@ -141,6 +143,7 @@
 		546E734B9EFFA77040D2A107 /* ChatAppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAppearanceView.swift; sourceTree = "<group>"; };
 		5868308952DB53DF46DE561A /* ProactiveCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProactiveCompanion.swift; sourceTree = "<group>"; };
 		6223218633499F9251DA3279 /* DictionaryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryViews.swift; sourceTree = "<group>"; };
+		63A34BB006809EC9B94006F7 /* BookTextEditingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookTextEditingViews.swift; sourceTree = "<group>"; };
 		65E27ED35755FF90B161AB36 /* EnglishReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishReadingView.swift; sourceTree = "<group>"; };
 		69B72192AAF05D6A68352E35 /* BrokenCover.epub */ = {isa = PBXFileReference; path = BrokenCover.epub; sourceTree = "<group>"; };
 		6A73A4FE243605E9786ACBB3 /* EPUBEnglishReading.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = EPUBEnglishReading.js; sourceTree = "<group>"; };
@@ -184,6 +187,7 @@
 		C11477324D774EAB870E5221 /* RerankSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerankSettingsView.swift; sourceTree = "<group>"; };
 		C33E022BE43A5D8195D64849 /* ChapterKnowledgeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterKnowledgeModel.swift; sourceTree = "<group>"; };
 		C9724B60ACBC358E02A9F36C /* IllustrationGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IllustrationGallery.swift; sourceTree = "<group>"; };
+		C9EA040869A0124E4500FE5F /* BookTextEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookTextEditingTests.swift; sourceTree = "<group>"; };
 		CE8054F401BAAC08AE07AD3C /* PersonaMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryView.swift; sourceTree = "<group>"; };
 		D277CD6F70690EC2BCEE1DD5 /* LongParagraph.epub */ = {isa = PBXFileReference; path = LongParagraph.epub; sourceTree = "<group>"; };
 		D3169C160A7B4A471594C8A3 /* TextCleanupGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextCleanupGenerator.swift; sourceTree = "<group>"; };
@@ -241,6 +245,7 @@
 				08188C57F9403EDB541C9DC8 /* BookCoverEditor.swift */,
 				A0B4246095AE328B93E305E4 /* BookCoverSearchView.swift */,
 				98B4E202675009FB98734048 /* BookmarkPull.swift */,
+				63A34BB006809EC9B94006F7 /* BookTextEditingViews.swift */,
 				C33E022BE43A5D8195D64849 /* ChapterKnowledgeModel.swift */,
 				21B3EBE02AAB287C290C3540 /* ChapterKnowledgeView.swift */,
 				546E734B9EFFA77040D2A107 /* ChatAppearanceView.swift */,
@@ -322,6 +327,7 @@
 			isa = PBXGroup;
 			children = (
 				FC72153D1357C94AC874213C /* AutoReadTests.swift */,
+				C9EA040869A0124E4500FE5F /* BookTextEditingTests.swift */,
 				982B45D15C33463E1285A448 /* ChatAppearanceTests.swift */,
 				F5FB312D75D561393D1F1645 /* DictionaryTests.swift */,
 				53B4578BD152B2D3D6C3307F /* EnglishReadingTests.swift */,
@@ -513,6 +519,7 @@
 				D9FA2B3028C57412A1F776F8 /* BookCharactersView.swift in Sources */,
 				75AD0A5C70524BD568EEF9F3 /* BookCoverEditor.swift in Sources */,
 				0886402407784524318950E4 /* BookCoverSearchView.swift in Sources */,
+				702F67ACA89BFFE28E9615CB /* BookTextEditingViews.swift in Sources */,
 				1DF3425B8EC7EFD8ABE30551 /* BookmarkPull.swift in Sources */,
 				8E774956C4DFF83556A12C5B /* ChapterKnowledgeModel.swift in Sources */,
 				F5140496803D666A63A2FBFC /* ChapterKnowledgeView.swift in Sources */,
@@ -576,6 +583,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A2E2C5CB6EBCDC53ABA5B9A8 /* AutoReadTests.swift in Sources */,
+				27B9DFBC8BADD21737A08E75 /* BookTextEditingTests.swift in Sources */,
 				0DEC96A144207ADED6272C67 /* ChatAppearanceTests.swift in Sources */,
 				FF75E4BEE9B08DBEB61F7169 /* DictionaryTests.swift in Sources */,
 				DE4D049108B030337BA7740C /* EnglishReadingTests.swift in Sources */,

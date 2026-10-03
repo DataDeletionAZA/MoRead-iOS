@@ -8,6 +8,11 @@ public struct ChapterRule: Decodable, Identifiable, Sendable {
     public let rule: String
 }
 
+public struct TextChapterSpan: Sendable {
+    public let chapter: Chapter
+    public let bodyRange: NSRange
+}
+
 public enum TextEncoding: String, CaseIterable, Identifiable, Sendable {
     case automatic = "自动识别", utf8 = "UTF-8", utf16LE = "UTF-16 LE", utf16BE = "UTF-16 BE", gb18030 = "GB18030", big5 = "Big5"
     public var id: String { rawValue }
@@ -96,6 +101,10 @@ public enum TextImporter {
     }
 
     public static func chapters(_ text: String, customRule: String? = nil) throws -> [Chapter] {
+        try chapterSpans(text, customRule: customRule).map(\.chapter)
+    }
+
+    public static func chapterSpans(_ text: String, customRule: String? = nil) throws -> [TextChapterSpan] {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw MoReadError.invalid("这份文件没有正文。") }
         let expressions: [NSRegularExpression]
         if let customRule, !customRule.isEmpty {
@@ -132,19 +141,20 @@ public enum TextImporter {
             if matches.count > best.count { best = matches }
         }
         if best.count >= 2 || (customRule?.isEmpty == false && !best.isEmpty) {
-            var result: [Chapter] = []
+            var result: [TextChapterSpan] = []
             if best[0].start > 0 {
                 let preface = source.substring(to: best[0].start)
-                if !preface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { result.append(Chapter(id: 0, title: "序章", text: preface)) }
+                if !preface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { result.append(.init(chapter: Chapter(id: 0, title: "序章", text: preface, hasSourceHeading: false), bodyRange: NSRange(location: 0, length: best[0].start))) }
             }
             for (index, heading) in best.enumerated() {
                 let end = index + 1 < best.count ? best[index + 1].start : source.length
-                result.append(Chapter(id: result.count, title: heading.title, text: source.substring(with: NSRange(location: heading.end, length: end - heading.end))))
+                let range = NSRange(location: heading.end, length: end - heading.end)
+                result.append(.init(chapter: Chapter(id: result.count, title: heading.title, text: source.substring(with: range), hasSourceHeading: true), bodyRange: range))
             }
             return result
         }
         if customRule?.isEmpty == false { throw MoReadError.invalid("这条规则没有识别出章节，请修改规则或选择自动识别。") }
-        var result: [Chapter] = []
+        var result: [TextChapterSpan] = []
         var start = 0
         while start < source.length {
             var end = min(source.length, start + 10_000)
@@ -153,7 +163,8 @@ public enum TextImporter {
                 if newline.location != NSNotFound { end = newline.location + 1 }
             }
             end = TextBoundary.floor(end, in: text)
-            result.append(Chapter(id: result.count, title: result.isEmpty ? "正文" : "第 \(result.count + 1) 节", text: source.substring(with: NSRange(location: start, length: end - start))))
+            let range = NSRange(location: start, length: end - start)
+            result.append(.init(chapter: Chapter(id: result.count, title: result.isEmpty ? "正文" : "第 \(result.count + 1) 节", text: source.substring(with: range), hasSourceHeading: false), bodyRange: range))
             start = end
         }
         return result
