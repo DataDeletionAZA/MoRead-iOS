@@ -120,7 +120,7 @@ struct BackupView: View {
     private func discardPrepared() { if let prepared { try? FileManager.default.removeItem(at: prepared.directory) }; prepared = nil }
     private func savePreferences(to root: URL) throws {
         let defaults = UserDefaults.standard
-        let values = ["app.tintRGB", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.pageMode", "reader.typography", "reader.tapZones", "reader.keys", "reader.autoRead", "shelf.sort", "speech.preferences", "speech.cloud", "stats.widgets"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
+        let values = ["app.tintRGB", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.pageMode", "reader.typography", "reader.tapZones", "reader.keys", "reader.autoRead", "shelf.sort", "speech.preferences", "speech.cloud", "stats.widgets", "review.focusMotion"].reduce(into: [String: Any]()) { if let value = defaults.object(forKey: $1) { $0[$1] = value } }
         try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: root.appendingPathComponent("reader-settings.plist"), options: .atomic)
     }
     private func loadPreferences(from root: URL) {
@@ -142,6 +142,7 @@ struct BackupView: View {
         let sort = values["shelf.sort"] as? String ?? ""
         defaults.set((ShelfSort(rawValue: sort) ?? .recent).rawValue, forKey: "shelf.sort")
         defaults.set(StatisticsWidgets(data: values["stats.widgets"] as? Data ?? Data()).encoded(), forKey: "stats.widgets")
+        defaults.set(ReviewFocusMotion(saved: values["review.focusMotion"] as? String).rawValue, forKey: "review.focusMotion")
         if let data = values["speech.preferences"] as? Data,
            let settings = try? JSONDecoder().decode(SpeechPreferences.self, from: data),
            let validated = try? JSONEncoder().encode(settings.validated()) { defaults.set(validated, forKey: "speech.preferences") }

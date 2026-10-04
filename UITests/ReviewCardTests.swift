@@ -1,7 +1,7 @@
 import XCTest
 
 final class ReviewCardUITests: XCTestCase {
-    override func setUp() { continueAfterFailure = false }
+    override func setUp() { continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
     func testQuotationRulePreviewValidationAndPersistence() {
         executionTimeAllowance = 300
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
@@ -54,11 +54,59 @@ final class ReviewCardUITests: XCTestCase {
         app.buttons["取消"].tap(); app.navigationBars["文字着色规则"].buttons.firstMatch.tap(); app.buttons["取消"].tap()
         XCTAssertTrue(app.images["review-card-preview"].waitForExistence(timeout: 10))
     }
+    func testReviewMotionPagingSourceAndPersistence() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--review-motion-sample"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        func openReview() {
+            app.buttons["书架选项"].tap(); app.buttons["划线与笔记回顾"].tap()
+            XCTAssertTrue(app.buttons["review-entry-书店随记"].waitForExistence(timeout: 10)); app.buttons["review-entry-书店随记"].tap()
+        }
+        func position(_ text: String) {
+            XCTAssertTrue(app.staticTexts["reading-review-position"].waitForExistence(timeout: 5))
+            XCTAssertTrue(NSPredicate(format: "label == %@", text).evaluate(with: app.staticTexts["reading-review-position"]))
+        }
+        openReview(); position("2 / 3")
+        XCTAssertTrue(app.textViews.matching(identifier: "reading-review-body").matching(NSPredicate(format: "value CONTAINS %@", "窗外的雨停了")).firstMatch.isHittable)
+        let initial = XCTAttachment(screenshot: app.screenshot()); initial.name = "review-initial-position"; initial.lifetime = .keepAlways; add(initial)
+        app.buttons["下一篇"].tap(); position("3 / 3")
+        let next = XCTAttachment(screenshot: app.screenshot()); next.name = "review-next-position"; next.lifetime = .keepAlways; add(next)
+        app.buttons["上一篇"].tap(); position("2 / 3")
+        let menu = app.buttons["review-motion-menu"]
+        XCTAssertEqual(menu.label, "翻页动效，纸片")
+        for mode in ["纸片", "立方体", "流动"] {
+            menu.tap(); app.buttons[mode].tap(); XCTAssertEqual(menu.label, "翻页动效，" + mode)
+            let body = app.textViews.matching(identifier: "reading-review-body").matching(NSPredicate(format: "value CONTAINS %@", "窗外的雨停了")).firstMatch
+            XCTAssertTrue(body.waitForExistence(timeout: 5)); XCTAssertTrue(body.isHittable)
+            body.swipeLeft(); position("3 / 3"); XCTAssertFalse(app.buttons["下一篇"].isEnabled)
+            app.buttons["上一篇"].tap(); position("2 / 3")
+            body.swipeRight(); position("1 / 3"); XCTAssertFalse(app.buttons["上一篇"].isEnabled)
+            XCTAssertTrue(app.buttons["返回原文"].isHittable)
+            let image = XCTAttachment(screenshot: app.screenshot()); image.name = "review-motion-" + mode; image.lifetime = .keepAlways; add(image)
+            app.buttons["下一篇"].tap(); position("2 / 3")
+        }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        position("2 / 3")
+        XCTAssertTrue(app.textViews.matching(identifier: "reading-review-body").matching(NSPredicate(format: "value CONTAINS %@", "窗外的雨停了")).firstMatch.isHittable)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: nil)], timeout: 10), .completed)
+        let landscape = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); landscape.name = "review-motion-landscape"; landscape.lifetime = .keepAlways; add(landscape)
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width < app.frame.height }, object: nil)], timeout: 10), .completed)
+        position("2 / 3")
+        app.buttons["上一篇"].tap(); app.buttons["返回原文"].tap()
+        XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 15)); app.buttons["返回回顾"].tap(); position("1 / 3")
+        app.buttons["review-card-export"].tap(); XCTAssertTrue(app.images["review-card-preview"].waitForExistence(timeout: 10))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); openReview()
+        position("2 / 3"); XCTAssertEqual(menu.label, "翻页动效，流动")
+        XCTAssertTrue(app.textViews.matching(identifier: "reading-review-body").matching(NSPredicate(format: "value CONTAINS %@", "窗外的雨停了")).firstMatch.isHittable)
+    }
     func testLongCardKeepsTextExportAndCanHideThought() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--long-review-card"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons["书架选项"].tap(); app.buttons["划线与笔记回顾"].tap()
         XCTAssertTrue(app.buttons["review-entry-长篇读书笔记"].waitForExistence(timeout: 10)); app.buttons["review-entry-长篇读书笔记"].tap()
+        app.buttons["review-motion-menu"].tap(); app.buttons["流动"].tap()
         let body = app.textViews["reading-review-body"].firstMatch
         XCTAssertTrue(body.waitForExistence(timeout: 10))
         XCTAssertEqual(body.value as? String, "灯塔与书店\n" + String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000) + "长笔记的最后一行。")

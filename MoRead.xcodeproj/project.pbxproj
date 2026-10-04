@@ -112,6 +112,7 @@
 		E4C5D09C724D81EF52CE5FB8 /* ImageLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6402635C47599908CDE24CC /* ImageLibraryView.swift */; };
 		EA1A0763FDA1C637722A2B3B /* ParagraphTranslationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7746B51B837FA264872A55 /* ParagraphTranslationView.swift */; };
 		EB3F2C28B7985B192A539886 /* MoReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */; };
+		EDE487F3FF71A3F18F28D1DC /* ReviewTilt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB96A036AAF26256BA5C41A /* ReviewTilt.swift */; };
 		EF01282DC748833354CFE59C /* AutoRead.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CDE8A83BE5CB827C09C549 /* AutoRead.swift */; };
 		F0C688DAB41126A4733250E5 /* ReviewCardRulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3DA40BE2B187ECF85FD472 /* ReviewCardRulesView.swift */; };
 		F2AC704C488A1F91D2CCD5C5 /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D914D6EE1624B82890502A /* SpeechPlayer.swift */; };
@@ -143,6 +144,7 @@
 		12ACB5E65FF1D1A3EF772D3A /* ModelAssignmentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAssignmentsView.swift; sourceTree = "<group>"; };
 		153247B56B294E5613324D91 /* MoRead-iOS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "MoRead-iOS"; path = .; sourceTree = SOURCE_ROOT; };
 		19BD21C3358729CF22FAB2EE /* ThemeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeView.swift; sourceTree = "<group>"; };
+		1AB96A036AAF26256BA5C41A /* ReviewTilt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewTilt.swift; sourceTree = "<group>"; };
 		1B802DFE7A0C140CB376A88D /* LibraryOrganizationPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationPreview.swift; sourceTree = "<group>"; };
 		1BC2A64B56331278F0E16C47 /* ReviewCompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewCompositionTests.swift; sourceTree = "<group>"; };
 		1BCDD6D9AED30607A84B4176 /* MoReadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoReadApp.swift; sourceTree = "<group>"; };
@@ -337,6 +339,7 @@
 				4A3DA40BE2B187ECF85FD472 /* ReviewCardRulesView.swift */,
 				F3C9DABF5235355057617EBC /* ReviewCardTextLayout.swift */,
 				A1A4AC6C281EAC00A8FE2010 /* ReviewComposer.swift */,
+				1AB96A036AAF26256BA5C41A /* ReviewTilt.swift */,
 				9B830F2AED127F80997D8521 /* RootView.swift */,
 				F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */,
 				0B2065DE60076241DE16C071 /* SpeechControls.swift */,
@@ -627,6 +630,7 @@
 				F0C688DAB41126A4733250E5 /* ReviewCardRulesView.swift in Sources */,
 				ACF6D9E1C5D4731817AB9183 /* ReviewCardTextLayout.swift in Sources */,
 				265B561A490BCCB38E4EABB9 /* ReviewComposer.swift in Sources */,
+				EDE487F3FF71A3F18F28D1DC /* ReviewTilt.swift in Sources */,
 				43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */,
 				0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */,
 				51DBC29D0798E7D3BEF160F1 /* SpeechControls.swift in Sources */,

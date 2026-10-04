@@ -64,7 +64,7 @@ final class LibraryModel: ObservableObject {
             }
             #if DEBUG
             if reset, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
-                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography", "reader.tapZones", "reader.keys", "reader.autoRead", "stats.widgets"] { UserDefaults.standard.removeObject(forKey: key) }
+                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography", "reader.tapZones", "reader.keys", "reader.autoRead", "stats.widgets", "review.focusMotion"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             #endif
             let storage = try LibraryStore(root: root)
@@ -217,6 +217,16 @@ final class LibraryModel: ObservableObject {
                 let chapter = try store.chapter(0, in: book), range = (chapters[0].text as NSString).range(of: "lighthouse")
                 let annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: range.location, text: "lighthouse"), style: "wave")
                 try store.modifyRecords(for: book) { $0.annotations.append(annotation) }
+            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--review-motion-sample") {
+                let chapter = try store.chapter(0, in: book)
+                var annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: 0, text: String(chapter.text.prefix(20))), note: "雨后的第一段。")
+                annotation.createdAt = Date(timeIntervalSince1970: 3)
+                var middle = ReadingNote(title: "书店随记", content: "窗外的雨停了，灯光照在书页上。", book: book)
+                middle.updatedAt = Date(timeIntervalSince1970: 2)
+                var last = ReadingNote(title: "灯塔随记", content: "远处的灯塔亮起了灯。", book: book)
+                last.updatedAt = Date(timeIntervalSince1970: 1)
+                try store.modifyRecords(for: book) { $0.annotations = [annotation]; $0.notes = [middle, last] }
             }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--long-review-card") {
                 let note = ReadingNote(title: "长篇读书笔记", content: "**灯塔**与*书店*\n" + String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000) + "长笔记的最后一行。", book: book)

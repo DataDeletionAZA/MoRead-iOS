@@ -101,8 +101,13 @@ struct ReadingReviewView: View {
 
 struct ReadingReviewPager: View {
     let entries: [ReadingReviewEntry]
-    var initialID: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("review.focusMotion") private var motionValue = ReviewFocusMotion.paper.rawValue
+    @StateObject private var tilt = ReviewTilt()
+    @State private var visible = false
     @State private var selected: String?
     @State private var exporting: ReadingReviewEntry?
     @State private var source: SourcePassage?
@@ -114,27 +119,42 @@ struct ReadingReviewPager: View {
     }
     @State private var composing: CompositionRequest?
     private var index: Int? { entries.firstIndex { $0.id == selected } }
+    private var motion: ReviewFocusMotion { ReviewFocusMotion(saved: motionValue) }
+    private var usesTilt: Bool { visible && scenePhase == .active && !reduceMotion && motion != .paper && source == nil && exporting == nil && composing == nil }
+    init(entries: [ReadingReviewEntry], initialID: String? = nil) {
+        self.entries = entries
+        _selected = State(initialValue: entries.first(where: { $0.id == initialID })?.id ?? entries.first?.id)
+    }
     var body: some View {
         Group {
             if entries.isEmpty { ContentUnavailableView("没有符合条件的记录", systemImage: "note.text") }
             else {
-                TabView(selection: $selected) {
-                    ForEach(entries) { entry in
-                        VStack(alignment: .leading, spacing: 18) {
-                            Text(entry.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
-                            Text(entry.book.title + " · " + entry.author).font(.caption).foregroundStyle(.secondary)
-                            ReadingReviewText(quote: entry.quote, bodyText: entry.body)
-                            if let passage = entry.passage {
-                                Button("返回原文", systemImage: "book") { sourceScope = entry.characterID == nil ? .wholeBook : nil; source = passage }
+                GeometryReader { geometry in
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal) {
+                            LazyHStack(spacing: 0) {
+                                ForEach(entries) { entry in
+                                    card(entry, size: geometry.size).id(entry.id)
+                                }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.paging).scrollPosition(id: $selected, anchor: .leading).scrollIndicators(.hidden)
+                            .coordinateSpace(name: "review-pager").accessibilityIdentifier("review-pager").clipped()
+                            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                                if size.width > 0, size.height > 0, let selected { proxy.scrollTo(selected, anchor: .leading) }
                             }
-                            ShareLink("分享这篇记录", item: entry.markdown)
-                        }.padding(24).tag(Optional(entry.id))
                     }
-                }.tabViewStyle(.page(indexDisplayMode: .never))
+                }
             }
         }.navigationTitle("阅读回顾").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu("翻页动效", systemImage: "square.3.layers.3d") {
+                        Picker("翻页动效", selection: $motionValue) {
+                            ForEach(ReviewFocusMotion.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                        }
+                    }.accessibilityIdentifier("review-motion-menu").accessibilityLabel("翻页动效，" + motion.label)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("导出卡片", systemImage: "photo") { if let index { exporting = entries[index] } }
                         .disabled(index == nil).accessibilityIdentifier("review-card-export")
@@ -145,15 +165,17 @@ struct ReadingReviewPager: View {
                     }.disabled(index == nil)
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button("上一篇", systemImage: "chevron.left") { if let index, index > 0 { selected = entries[index - 1].id } }.disabled(index == nil || index == 0)
+                    Button("上一篇", systemImage: "chevron.left") { move(-1) }.disabled(index == nil || index == 0)
                     Spacer()
                     Text(index.map { "\($0 + 1) / \(entries.count)" } ?? "0 / 0").monospacedDigit().accessibilityIdentifier("reading-review-position")
                     Spacer()
-                    Button("下一篇", systemImage: "chevron.right") { if let index, index + 1 < entries.count { selected = entries[index + 1].id } }.disabled(index == nil || index == entries.count - 1)
+                    Button("下一篇", systemImage: "chevron.right") { move(1) }.disabled(index == nil || index == entries.count - 1)
                 }
             }
-            .onAppear { if index == nil { selected = entries.first(where: { $0.id == initialID })?.id ?? entries.first?.id } }
-            .onChange(of: entries.map(\.id)) { _, ids in if !ids.isEmpty && (selected.map({ !ids.contains($0) }) ?? true) { selected = ids.first } }
+            .onAppear { visible = true }
+            .onDisappear { visible = false; tilt.stop() }
+            .task(id: usesTilt) { tilt.setEnabled(usesTilt) }
+            .onChange(of: entries.map(\.id)) { _, ids in if selected.map({ !ids.contains($0) }) ?? true { selected = ids.first } }
             .sheet(item: $exporting) { ReviewCardExportView(entry: $0) }
             .sheet(item: $composing) { request in ReviewComposer(entries: request.entries, mode: request.mode) }
             .sheet(item: $source) { passage in
@@ -162,5 +184,51 @@ struct ReadingReviewPager: View {
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回回顾") { source = nil } } }
                 }
             }
+    }
+    private func card(_ entry: ReadingReviewEntry, size: CGSize) -> some View {
+        let horizontal = motion == .paper ? 0.0 : motion == .flow ? 40.0 : 22.0
+        let vertical = motion == .paper ? 0.0 : 18.0
+        return VStack(alignment: .leading, spacing: 18) {
+            Text(entry.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
+            Text(entry.book.title + " · " + entry.author).font(.caption).foregroundStyle(.secondary)
+            ReadingReviewText(quote: entry.quote, bodyText: entry.body)
+            if let passage = entry.passage {
+                Button("返回原文", systemImage: "book") { sourceScope = entry.characterID == nil ? .wholeBook : nil; source = passage }
+            }
+            ShareLink("分享这篇记录", item: entry.markdown)
+        }.padding(24).frame(width: max(1, size.width - horizontal * 2), height: max(1, size.height - vertical * 2))
+            .background {
+                if motion != .paper {
+                    RoundedRectangle(cornerRadius: 24).fill(Color(uiColor: .secondarySystemBackground))
+                        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                }
+            }
+            .overlay { if motion != .paper { RoundedRectangle(cornerRadius: 24).stroke(.secondary.opacity(0.2), lineWidth: 1).allowsHitTesting(false) } }
+            .padding(.horizontal, horizontal).padding(.vertical, vertical)
+            .overlay {
+                if motion != .paper {
+                    GeometryReader { proxy in
+                        let position = proxy.frame(in: .named("review-pager")).minX / max(1, size.width)
+                        let frame = motion.frame(position: position, tiltX: tilt.value.x, tiltY: tilt.value.y, reduceMotion: reduceMotion)
+                        LinearGradient(colors: [.clear, .white.opacity(colorScheme == .dark ? 0.07 : 0.26), .clear],
+                                       startPoint: UnitPoint(x: frame.glare - 0.7, y: 0), endPoint: UnitPoint(x: frame.glare + 0.7, y: 1))
+                            .background(.black.opacity(frame.shade)).clipShape(RoundedRectangle(cornerRadius: 24))
+                            .padding(.horizontal, horizontal).padding(.vertical, vertical)
+                    }.allowsHitTesting(false)
+                }
+            }
+            .visualEffect { content, proxy in
+                let width = max(1, proxy.size.width), position = proxy.frame(in: .named("review-pager")).minX / width
+                let frame = motion.frame(position: position, tiltX: tilt.value.x, tiltY: tilt.value.y, reduceMotion: reduceMotion)
+                return content.scaleEffect(frame.scale).opacity(frame.alpha)
+                    .rotationEffect(.degrees(frame.rotationZ))
+                    .rotation3DEffect(.degrees(frame.rotationX), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
+                    .rotation3DEffect(.degrees(frame.rotationY), axis: (x: 0, y: 1, z: 0), anchor: UnitPoint(x: frame.pivotX, y: 0.5), perspective: 0.4)
+                    .offset(x: frame.translationX * width, y: frame.drop)
+            }.zIndex(selected == entry.id ? 1 : 0)
+    }
+    private func move(_ step: Int) {
+        guard let index, entries.indices.contains(index + step) else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.32)) { selected = entries[index + step].id }
     }
 }
