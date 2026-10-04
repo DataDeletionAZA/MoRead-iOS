@@ -88,6 +88,7 @@
 		ACF6D9E1C5D4731817AB9183 /* ReviewCardTextLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C9DABF5235355057617EBC /* ReviewCardTextLayout.swift */; };
 		AE716BA3BC4EFE837410D6D8 /* ChineseConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC67664C67AC65D8D0312711 /* ChineseConversionTests.swift */; };
 		B92BE11FB8D0EEB84F5FBBB0 /* DictionaryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6223218633499F9251DA3279 /* DictionaryViews.swift */; };
+		BA9A974EBF48ACBD1E1790CC /* ReviewRecordEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5334D864F82B22242B483205 /* ReviewRecordEditor.swift */; };
 		BAB338AE9AEA1B05D7BEB8FC /* ReviewCardRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7937EE73555C4492CE7E0537 /* ReviewCardRenderer.swift */; };
 		BCDF913B40D55473023F0D35 /* ThemeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19BD21C3358729CF22FAB2EE /* ThemeView.swift */; };
 		BD4B2860BF4E4B12EA9DAFE8 /* TextCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F8C92BA7A376FE2AE89454 /* TextCleanupView.swift */; };
@@ -167,6 +168,7 @@
 		4F1C7E35F6BA22FAB8ED449F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		51C577C394FC799558EE1DDA /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		527AE0FBA0C67EC67226066C /* CompanionToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionToolsSettingsView.swift; sourceTree = "<group>"; };
+		5334D864F82B22242B483205 /* ReviewRecordEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewRecordEditor.swift; sourceTree = "<group>"; };
 		53B4578BD152B2D3D6C3307F /* EnglishReadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishReadingTests.swift; sourceTree = "<group>"; };
 		546E734B9EFFA77040D2A107 /* ChatAppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAppearanceView.swift; sourceTree = "<group>"; };
 		5868308952DB53DF46DE561A /* ProactiveCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProactiveCompanion.swift; sourceTree = "<group>"; };
@@ -341,6 +343,7 @@
 				4A3DA40BE2B187ECF85FD472 /* ReviewCardRulesView.swift */,
 				F3C9DABF5235355057617EBC /* ReviewCardTextLayout.swift */,
 				A1A4AC6C281EAC00A8FE2010 /* ReviewComposer.swift */,
+				5334D864F82B22242B483205 /* ReviewRecordEditor.swift */,
 				1AB96A036AAF26256BA5C41A /* ReviewTilt.swift */,
 				9B830F2AED127F80997D8521 /* RootView.swift */,
 				F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */,
@@ -633,6 +636,7 @@
 				F0C688DAB41126A4733250E5 /* ReviewCardRulesView.swift in Sources */,
 				ACF6D9E1C5D4731817AB9183 /* ReviewCardTextLayout.swift in Sources */,
 				265B561A490BCCB38E4EABB9 /* ReviewComposer.swift in Sources */,
+				BA9A974EBF48ACBD1E1790CC /* ReviewRecordEditor.swift in Sources */,
 				EDE487F3FF71A3F18F28D1DC /* ReviewTilt.swift in Sources */,
 				43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */,
 				0FA1DC94B3A996CCA411C051 /* ShelfViews.swift in Sources */,

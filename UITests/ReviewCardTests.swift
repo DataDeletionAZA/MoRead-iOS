@@ -2,6 +2,61 @@ import XCTest
 
 final class ReviewCardUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
+    func testEditAnnotationAndCharacterNoteDeleteAndRestart() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--review-motion-sample", "--review-edit-sample"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        func open(_ title: String) {
+            app.buttons["书架选项"].tap(); app.buttons["划线与笔记回顾"].tap()
+            let entry = app.buttons["review-entry-" + title]; XCTAssertTrue(entry.waitForExistence(timeout: 10)); entry.tap()
+        }
+        func action(_ name: String) {
+            let menus = app.buttons.matching(identifier: "review-record-actions")
+            XCTAssertTrue(menus.firstMatch.waitForExistence(timeout: 10))
+            guard let menu = menus.allElementsBoundByIndex.first(where: { app.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) else { XCTFail("Current record actions are not visible"); return }
+            menu.tap(); app.buttons[name].tap()
+        }
+        func replace(_ field: XCUIElement, _ text: String) {
+            XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0)).withOffset(CGVector(dx: 0, dy: 12)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count) + text)
+            XCTAssertEqual(field.value as? String, text)
+        }
+        func body(_ text: String) {
+            XCTAssertTrue(app.textViews.matching(identifier: "reading-review-body").matching(NSPredicate(format: "value CONTAINS %@", text)).firstMatch.waitForExistence(timeout: 10))
+        }
+        open("书店随记"); action("编辑记录")
+        replace(app.textFields["reading-note-title"], "My light")
+        replace(app.textViews["reading-note-content"], "The light feels like home.")
+        app.buttons["取消"].tap(); app.buttons["继续编辑"].tap()
+        XCTAssertEqual(app.textFields["reading-note-title"].value as? String, "My light")
+        app.buttons["保存"].tap(); body("The light feels like home.")
+        XCTAssertTrue(app.staticTexts["已由我编辑"].exists)
+        XCTAssertEqual(app.staticTexts["reading-review-position"].label, "2 / 3")
+        app.buttons["上一篇"].tap(); action("编辑记录")
+        replace(app.textViews["review-annotation-note"], "Discard this draft.")
+        app.buttons["取消"].tap(); app.buttons["放弃修改"].tap(); body("雨后的第一段。")
+        action("编辑记录")
+        replace(app.textViews["review-annotation-note"], "Rain and a warm bookshop.")
+        app.buttons["review-annotation-style"].tap(); app.buttons["波浪线"].tap(); app.buttons["review-annotation-save"].tap()
+        body("Rain and a warm bookshop.")
+        XCTAssertEqual(app.staticTexts["reading-review-position"].label, "1 / 3")
+        app.buttons["返回原文"].tap(); XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 15))
+        let located = app.staticTexts["reader-location-hint"]
+        XCTAssertTrue(located.waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: located)], timeout: 6), .completed)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "review-edited-wave-in-reader"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["返回回顾"].tap(); body("Rain and a warm bookshop.")
+        action("删除记录"); app.alerts.buttons["取消"].tap(); body("Rain and a warm bookshop.")
+        action("删除记录"); app.alerts.buttons["删除"].tap(); body("The light feels like home.")
+        XCTAssertEqual(app.staticTexts["reading-review-position"].label, "1 / 2")
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); open("My light")
+        body("The light feels like home."); XCTAssertTrue(app.staticTexts["已由我编辑"].exists)
+        action("删除记录"); app.alerts.buttons["删除"].tap(); body("远处的灯塔亮起了灯。")
+        action("删除记录"); app.alerts.buttons["删除"].tap()
+        XCTAssertTrue(app.staticTexts["没有符合条件的记录"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["review-card-export"].isEnabled)
+    }
     func testQuotationRulePreviewValidationAndPersistence() {
         executionTimeAllowance = 300
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()

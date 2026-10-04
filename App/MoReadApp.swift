@@ -239,6 +239,7 @@ final class LibraryModel: ObservableObject {
                 var annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: 0, text: String(chapter.text.prefix(20))), note: "雨后的第一段。")
                 annotation.createdAt = Date(timeIntervalSince1970: 3)
                 var middle = ReadingNote(title: "书店随记", content: "窗外的雨停了，灯光照在书页上。", book: book)
+                if ProcessInfo.processInfo.arguments.contains("--review-edit-sample") { middle.characterID = UUID(); middle.characterName = "林遥" }
                 middle.updatedAt = Date(timeIntervalSince1970: 2)
                 var last = ReadingNote(title: "灯塔随记", content: "远处的灯塔亮起了灯。", book: book)
                 last.updatedAt = Date(timeIntervalSince1970: 1)

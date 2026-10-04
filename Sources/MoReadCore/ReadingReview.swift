@@ -73,6 +73,28 @@ public struct ReadingReviewFilter: Equatable, Sendable {
 }
 
 public enum ReadingReview {
+    public static func editAnnotation(_ entry: ReadingReviewEntry, note: String, style: String, book: Book, records: inout BookRecords) throws {
+        try requireCurrent(entry, book: book, records: records)
+        guard case .annotation(let original) = entry.content, let index = records.annotations.firstIndex(where: { $0.id == original.id }),
+              note.utf16.count <= 50_000, ["highlight", "underline", "wave"].contains(style) else {
+            throw MoReadError.invalid("请选择有效的划线样式；想法最多 50000 字。")
+        }
+        records.annotations[index].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        records.annotations[index].style = style
+    }
+    public static func delete(_ entry: ReadingReviewEntry, book: Book, records: inout BookRecords) throws {
+        try requireCurrent(entry, book: book, records: records)
+        switch entry.content {
+        case .annotation(let value): records.annotations.removeAll { $0.id == value.id }
+        case .note(let value): records.notes?.removeAll { $0.id == value.id }
+        }
+    }
+    private static func requireCurrent(_ entry: ReadingReviewEntry, book: Book, records: BookRecords) throws {
+        guard entry.book.id == book.id,
+              entries(books: [book], records: [book.id: records]).contains(where: { $0.id == entry.id && $0.content == entry.content }) else {
+            throw MoReadError.invalid("这条记录或可阅读范围已变化，请重新打开后再操作。")
+        }
+    }
     public static func entries(books: [Book], records: [UUID: BookRecords]) -> [ReadingReviewEntry] {
         books.flatMap { book -> [ReadingReviewEntry] in
             guard let saved = records[book.id] else { return [] }

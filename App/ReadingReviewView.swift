@@ -100,7 +100,9 @@ struct ReadingReviewView: View {
 }
 
 struct ReadingReviewPager: View {
-    let entries: [ReadingReviewEntry]
+    @State private var entries: [ReadingReviewEntry]
+    @State private var sessionEntries: [ReadingReviewEntry]
+    @EnvironmentObject private var library: LibraryModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -110,8 +112,21 @@ struct ReadingReviewPager: View {
     @State private var visible = false
     @State private var selected: String?
     @State private var exporting: ReadingReviewEntry?
-    @State private var source: SourcePassage?
-    @State private var sourceScope: ReadingScope?
+    private struct SourceRequest: Identifiable {
+        let id = UUID()
+        let passage: SourcePassage
+        let scope: ReadingScope?
+    }
+    @State private var source: SourceRequest?
+    @State private var editing: ReadingReviewEntry?
+    @State private var deleting: ReadingReviewEntry?
+    @State private var loading = false
+    @State private var error: String?
+    private struct Request: Equatable { let books: [Book]; let revision: UUID; let maintenance: Bool }
+    private var request: Request {
+        let bookIDs = Set(sessionEntries.map { $0.book.id })
+        return .init(books: library.books.filter { bookIDs.contains($0.id) }, revision: library.recordsRevision, maintenance: library.maintenance)
+    }
     private struct CompositionRequest: Identifiable {
         let mode: ReviewComposition.Mode
         let entries: [ReadingReviewEntry]
@@ -120,14 +135,15 @@ struct ReadingReviewPager: View {
     @State private var composing: CompositionRequest?
     private var index: Int? { entries.firstIndex { $0.id == selected } }
     private var motion: ReviewFocusMotion { ReviewFocusMotion(saved: motionValue) }
-    private var usesTilt: Bool { visible && scenePhase == .active && !reduceMotion && motion != .paper && source == nil && exporting == nil && composing == nil }
+    private var usesTilt: Bool { visible && scenePhase == .active && !reduceMotion && motion != .paper && source == nil && exporting == nil && composing == nil && editing == nil && deleting == nil && !loading }
     init(entries: [ReadingReviewEntry], initialID: String? = nil) {
-        self.entries = entries
+        _entries = State(initialValue: entries); _sessionEntries = State(initialValue: entries)
         _selected = State(initialValue: entries.first(where: { $0.id == initialID })?.id ?? entries.first?.id)
     }
     var body: some View {
         Group {
-            if entries.isEmpty { ContentUnavailableView("没有符合条件的记录", systemImage: "note.text") }
+            if loading { ProgressView("正在读取记录…") }
+            else if entries.isEmpty { ContentUnavailableView("没有符合条件的记录", systemImage: "note.text") }
             else {
                 GeometryReader { geometry in
                     ScrollViewReader { proxy in
@@ -157,30 +173,38 @@ struct ReadingReviewPager: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button("导出卡片", systemImage: "photo") { if let index { exporting = entries[index] } }
-                        .disabled(index == nil).accessibilityIdentifier("review-card-export")
+                        .disabled(index == nil || loading).accessibilityIdentifier("review-card-export")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu("邀请角色", systemImage: "sparkles") {
                         ForEach(ReviewComposition.Mode.allCases) { mode in Button(mode.rawValue) { if let index { composing = .init(mode: mode, entries: [entries[index]]) } } }
-                    }.disabled(index == nil)
+                    }.disabled(index == nil || loading)
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button("上一篇", systemImage: "chevron.left") { move(-1) }.disabled(index == nil || index == 0)
+                    Button("上一篇", systemImage: "chevron.left") { move(-1) }.disabled(loading || index == nil || index == 0)
                     Spacer()
                     Text(index.map { "\($0 + 1) / \(entries.count)" } ?? "0 / 0").monospacedDigit().accessibilityIdentifier("reading-review-position")
                     Spacer()
-                    Button("下一篇", systemImage: "chevron.right") { move(1) }.disabled(index == nil || index == entries.count - 1)
+                    Button("下一篇", systemImage: "chevron.right") { move(1) }.disabled(loading || index == nil || index == entries.count - 1)
                 }
             }
             .onAppear { visible = true }
             .onDisappear { visible = false; tilt.stop() }
             .task(id: usesTilt) { tilt.setEnabled(usesTilt) }
-            .onChange(of: entries.map(\.id)) { _, ids in if selected.map({ !ids.contains($0) }) ?? true { selected = ids.first } }
+            .task(id: request) { await refresh() }
+            .sheet(item: $editing) { ReviewRecordEditor(entry: $0) }
+            .alert(item: $deleting) { entry in
+                Alert(title: Text("删除这条记录？"), message: Text("这条划线或笔记将被删除，书籍原文保持完整。"),
+                      primaryButton: .destructive(Text("删除")) { delete(entry) }, secondaryButton: .cancel(Text("取消")))
+            }
+            .alert("未能完成操作", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                Button("好") { error = nil }
+            } message: { Text(error ?? "") }
             .sheet(item: $exporting) { ReviewCardExportView(entry: $0) }
             .sheet(item: $composing) { request in ReviewComposer(entries: request.entries, mode: request.mode) }
-            .sheet(item: $source) { passage in
+            .sheet(item: $source) { request in
                 NavigationStack {
-                    ReaderView(bookID: passage.bookID, initialPassage: passage, initialPassageScope: sourceScope)
+                    ReaderView(bookID: request.passage.bookID, initialPassage: request.passage, initialPassageScope: request.scope)
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回回顾") { source = nil } } }
                 }
             }
@@ -192,11 +216,22 @@ struct ReadingReviewPager: View {
         return VStack(alignment: .leading, spacing: 18) {
             Text(entry.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
             Text(entry.book.title + " · " + entry.author).font(.caption).foregroundStyle(.secondary)
+            if case .note(let note) = entry.content, note.characterID != nil && note.userEdited {
+                Text("已由我编辑").font(.caption).foregroundStyle(.secondary)
+            }
             ReadingReviewText(quote: entry.quote, bodyText: entry.body)
             if let passage = entry.passage {
-                Button("返回原文", systemImage: "book") { sourceScope = entry.characterID == nil ? .wholeBook : nil; source = passage }
+                Button("返回原文", systemImage: "book") { source = .init(passage: passage, scope: entry.characterID == nil ? .wholeBook : nil) }
             }
-            ShareLink("分享这篇记录", item: entry.markdown)
+            HStack {
+                ShareLink("分享这篇记录", item: entry.markdown)
+                Spacer()
+                Menu("记录操作", systemImage: "ellipsis.circle") {
+                    Button("编辑记录", systemImage: "square.and.pencil") { editing = entry }
+                    Button("复制全文", systemImage: "doc.on.doc") { UIPasteboard.general.string = entry.markdown }
+                    Button("删除记录", systemImage: "trash", role: .destructive) { deleting = entry }
+                }.accessibilityIdentifier("review-record-actions")
+            }
         }.padding(24).frame(width: max(1, size.width - horizontal * 2), height: max(1, size.height - vertical * 2))
             .background {
                 if motion != .paper {
@@ -231,5 +266,31 @@ struct ReadingReviewPager: View {
     private func move(_ step: Int) {
         guard let index, entries.indices.contains(index + step) else { return }
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.32)) { selected = entries[index + step].id }
+    }
+    private func delete(_ entry: ReadingReviewEntry) {
+        do {
+            guard let book = library.books.first(where: { $0.id == entry.book.id }) else { throw MoReadError.invalid("书籍已删除。") }
+            try library.modifyRecords(for: book) { try ReadingReview.delete(entry, book: book, records: &$0) }
+        } catch { self.error = error.localizedDescription }
+    }
+    private func refresh() async {
+        guard let store = library.store, !library.maintenance else { entries = []; loading = false; return }
+        let query = request, ids = sessionEntries.map(\.id), oldIndex = index ?? 0
+        loading = true
+        let work = Task.detached(priority: .userInitiated) {
+            var records: [UUID: BookRecords] = [:]
+            for book in query.books { try Task.checkCancellation(); records[book.id] = try store.records(for: book) }
+            let values = Dictionary(ReadingReview.entries(books: query.books, records: records).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            return ids.compactMap { values[$0] }
+        }
+        do {
+            let value = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            try Task.checkCancellation()
+            guard library.store === store, request == query else { return }
+            entries = value
+            if !value.contains(where: { $0.id == selected }) { selected = value.isEmpty ? nil : value[min(oldIndex, value.count - 1)].id }
+        } catch is CancellationError { return }
+        catch { if request == query { entries = []; self.error = error.localizedDescription } }
+        if request == query { loading = false }
     }
 }

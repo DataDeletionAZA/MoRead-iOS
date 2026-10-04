@@ -2,6 +2,36 @@ import XCTest
 @testable import MoReadCore
 
 final class ReadingReviewTests: XCTestCase {
+    func testEditingAndDeletingRequireCurrentRecordAndPreserveOtherData() throws {
+        let chapter = Chapter(id: 0, title: "灯塔", text: "灯塔亮了。")
+        var book = Book(title: "书店", chapters: [chapter]); book.readThrough = .init(chapter: 0, offset: chapter.text.utf16.count)
+        var annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: 0, text: chapter.text), note: "旧想法")
+        annotation.characterID = UUID(); annotation.characterName = "林遥"; annotation.sourceThrough = book.readThrough
+        annotation.generationKey = "tool:sample"
+        let note = ReadingNote(title: "随记", content: "雨停了。", book: book)
+        var records = BookRecords(); records.annotations = [annotation]; records.notes = [note]
+        records.bookmarks = [.init(position: .init(), label: "灯塔")]; records.readingSeconds = ["2026-10-04": 60]
+        let original = ReadingReviewEntry(book: book, content: .annotation(annotation))
+        XCTAssertThrowsError(try ReadingReview.editAnnotation(original, note: "new", style: "unknown", book: book, records: &records))
+        XCTAssertThrowsError(try ReadingReview.editAnnotation(original, note: String(repeating: "x", count: 50_001), style: "wave", book: book, records: &records))
+        XCTAssertEqual(records.annotations, [annotation])
+        try ReadingReview.editAnnotation(original, note: " 新的想法 \n", style: "wave", book: book, records: &records)
+        var edited = annotation; edited.note = "新的想法"; edited.style = "wave"
+        XCTAssertEqual(records.annotations, [edited]); XCTAssertEqual(records.notes, [note])
+        XCTAssertThrowsError(try ReadingReview.editAnnotation(original, note: "过期修改", style: "underline", book: book, records: &records))
+        XCTAssertThrowsError(try ReadingReview.delete(original, book: book, records: &records))
+        let current = ReadingReviewEntry(book: book, content: .annotation(edited))
+        var rewound = book; rewound.readThrough = .init()
+        XCTAssertThrowsError(try ReadingReview.delete(current, book: rewound, records: &records))
+        var another = book; another.id = UUID()
+        XCTAssertThrowsError(try ReadingReview.delete(current, book: another, records: &records))
+        try ReadingReview.delete(current, book: book, records: &records)
+        XCTAssertTrue(records.annotations.isEmpty); XCTAssertEqual(records.notes, [note])
+        XCTAssertThrowsError(try ReadingReview.delete(current, book: book, records: &records))
+        book.bodyCleared = true; book.removed = true
+        try ReadingReview.delete(.init(book: book, content: .note(note)), book: book, records: &records)
+        XCTAssertTrue(records.notes!.isEmpty); XCTAssertEqual(records.bookmarks.count, 1); XCTAssertEqual(records.readingSeconds["2026-10-04"], 60)
+    }
     func testReviewScopeFilteringRetainedRecordsAndExport() {
         let chapter = Chapter(id: 0, title: "灯塔", text: "灯塔很亮。未来的秘密。")
         var book = Book(title: "海边书店", author: "林间", chapters: [chapter])

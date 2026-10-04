@@ -88,13 +88,15 @@ private struct ReadingNoteDetail: View {
     }
 }
 
-private struct ReadingNoteEditor: View {
+struct ReadingNoteEditor: View {
     let book: Book
     let original: ReadingNote?
     @EnvironmentObject private var library: LibraryModel
     @Environment(\.dismiss) private var dismiss
     @State private var draft: ReadingNote
     @State private var error: String?
+    @State private var discarding = false
+    private var changed: Bool { draft.title != (original?.title ?? "") || draft.content != (original?.content ?? "") }
     init(book: Book, original: ReadingNote?) {
         self.book = book; self.original = original
         _draft = State(initialValue: original ?? ReadingNote(title: "", content: "", book: book))
@@ -104,16 +106,21 @@ private struct ReadingNoteEditor: View {
             TextField("标题", text: $draft.title).accessibilityIdentifier("reading-note-title")
             Section("正文") { TextEditor(text: $draft.content).frame(minHeight: 300).accessibilityIdentifier("reading-note-content") }
             if original?.characterID != nil { Text("保存你的修改后，角色不能自动覆盖这篇内容。").font(.caption).foregroundStyle(.secondary) }
-        }.navigationTitle(original == nil ? "新建笔记" : "编辑笔记")
+        }.navigationTitle(original == nil ? "新建笔记" : "编辑笔记").interactiveDismissDisabled(changed)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { if changed { discarding = true } else { dismiss() } } }
                 ToolbarItem(placement: .confirmationAction) { Button("保存") { save() } }
+            }
+            .alert("放弃未保存的修改？", isPresented: $discarding) {
+                Button("放弃修改", role: .destructive) { dismiss() }
+                Button("继续编辑", role: .cancel) { }
             }
             .alert("未能保存", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("好") { error = nil } } message: { Text(error ?? "") }
     }
     private func save() {
         do {
             guard let currentBook = library.books.first(where: { $0.id == book.id }) else { throw MoReadError.invalid("书籍已删除。") }
+            if let original, original.characterID != nil, !original.visible(in: currentBook) { throw MoReadError.invalid("原文或可阅读范围已变化，请重新打开后编辑。") }
             var value = draft; value.title = value.title.trimmingCharacters(in: .whitespacesAndNewlines); value.content = value.content.trimmingCharacters(in: .whitespacesAndNewlines)
             try value.validate(); value.updatedAt = Date()
             if original?.characterID != nil { value.userEdited = true }
