@@ -9,6 +9,8 @@ public struct ReaderTypography: Codable, Equatable, Sendable {
     }
     public var font: Font = .system
     public var customFontID: UUID?
+    public var syntaxEnabled: Bool?
+    public var syntaxRules: [ReaderSyntaxRule]?
     public var englishLearning: Bool?
     public var englishBionic: Bool?
     public var wordAnnotationMode: WordAnnotationMode?
@@ -32,6 +34,12 @@ public struct ReaderTypography: Codable, Equatable, Sendable {
     public func encoded() -> Data { (try? JSONEncoder().encode(validated())) ?? Data() }
     public func validated() -> Self {
         var value = self
+        if let syntaxRules {
+            var ids = Set<UUID>()
+            value.syntaxRules = Array(syntaxRules.prefix(64)).filter { rule in
+                (try? rule.validate()) != nil && ids.insert(rule.id).inserted
+            }
+        }
         func bound(_ number: Double, _ range: ClosedRange<Double>, _ fallback: Double) -> Double {
             number.isFinite ? min(range.upperBound, max(range.lowerBound, number)) : fallback
         }

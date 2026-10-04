@@ -24,7 +24,7 @@ public struct ReviewCardTemplate: Codable, Equatable, Identifiable, Sendable {
     public var strikethrough = false
     public var css: String?
     public var syntaxEnabled: Bool?
-    public var syntaxRules: [ReviewCardSyntaxRule]?
+    public var syntaxRules: [ReaderSyntaxRule]?
     public init() {}
     public func validate() throws {
         _ = try ReviewCardCSS.parse(css ?? "")

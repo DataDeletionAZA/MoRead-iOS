@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ReviewCardSyntaxRule: Codable, Equatable, Identifiable, Sendable {
+public struct ReaderSyntaxRule: Codable, Equatable, Identifiable, Sendable {
     public enum Mode: String, Codable, CaseIterable, Sendable { case delimited = "成对符号", regex = "正则表达式" }
     public var id = UUID()
     public var name = "文字规则"
@@ -54,13 +54,30 @@ public struct ReviewCardSyntaxRule: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-public enum ReviewCardSyntax {
+public enum ReaderSyntax {
     public struct Match: Equatable, Sendable {
         public let range: NSRange
         public let ruleID: UUID
         public let glyphsOnly: Bool
     }
-    public static func matches(_ text: String, rules: [ReviewCardSyntaxRule]) throws -> [Match] {
+    public static func paragraphMatches(_ text: String, rules: [ReaderSyntaxRule]) throws -> [Match] {
+        guard rules.count <= 64 else { throw MoReadError.invalid("文字规则最多 64 条。") }
+        guard rules.contains(where: \.enabled) else { return [] }
+        let body = text as NSString
+        var cursor = 0, result: [Match] = []
+        while cursor < body.length {
+            try Task.checkCancellation()
+            var start = 0, end = 0, contentEnd = 0
+            body.getParagraphStart(&start, end: &end, contentsEnd: &contentEnd, for: NSRange(location: cursor, length: 0))
+            let paragraph = body.substring(with: NSRange(location: start, length: contentEnd - start))
+            result += try matches(paragraph, rules: rules).map { match in
+                Match(range: NSRange(location: start + match.range.location, length: match.range.length), ruleID: match.ruleID, glyphsOnly: match.glyphsOnly)
+            }
+            cursor = end
+        }
+        return result
+    }
+    public static func matches(_ text: String, rules: [ReaderSyntaxRule]) throws -> [Match] {
         guard rules.count <= 64, text.utf16.count <= 50_000 else { throw MoReadError.invalid("文字规则最多 64 条，匹配文字最多 50000 字。") }
         let body = text as NSString, deadline = ProcessInfo.processInfo.systemUptime + 0.3
         var boundaries = IndexSet(integer: 0), offset = 0
@@ -70,7 +87,7 @@ public enum ReviewCardSyntax {
             try Task.checkCancellation()
             guard ProcessInfo.processInfo.systemUptime < deadline else { throw MoReadError.invalid("文字匹配耗时过长，请精简规则或匹配表达式。") }
         }
-        func add(_ range: NSRange, rule: ReviewCardSyntaxRule, glyphsOnly: Bool = false) throws {
+        func add(_ range: NSRange, rule: ReaderSyntaxRule, glyphsOnly: Bool = false) throws {
             guard range.length > 0 else { return }
             guard range.location >= 0, NSMaxRange(range) <= body.length,
                   boundaries.contains(range.location), boundaries.contains(NSMaxRange(range)) else { throw MoReadError.invalid("规则“\(rule.name)”切断了完整字符，请调整匹配内容。") }

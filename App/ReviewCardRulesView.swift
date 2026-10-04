@@ -2,14 +2,14 @@ import SwiftUI
 import MoReadCore
 
 struct ReviewCardRulesView: View {
-    @Binding var rules: [ReviewCardSyntaxRule]
+    @Binding var rules: [ReaderSyntaxRule]
     let text: String
-    @State private var editing: ReviewCardSyntaxRule?
+    @State private var editing: ReaderSyntaxRule?
     var body: some View {
         List {
             Section {
                 Button("添加文字规则") { editing = .init() }.disabled(rules.count >= 64)
-                Button("添加对白示例") { rules += ReviewCardSyntaxRule.examples }.disabled(rules.count > 61)
+                Button("添加对白示例") { rules += ReaderSyntaxRule.examples }.disabled(rules.count > 61)
             } footer: { Text("规则应用于卡片摘录；笔记卡片应用于标题。重叠时排在前面的规则优先。") }
             Section {
                 ForEach($rules) { $rule in
@@ -36,18 +36,18 @@ struct ReviewCardRulesView: View {
 private struct ReviewCardRuleEditor: View {
     @EnvironmentObject private var library: LibraryModel
     @Environment(\.dismiss) private var dismiss
-    @State private var draft: ReviewCardSyntaxRule
+    @State private var draft: ReaderSyntaxRule
     @State private var error: String?
     @State private var matchCount: Int?
     let text: String
-    let save: (ReviewCardSyntaxRule) -> Void
-    init(initial: ReviewCardSyntaxRule, text: String, save: @escaping (ReviewCardSyntaxRule) -> Void) { _draft = State(initialValue: initial); self.text = text; self.save = save }
+    let save: (ReaderSyntaxRule) -> Void
+    init(initial: ReaderSyntaxRule, text: String, save: @escaping (ReaderSyntaxRule) -> Void) { _draft = State(initialValue: initial); self.text = text; self.save = save }
     var body: some View {
         NavigationStack {
             Form {
                 TextField("规则名称", text: $draft.name).accessibilityIdentifier("review-rule-name")
                 Section("匹配文字") {
-                    Picker("匹配方式", selection: $draft.mode) { ForEach(ReviewCardSyntaxRule.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("review-rule-mode")
+                    Picker("匹配方式", selection: $draft.mode) { ForEach(ReaderSyntaxRule.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("review-rule-mode")
                     if draft.mode == .delimited {
                         TextField("开始符号", text: $draft.start).accessibilityIdentifier("review-rule-start")
                         TextField("结束符号", text: $draft.end).accessibilityIdentifier("review-rule-end")
@@ -59,7 +59,7 @@ private struct ReviewCardRuleEditor: View {
                         Toggle("忽略大小写", isOn: $draft.ignoreCase)
                     }
                     Button("检查当前摘录") {
-                        do { try draft.validate(); matchCount = try ReviewCardSyntax.matches(text, rules: [draft]).filter { !$0.glyphsOnly }.count }
+                        do { try draft.validate(); matchCount = try ReaderSyntax.matches(text, rules: [draft]).filter { !$0.glyphsOnly }.count }
                         catch { self.error = error.localizedDescription }
                     }
                     if let matchCount { Text("找到 \(matchCount) 处匹配").accessibilityIdentifier("review-rule-matches") }
@@ -103,7 +103,7 @@ private struct ReviewCardRuleEditor: View {
                 .alert("请检查文字规则", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("好") { error = nil } } message: { Text(error ?? "") }
         }
     }
-    private func color(_ key: WritableKeyPath<ReviewCardSyntaxRule, Int>) -> Binding<Color> {
+    private func color(_ key: WritableKeyPath<ReaderSyntaxRule, Int>) -> Binding<Color> {
         Binding(get: { Color(rgb: draft[keyPath: key]) }, set: { draft[keyPath: key] = $0.savedRGB })
     }
     private func append(_ value: String) { draft.css += (draft.css.isEmpty ? "" : "\n") + value }

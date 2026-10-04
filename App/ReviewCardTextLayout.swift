@@ -12,12 +12,12 @@ final class ReviewCardTextLayout {
     private let images: [UUID: UIImage]
     let width: CGFloat
     var height: CGFloat { ceil(layout.usedRect(for: container).height) }
-    init(base: NSAttributedString, width: CGFloat, rules: [ReviewCardSyntaxRule], gradient: ReviewCardGradient?, fonts: [UUID: UIFont], images: [UUID: UIImage]) throws {
+    init(base: NSAttributedString, width: CGFloat, rules: [ReaderSyntaxRule], gradient: ReviewCardGradient?, fonts: [UUID: UIFont], images: [UUID: UIImage]) throws {
         self.width = width; self.images = images
         storage = NSTextStorage(attributedString: base)
         container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude)); container.lineFragmentPadding = 0
         layout.addTextContainer(container); storage.addLayoutManager(layout)
-        let matches = try ReviewCardSyntax.matches(base.string, rules: rules)
+        let matches = try ReaderSyntax.matches(base.string, rules: rules)
         let styles = try Dictionary(uniqueKeysWithValues: rules.map { ($0.id, try $0.style()) })
         var inherited = IndexSet(integersIn: 0..<base.length)
         for match in matches {
