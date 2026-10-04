@@ -285,6 +285,7 @@ struct BookshelfView: View {
     @State private var remove: Book?
     @State private var editing: Book?
     @State private var coverEditing: Book?
+    @State private var details: Book?
     @State private var showFilters = false
     @State private var filter = ShelfFilter()
     @AppStorage("shelf.sort") private var sort = ShelfSort.recent.rawValue
@@ -313,6 +314,7 @@ struct BookshelfView: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 20)], spacing: 28) {
                             ForEach(filtered) { book in
+                                VStack(alignment: .leading, spacing: 8) {
                                 NavigationLink(value: book.id) { BookCover(book: book) }.buttonStyle(.plain)
                                     .draggable("moread-book:" + book.id.uuidString)
                                     .dropDestination(for: String.self) { values, _ in
@@ -321,8 +323,10 @@ struct BookshelfView: View {
                                         return false
                                     }
                                     .accessibilityAction(named: "编辑资料") { editing = book }
+                                    .accessibilityAction(named: "书籍详情") { details = book }
                                     .accessibilityAction(named: "更换封面") { coverEditing = book }
                                     .contextMenu {
+                                        Button("书籍详情", systemImage: "info.circle") { details = book }
                                         Button("编辑资料", systemImage: "pencil") { editing = book }
                                         Button("更换封面", systemImage: "photo") { coverEditing = book }
                                         Button(book.pinned ? "取消置顶" : "置顶", systemImage: "pin") {
@@ -343,6 +347,9 @@ struct BookshelfView: View {
                                         }
                                         Button("移除", systemImage: "trash", role: .destructive) { remove = book }
                                     }
+                                    Button("书籍详情", systemImage: "info.circle") { details = book }
+                                        .font(.caption).buttonStyle(.plain).foregroundStyle(.secondary).accessibilityIdentifier("book-details-" + book.id.uuidString)
+                                }
                             }
                         }.padding(24)
                     }
@@ -361,6 +368,7 @@ struct BookshelfView: View {
                 ToolbarItem(placement: .primaryAction) { Button("导入", systemImage: "plus") { picker = true }.disabled(model.importing) }
             }
             .navigationDestination(for: UUID.self) { id in ReaderView(bookID: id) }
+            .navigationDestination(item: $details) { BookDetailView(bookID: $0.id) }
             .overlay { if model.importing { ProgressView("正在整理书籍…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) } }
             .sheet(item: $coverEditing) { book in
                 NavigationStack { BookCoverEditor(bookID: book.id).toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { coverEditing = nil } } } }

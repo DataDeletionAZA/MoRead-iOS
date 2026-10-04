@@ -18,8 +18,8 @@ struct ReadingReviewView: View {
         return entries.filter { if let id = $0.characterID { return seen.insert(id).inserted }; return false }
             .sorted { $0.author.localizedStandardCompare($1.author) == .orderedAscending }
     }
-    init(bookID: UUID? = nil) {
-        var value = ReadingReviewFilter(); if let bookID { value.bookIDs = [bookID] }
+    init(bookID: UUID? = nil, kind: ReadingReviewFilter.Kind = .all) {
+        var value = ReadingReviewFilter(); value.kind = kind; if let bookID { value.bookIDs = [bookID] }
         _filter = State(initialValue: value)
     }
     var body: some View {

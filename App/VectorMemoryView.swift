@@ -43,7 +43,7 @@ struct VectorMemoryView: View {
     }
 }
 
-private struct BookMemoryView: View {
+struct BookMemoryView: View {
     let bookID: UUID
     @EnvironmentObject private var companion: CompanionModel
     @EnvironmentObject private var library: LibraryModel

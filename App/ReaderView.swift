@@ -6,6 +6,7 @@ struct ReaderView: View {
     let bookID: UUID
     var initialPassage: SourcePassage? = nil
     var initialPassageScope: ReadingScope? = nil
+    var initialSheet: ReaderSheet? = nil
     @EnvironmentObject private var model: LibraryModel
     @EnvironmentObject private var companion: CompanionModel
     @EnvironmentObject private var speech: SpeechPlayer
@@ -107,6 +108,7 @@ struct ReaderView: View {
                                     if book.format == "txt" { loadChapter(initialPassage.chapter, offset: initialPassage.offset) }
                                 } else if book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
                             } catch { initialSourceError = error.localizedDescription; return }
+                            sheet = initialSheet
                         }
                         refreshReadingTime()
                         companion.setAnnotationReader(bookID, library: model)
