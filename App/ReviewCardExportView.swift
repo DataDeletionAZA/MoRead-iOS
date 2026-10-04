@@ -14,6 +14,7 @@ struct ReviewCardExportView: View {
     @State private var exported: URL?
     @State private var error: String?
     @State private var loaded = false
+    @State private var sourceCurrent = false
     private var saved: ReviewCardTemplate? { templates.first { $0.id == selected } }
     private var template: ReviewCardTemplate { saved ?? ReviewCardTemplate.presets.first { $0.id == selected } ?? ReviewCardTemplate.presets[0] }
     private struct Request: Equatable { let template: ReviewCardTemplate; let options: ReviewCardOptions; let revision: UUID; let books: [Book]; let maintenance: Bool; let loaded: Bool }
@@ -45,8 +46,8 @@ struct ReviewCardExportView: View {
                 }
                 Section {
                     if let exported { ShareLink("分享图片", item: exported).accessibilityIdentifier("review-card-share") }
-                    Button("复制文字") { UIPasteboard.general.string = entry.markdown }
-                    ShareLink("分享文字", item: entry.markdown)
+                    Button("复制文字") { UIPasteboard.general.string = entry.markdown }.disabled(!sourceCurrent)
+                    ShareLink("分享文字", item: entry.markdown).disabled(!sourceCurrent)
                 }
             }.navigationTitle("导出卡片").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
@@ -75,7 +76,7 @@ struct ReviewCardExportView: View {
         } catch { loaded = false; self.error = error.localizedDescription }
     }
     private func render() async {
-        preview = nil; exported = nil
+        preview = nil; exported = nil; sourceCurrent = false
         guard loaded else { return }
         error = nil
         do {
@@ -85,6 +86,7 @@ struct ReviewCardExportView: View {
                   ReadingReview.entries(books: [book], records: [book.id: try store.records(for: book)]).contains(entry) else {
                 throw MoReadError.invalid("这条记录已改变，请重新打开后分享。")
             }
+            sourceCurrent = true
             let style = template
             let background: UIImage?
             if let id = style.backgroundImageID { background = UIImage(data: try ImageLibrary(root: store.root).data(id)) }

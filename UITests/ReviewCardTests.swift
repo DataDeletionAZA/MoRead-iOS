@@ -11,6 +11,7 @@ final class ReviewCardUITests: XCTestCase {
         app.buttons["review-card-export"].tap()
         XCTAssertTrue(app.staticTexts["这条内容较长，请使用文字分享以保留全文。"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["review-card-share"].exists)
+        XCTAssertTrue(app.buttons["分享文字"].isEnabled)
         let thought = app.switches["review-card-thought"]
         if !thought.isHittable { app.swipeUp() }
         thought.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
