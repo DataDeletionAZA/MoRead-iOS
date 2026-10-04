@@ -102,13 +102,23 @@ struct ReviewCardExportView: View {
                 if let id = paint.customFontID { ruleFonts[id] = library.customFont(id, size: css.size ?? style.fontSize) }
                 if let id = paint.backgroundImageID { ruleImages[id] = UIImage(data: try ImageLibrary(root: store.root).data(id)) }
             }
-            let image = try ReviewCardRenderer.image(entry: entry, template: style, options: options, font: library.customFont(fontID, size: css.size ?? style.fontSize), background: background, cover: cover, ruleFonts: ruleFonts, ruleImages: ruleImages)
-            guard let data = image.pngData() else { throw MoReadError.invalid("图片生成失败，请重试。") }
+            let entry = entry, options = options, font = library.customFont(fontID, size: css.size ?? style.fontSize)
+            let fonts = ruleFonts, images = ruleImages
+            let work = Task.detached(priority: .userInitiated) {
+                try Task.checkCancellation()
+                let image = try ReviewCardRenderer.image(entry: entry, template: style, options: options, font: font, background: background, cover: cover, ruleFonts: fonts, ruleImages: images)
+                try Task.checkCancellation()
+                guard let data = image.pngData() else { throw MoReadError.invalid("图片生成失败，请重试。") }
+                try Task.checkCancellation()
+                return (image, data)
+            }
+            let (image, data) = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            try Task.checkCancellation()
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MoRead-回顾-" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let url = directory.appendingPathComponent("墨知-阅读回顾.png"); try data.write(to: url, options: .atomic)
             try Task.checkCancellation(); preview = image; exported = url
-        } catch is CancellationError {} catch { self.error = error.localizedDescription }
+        } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
 }
 

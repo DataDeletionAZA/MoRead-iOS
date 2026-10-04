@@ -69,12 +69,14 @@ enum ReviewCardRenderer {
         let footer = block(metadata.joined(separator: " · "), font: .systemFont(ofSize: 26))
         func height(_ value: NSAttributedString) -> CGFloat {
             guard value.length > 0 else { return 0 }
-            return ceil(value.boundingRect(with: CGSize(width: textWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height)
+            return ceil(value.boundingRect(with: CGSize(width: textWidth, height: 8192), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height)
         }
+        try Task.checkCancellation()
         let quoteHeight = quoteLayout.height, thoughtHeight = thought.map(height) ?? 0, footerHeight = height(footer)
         let footerBottom: CGFloat = options.watermark ? 144 : 80
         let contentHeight = 216 + extraTop + extraBottom + quoteHeight + (thought == nil ? 0 : 100 + thoughtHeight) + 96 + footerHeight + footerBottom
         guard contentHeight.isFinite, contentHeight <= 8192 else { throw MoReadError.invalid("这条内容较长，请使用文字分享以保留全文。") }
+        try Task.checkCancellation()
         let cardHeight = max(920, ceil(contentHeight)), bounds = CGRect(x: 0, y: 0, width: width, height: cardHeight)
         let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = false
         return UIGraphicsImageRenderer(size: bounds.size, format: format).image { renderer in
