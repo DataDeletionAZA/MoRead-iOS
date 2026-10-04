@@ -6,13 +6,27 @@ struct ReadingNotesView: View {
     @EnvironmentObject private var library: LibraryModel
     @State private var notes: [ReadingNote] = []
     @State private var filter = "all"
+    @State private var author = "all"
     @State private var query = ""
     @State private var creating = false
+    @State private var reviewing = false
     private var book: Book? { library.books.first { $0.id == bookID } }
-    private var visible: [ReadingNote] { notes.filter { (filter == "all" || $0.kind == filter) && (query.isEmpty || ($0.title + $0.content).localizedCaseInsensitiveContains(query)) }.sorted { $0.updatedAt > $1.updatedAt } }
+    private var authors: [(id: String, name: String)] {
+        Dictionary(grouping: notes, by: { $0.characterID?.uuidString ?? "me" }).map { id, values in
+            (id, id == "me" ? "我的笔记" : values.max(by: { $0.updatedAt < $1.updatedAt })?.characterName ?? "角色")
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+    private var visible: [ReadingNote] { notes.filter {
+        (filter == "all" || $0.kind == filter) && (author == "all" || ($0.characterID?.uuidString ?? "me") == author)
+            && (query.isEmpty || ($0.title + $0.content).localizedCaseInsensitiveContains(query))
+    }.sorted { $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt } }
     var body: some View {
         List {
             Picker("内容类型", selection: $filter) { Text("全部").tag("all"); Text("笔记").tag("note"); Text("梗概").tag("plot_summary") }.pickerStyle(.segmented)
+            Picker("作者", selection: $author) {
+                Text("全部作者").tag("all")
+                ForEach(authors, id: \.id) { Text($0.name).tag($0.id) }
+            }.pickerStyle(.menu).accessibilityIdentifier("reading-notes-author")
             if visible.isEmpty { Text("还没有符合条件的笔记。可以自己新建，也可以在这本书的伴读中请角色保存。").foregroundStyle(.secondary) }
             if let book {
                 ForEach(visible) { note in
@@ -32,12 +46,64 @@ struct ReadingNotesView: View {
                 if !notes.isEmpty, let markdown = try? library.store?.notesMarkdown(for: book) { ShareLink("导出笔记与批注", item: markdown) }
             }
         }.navigationTitle("读书笔记与梗概").searchable(text: $query, prompt: "搜索标题和正文")
-            .toolbar { Button("新建笔记", systemImage: "square.and.pencil") { creating = true } }
+            .toolbar {
+                Button("全屏回顾", systemImage: "rectangle.expand.vertical") { reviewing = true }.disabled(visible.isEmpty).accessibilityIdentifier("reading-notes-review")
+                Button("新建笔记", systemImage: "square.and.pencil") { creating = true }
+            }
             .sheet(isPresented: $creating) { if let book { NavigationStack { ReadingNoteEditor(book: book, original: nil) } } }
+            .fullScreenCover(isPresented: $reviewing) { NavigationStack { ReadingNotesReview(notes: visible) } }
             .task(id: library.recordsRevision) { reload() }
             .onAppear { reload() }
+            .onChange(of: authors.map(\.id)) { _, ids in if author != "all" && !ids.contains(author) { author = "all" } }
     }
     private func reload() { library.perform { if let book, let store = library.store { notes = try store.records(for: book).notes ?? [] } } }
+}
+
+private struct ReadingNotesReview: View {
+    let notes: [ReadingNote]
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: UUID?
+    private var index: Int? { notes.firstIndex { $0.id == selected } }
+    var body: some View {
+        Group {
+            if notes.isEmpty { ContentUnavailableView("没有符合条件的笔记", systemImage: "note.text") }
+            else {
+                TabView(selection: $selected) {
+                    ForEach(notes) { note in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 18) {
+                                Text(note.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
+                                ReadingNoteContent(note: note)
+                            }.padding(24)
+                        }.tag(Optional(note.id))
+                    }
+                }.tabViewStyle(.page(indexDisplayMode: .never))
+            }
+        }
+        .navigationTitle("笔记回顾").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button("上一篇", systemImage: "chevron.left") { if let index, index > 0 { selected = notes[index - 1].id } }.disabled(index == nil || index == 0)
+                Spacer()
+                Text(index.map { "\($0 + 1) / \(notes.count)" } ?? "0 / 0").monospacedDigit().accessibilityIdentifier("reading-review-position")
+                Spacer()
+                Button("下一篇", systemImage: "chevron.right") { if let index, index + 1 < notes.count { selected = notes[index + 1].id } }.disabled(index == nil || index == notes.count - 1)
+            }
+        }
+        .onAppear { if index == nil { selected = notes.first?.id } }
+        .onChange(of: notes.map(\.id)) { _, ids in if selected.map({ !ids.contains($0) }) ?? true { selected = ids.first } }
+    }
+}
+
+private struct ReadingNoteContent: View {
+    let note: ReadingNote
+    var body: some View {
+        Text(note.authorLabel).font(.caption).foregroundStyle(.secondary)
+        if let from = note.fromChapter, let to = note.toChapter { Text("覆盖第 \(from)–\(to) 章").font(.caption).foregroundStyle(.secondary) }
+        Text(.init(note.content)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+        ShareLink("分享这篇笔记", item: "# \(note.title)\n\n\(note.content)")
+    }
 }
 
 private struct ReadingNoteDetail: View {
@@ -51,10 +117,7 @@ private struct ReadingNoteDetail: View {
         ScrollView {
             if let note {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text(note.authorLabel).font(.caption).foregroundStyle(.secondary)
-                    if let from = note.fromChapter, let to = note.toChapter { Text("覆盖第 \(from)–\(to) 章").font(.caption).foregroundStyle(.secondary) }
-                    Text(.init(note.content)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                    ShareLink("分享这篇笔记", item: "# \(note.title)\n\n\(note.content)")
+                    ReadingNoteContent(note: note)
                 }.padding()
             }
         }.navigationTitle(note?.title ?? "笔记")
