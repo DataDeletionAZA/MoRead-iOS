@@ -210,6 +210,10 @@ final class LibraryModel: ObservableObject {
             #endif
             let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--long-review-card") {
+                let note = ReadingNote(title: "长篇读书笔记", content: String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000), book: book)
+                try note.validate(); try store.modifyRecords(for: book) { $0.notes = [note] }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
                let encoded = ProcessInfo.processInfo.environment["MOREAD_TEST_SPEECH_AUDIO"], encoded.utf8.count < 200000,
                let audio = Data(base64Encoded: encoded),

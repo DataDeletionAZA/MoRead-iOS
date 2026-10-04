@@ -104,6 +104,7 @@ struct ReadingReviewPager: View {
     var initialID: String?
     @Environment(\.dismiss) private var dismiss
     @State private var selected: String?
+    @State private var exporting: ReadingReviewEntry?
     @State private var source: SourcePassage?
     @State private var sourceScope: ReadingScope?
     private struct CompositionRequest: Identifiable {
@@ -138,6 +139,10 @@ struct ReadingReviewPager: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) {
+                    Button("导出卡片", systemImage: "photo") { if let index { exporting = entries[index] } }
+                        .disabled(index == nil).accessibilityIdentifier("review-card-export")
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Menu("邀请角色", systemImage: "sparkles") {
                         ForEach(ReviewComposition.Mode.allCases) { mode in Button(mode.rawValue) { if let index { composing = .init(mode: mode, entries: [entries[index]]) } } }
                     }.disabled(index == nil)
@@ -152,6 +157,7 @@ struct ReadingReviewPager: View {
             }
             .onAppear { if index == nil { selected = entries.first(where: { $0.id == initialID })?.id ?? entries.first?.id } }
             .onChange(of: entries.map(\.id)) { _, ids in if !ids.isEmpty && (selected.map({ !ids.contains($0) }) ?? true) { selected = ids.first } }
+            .sheet(item: $exporting) { ReviewCardExportView(entry: $0) }
             .sheet(item: $composing) { request in ReviewComposer(entries: request.entries, mode: request.mode) }
             .sheet(item: $source) { passage in
                 NavigationStack {
