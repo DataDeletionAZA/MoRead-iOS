@@ -94,12 +94,13 @@ extension UITextView {
         let tag = textStorage.attribute(.textItemTag, at: index, longestEffectiveRange: &range, in: NSRange(location: 0, length: textStorage.length))
         return tag as? String == "moread-vocabulary" ? range : nil
     }
-    func hasVocabularyTag(at point: CGPoint) -> Bool {
+    func hasReadingAction(at point: CGPoint) -> Bool {
         let position = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
         let glyph = layoutManager.glyphIndex(for: position, in: textContainer)
         guard glyph < layoutManager.numberOfGlyphs,
               layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer).contains(position) else { return false }
         let index = layoutManager.characterIndexForGlyph(at: glyph)
-        return vocabularyRange(at: index) != nil
+        let tag = textStorage.attribute(.textItemTag, at: index, effectiveRange: nil) as? String ?? ""
+        return vocabularyRange(at: index) != nil || !AnnotationHit.ids(from: tag).isEmpty
     }
 }

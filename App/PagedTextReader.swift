@@ -282,7 +282,7 @@ final class TextPagesController: ReaderKeyboardController, UIPageViewControllerD
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if gestureRecognizer is UITapGestureRecognizer {
             if let text = (visible ?? pager?.viewControllers?.first as? TextPageController)?.textView,
-               text.hasVocabularyTag(at: gestureRecognizer.location(in: text)) { return false }
+               text.hasReadingAction(at: gestureRecognizer.location(in: text)) { return false }
             return active && !transitioning && pagination == nil && !needsPagination && parentReader.content.isReading && ((visible ?? pager?.viewControllers?.first as? TextPageController)?.textView?.selectedRange.length ?? 0) == 0 && (parentReader.content.tapZones != nil || abs(gestureRecognizer.location(in: pageHost).x - pageHost.bounds.midX) < pageHost.bounds.width / 6)
         }
         guard !transitioning, pagination == nil, visible?.textView?.selectedRange.length ?? 0 == 0, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
@@ -340,8 +340,9 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
     var textView: UITextView?
     var selectionActions: ((NSRange) -> [UIAction])?
     var turnPage: ((Int) -> Void)?
+    var annotationAction: (([UUID]) -> Void)?
     init(index: Int, container: NSTextContainer, range: NSRange, content: TextReader) {
-        self.index = index; self.range = range
+        self.index = index; self.range = range; annotationAction = content.onAnnotation
         super.init(nibName: nil, bundle: nil)
         let text = ReaderTextView(frame: .zero, textContainer: container)
         text.isEditable = false; text.isSelectable = true; text.isScrollEnabled = false
@@ -374,6 +375,9 @@ private final class TextPageController: UIViewController, UITextViewDelegate {
         return UIMenu(children: suggestedActions + actions)
     }
     func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction) -> UIAction? {
+        if case .tag(let tag) = textItem.content, !AnnotationHit.ids(from: tag).isEmpty {
+            return UIAction(title: "批注讨论", image: UIImage(systemName: "text.bubble")) { [weak self] _ in self?.annotationAction?(AnnotationHit.ids(from: tag)) }
+        }
         if case .tag("moread-vocabulary") = textItem.content, let range = textView.vocabularyRange(at: textItem.range.location) { return selectionActions?(range).last }
         return defaultAction
     }

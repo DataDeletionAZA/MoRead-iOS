@@ -39,6 +39,7 @@ struct ReaderView: View {
     @State private var requestedOffset = 0
     @State private var navigationID = UUID()
     @State private var sheet: ReaderSheet?
+    @State private var discussionIDs: [UUID] = []
     @State private var dictionaryWord = ""
     @State private var dictionarySource: SourcePassage?
     @State private var selection: SourcePassage?
@@ -62,13 +63,19 @@ struct ReaderView: View {
     @State private var didLocateEPUB = false
     private var readingActive: Bool { sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active }
     private var book: Book? { model.books.first { $0.id == bookID && !$0.removed } }
+    private var visibleAnnotations: [Annotation] {
+        guard let book else { return [] }
+        return ReadingReview.entries(books: [book], records: [bookID: records]).compactMap {
+            if case .annotation(let annotation) = $0.content { return annotation }; return nil
+        }
+    }
     private var completedChapter: Int? {
         guard let book else { return nil }
         return book.chapters.indices.last { $0 <= book.position.chapter && ReadingPosition(chapter: $0, offset: book.chapters[$0].length) <= book.readThrough }
     }
     private var paperColor: Color { (paper == "custom" || paper == "image") ? Color(rgb: typography.backgroundRGB ?? 0xF7F2E3) : paper == "night" ? Color(white: 0.10) : paper == "white" ? .white : Color(red: 0.97, green: 0.95, blue: 0.89) }
     private var ink: UIColor { (paper == "custom" || paper == "image") ? UIColor(Color(rgb: typography.textRGB ?? 0x292929)) : paper == "night" ? UIColor(white: 0.88, alpha: 1) : UIColor(white: 0.16, alpha: 1) }
-    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead, dictionary, englishLearning; var id: String { rawValue } }
+    enum ReaderSheet: String, Identifiable { case contents, bookmarks, typography, search, notes, speech, autoRead, dictionary, englishLearning, discussion; var id: String { rawValue } }
 
     private var readingScreen: some View {
         Group {
@@ -352,32 +359,46 @@ struct ReaderView: View {
                         }
                     }.searchable(text: $query, prompt: "搜索全书原文")
                         .onChange(of: query) { _, value in search(value, book: book) }
+                case .discussion:
+                    let entries = visibleAnnotations.filter { discussionIDs.contains($0.id) }
+                    if entries.count == 1, let annotation = entries.first {
+                        AnnotationDiscussionView(bookID: bookID, annotationID: annotation.id)
+                    } else {
+                        List(entries) { annotation in
+                            NavigationLink { AnnotationDiscussionView(bookID: bookID, annotationID: annotation.id) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(annotation.authorLabel).font(.caption).foregroundStyle(.secondary)
+                                    Text(annotation.note.isEmpty ? annotation.passage.text : annotation.note)
+                                }
+                            }.accessibilityIdentifier("discussion-choice-" + annotation.id.uuidString)
+                        }
+                    }
                 case .notes:
                     List {
                         NavigationLink("读书笔记与梗概") { ReadingNotesView(bookID: bookID) }
                         NavigationLink("划线与笔记回顾") { ReadingReviewView(bookID: bookID) }
                         NavigationLink("随读段评设置") { ProactiveSettingsView() }
                         if companion.annotationBookID == bookID, let status = companion.annotationStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
-                        if records.annotations.isEmpty { Text("长按正文，选择“批注”即可保存。").foregroundStyle(.secondary) }
-                        ForEach(records.annotations) { annotation in
+                        if visibleAnnotations.isEmpty { Text("长按正文，选择“批注”即可保存。").foregroundStyle(.secondary) }
+                        ForEach(visibleAnnotations) { annotation in
                             NavigationLink { AnnotationDiscussionView(bookID: bookID, annotationID: annotation.id) } label: {
                                 VStack(alignment: .leading, spacing: 10) { if annotation.characterName != nil { Text(annotation.authorLabel).font(.caption).foregroundStyle(.secondary) }; Text(annotation.passage.text).font(.callout); if !annotation.note.isEmpty { Text(annotation.note).foregroundStyle(.secondary) } }
                             }
                         }.onDelete { offsets in
-                            let ids = Set(offsets.map { records.annotations[$0].id })
+                            let ids = Set(offsets.map { visibleAnnotations[$0].id })
                             changeRecords { $0.annotations.removeAll { ids.contains($0.id) } }
                         }
                         if let markdown = try? model.store?.notesMarkdown(for: book) { ShareLink("导出笔记", item: markdown) }
                     }
                 }
-            }.navigationTitle(kind == .englishLearning ? "阅读辅助" : kind == .dictionary ? "本地词典" : kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
+            }.navigationTitle(kind == .discussion ? "批注讨论" : kind == .englishLearning ? "阅读辅助" : kind == .dictionary ? "本地词典" : kind == .contents ? "目录与书签" : kind == .bookmarks ? "书签" : kind == .typography ? "阅读排版" : kind == .search ? "书内搜索" : kind == .speech ? "听书" : "批注")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { sheet = nil } } }
         }
     }
     @ViewBuilder private func readerContent(book: Book) -> some View {
         VStack(spacing: 0) {
             if book.format == "epub" {
-                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, tapZones: tapZones, onTapAction: performTapAction, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, locationHint: locationHint, onLocationHintVisible: { passage in
+                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, tapZones: tapZones, onTapAction: performTapAction, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: visibleAnnotations, onAnnotation: openDiscussion, locationHint: locationHint, onLocationHintVisible: { passage in
                     if readingActive, locationHint?.passage == passage { locationHint?.observe(passage) }
                 }, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                     didLocateEPUB = true
@@ -474,7 +495,7 @@ struct ReaderView: View {
             guard chapter.id + 1 < book.chapters.count else { return false }
             loadChapter(chapter.id + 1, automatic: true); return true
         }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, syntaxAssets: syntaxAssets, onSyntaxError: { message in DispatchQueue.main.async { if syntaxError != message { syntaxError = message } } }, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
-                   annotations: records.annotations.filter { $0.passage.bookID == bookID && $0.passage.isValid(in: chapter, scope: .wholeBook) }, wordGlosses: wordGlosses,
+                   annotations: visibleAnnotations.filter { $0.passage.bookID == bookID && $0.passage.isValid(in: chapter, scope: .wholeBook) }, annotationHits: AnnotationHit.ranges(annotations: visibleAnnotations, chapter: chapter), onAnnotation: openDiscussion, wordGlosses: wordGlosses,
                    locationHintID: locationHint?.id, locationRange: locationHint.flatMap { hint in
                        hint.passage.bookID == bookID && hint.passage.isValid(in: chapter, scope: .wholeBook) ? NSRange(location: hint.passage.offset, length: hint.passage.text.utf16.count) : nil
                    },
@@ -500,6 +521,16 @@ struct ReaderView: View {
             dictionarySource = SourcePassage(bookID: book.id, chapter: chapter, offset: range.location, text: (chapter.text as NSString).substring(with: range))
             sheet = .dictionary
         })
+    }
+    private func openDiscussion(_ ids: [UUID]) {
+        guard readingActive, let book, let store = model.store, let latest = try? store.records(for: book) else { return }
+        let candidates = ReadingReview.entries(books: [book], records: [bookID: latest]).compactMap { entry -> UUID? in
+            guard case .annotation(let value) = entry.content, ids.contains(value.id),
+                  let chapter = try? store.chapter(value.passage.chapter, in: book), value.passage.isValid(in: chapter, scope: .wholeBook) else { return nil }
+            return value.id
+        }
+        guard !candidates.isEmpty else { return }
+        records = latest; discussionIDs = candidates; autoRead.pause("打开批注讨论后已暂停"); sheet = .discussion
     }
     private func locate(_ passage: SourcePassage) {
         guard let book, passage.bookID == bookID, let source = try? model.store?.chapter(passage.chapter, in: book),
@@ -668,6 +699,8 @@ struct TextReader {
     let offset: Int
     let navigationID: UUID
     let annotations: [Annotation]
+    let annotationHits: [AnnotationHit]
+    let onAnnotation: ([UUID]) -> Void
     let wordGlosses: [String: DictionaryGloss]
     let locationHintID: UUID?
     let locationRange: NSRange?
@@ -703,6 +736,9 @@ struct TextReader {
             }
         }
         applyEnglishReading(to: value)
+        for hit in annotationHits {
+            for range in presentation.displayRanges(forSource: hit.range) { value.addAttribute(.textItemTag, value: hit.tag, range: range) }
+        }
         return value
     }
     func applyTransientHighlights(to storage: NSTextStorage) {

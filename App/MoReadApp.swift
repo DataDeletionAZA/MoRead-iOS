@@ -172,13 +172,21 @@ final class LibraryModel: ObservableObject {
     }
     #if DEBUG
     private func addLocationAnnotation(to book: Book) throws {
-        guard ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--location-annotation-sample"), let store else { return }
+        let discussion = ProcessInfo.processInfo.arguments.contains("--annotation-discussion-sample")
+        guard ProcessInfo.processInfo.arguments.contains("--ui-testing"), discussion || ProcessInfo.processInfo.arguments.contains("--location-annotation-sample"), let store else { return }
         for item in book.chapters {
-            let chapter = try store.chapter(item.id, in: book), quote = "一封没有署名的信"
+            let chapter = try store.chapter(item.id, in: book), quote = discussion ? "After" : "一封没有署名的信"
             let range = (chapter.text as NSString).range(of: quote)
             guard range.location != NSNotFound else { continue }
             let annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: range.location, text: quote), note: "这封信来自哪里？", style: "wave")
-            try store.modifyRecords(for: book) { $0.annotations.append(annotation) }
+            try store.modifyRecords(for: book) { records in
+                records.annotations.append(annotation)
+                if discussion {
+                    records.annotations[records.annotations.count - 1].note = "A warm opening."
+                    var second = annotation; second.id = UUID(); second.note = "What changed after the rain?"; second.style = "highlight"
+                    records.annotations.append(second)
+                }
+            }
         }
     }
     #endif

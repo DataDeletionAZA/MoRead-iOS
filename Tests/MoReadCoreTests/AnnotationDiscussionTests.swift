@@ -2,6 +2,24 @@ import XCTest
 @testable import MoReadCore
 
 final class AnnotationDiscussionTests: XCTestCase {
+    func testTapTargetsSplitOverlapsAndRejectStaleText() throws {
+        let chapter = Chapter(id: 0, title: "灯塔", text: "雨后😀灯塔亮了。"), book = Book(title: "书店", chapters: [])
+        let first = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: 0, text: "雨后😀"))
+        let second = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: 2, text: "😀灯塔"))
+        let adjacent = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: 6, text: "亮了。"))
+        var stale = first; stale.id = UUID(); stale.passage.revision = "outdated"
+        let hits = AnnotationHit.ranges(annotations: [first, second, adjacent, stale], chapter: chapter)
+        XCTAssertEqual(hits.map(\.range), [NSRange(location: 0, length: 2), NSRange(location: 2, length: 2), NSRange(location: 4, length: 2), NSRange(location: 6, length: 3)])
+        XCTAssertEqual(hits[0].ids, [first.id]); XCTAssertEqual(Set(hits[1].ids), [first.id, second.id])
+        XCTAssertEqual(hits[2].ids, [second.id]); XCTAssertEqual(hits[3].ids, [adjacent.id])
+        for hit in hits { XCTAssertEqual(AnnotationHit.ids(from: hit.tag), hit.ids) }
+        XCTAssertEqual(AnnotationHit.ids(from: "moread-vocabulary"), [])
+        XCTAssertEqual(AnnotationHit.ids(from: "moread-annotation:invalid"), [])
+        let translated = TranslatedText(source: chapter.text, translations: [.init(paragraph: .init(start: 0, text: chapter.text), chinese: "示例译文")])
+        for hit in hits {
+            for range in translated.displayRanges(forSource: hit.range) { XCTAssertFalse(translated.containsTranslation(in: range)) }
+        }
+    }
     func testThreadMutationPersistenceAndStaleWrites() throws {
         let chapter = Chapter(id: 0, title: "灯塔", text: "海边亮起灯光。")
         var book = Book(title: "书店", chapters: [chapter]); book.readThrough = .init(offset: chapter.text.utf16.count)

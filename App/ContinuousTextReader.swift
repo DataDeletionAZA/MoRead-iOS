@@ -110,6 +110,7 @@ final class ContinuousTextController: ReaderKeyboardController, UITableViewDataS
         let navigation = old.content.navigationID != parent.content.navigationID
         let style = old.content.font != parent.content.font || old.content.fontSize != parent.content.fontSize
             || old.content.presentation.chineseConversionMode != parent.content.presentation.chineseConversionMode
+            || old.content.annotations != parent.content.annotations
             || old.content.lineSpacing != parent.content.lineSpacing || old.content.typography != parent.content.typography
             || old.content.syntaxAssets.id != parent.content.syntaxAssets.id || old.content.ink != parent.content.ink || old.content.wordGlosses != parent.content.wordGlosses || old.revision != parent.revision
         if navigation || style {
@@ -217,7 +218,7 @@ final class ContinuousTextController: ReaderKeyboardController, UITableViewDataS
         }
     }
     @objc private func toggleControls(_ tap: UITapGestureRecognizer) {
-        for case let cell as ContinuousChapterCell in table.visibleCells where cell.textView.hasVocabularyTag(at: tap.location(in: cell.textView)) { return }
+        for case let cell as ContinuousChapterCell in table.visibleCells where cell.textView.hasReadingAction(at: tap.location(in: cell.textView)) { return }
         guard active, !restoring, parentReader.content.isReading, !table.isDecelerating,
               table.visibleCells.allSatisfy({ (($0 as? ContinuousChapterCell)?.textView.selectedRange.length ?? 0) == 0 }) else { return }
         if let zones = parentReader.content.tapZones {
@@ -340,6 +341,9 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
         return UIMenu(children: suggestedActions + actions)
     }
     func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction) -> UIAction? {
+        if case .tag(let tag) = textItem.content, !AnnotationHit.ids(from: tag).isEmpty {
+            return UIAction(title: "批注讨论", image: UIImage(systemName: "text.bubble")) { [weak self] _ in self?.content?.onAnnotation(AnnotationHit.ids(from: tag)) }
+        }
         if case .tag("moread-vocabulary") = textItem.content, let range = textView.vocabularyRange(at: textItem.range.location) { return content?.selectionActions(for: range).last }
         return defaultAction
     }

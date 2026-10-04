@@ -152,6 +152,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     let typography: ReaderTypography
     let paper: String
     let annotations: [Annotation]
+    let onAnnotation: ([UUID]) -> Void
     let locationHint: ReaderLocationHint?
     let onLocationHintVisible: (SourcePassage) -> Void
     let speechLocation: SpeechLocation?
@@ -164,7 +165,7 @@ struct EPUBReader: UIViewControllerRepresentable {
     @EnvironmentObject private var model: LibraryModel
 
     func makeUIViewController(context: Context) -> EPUBHostController {
-        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, tapZones: tapZones, onTapAction: onTapAction, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, onLocationHintVisible: onLocationHintVisible, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary, onEdit: onEdit)
+        EPUBHostController(autoRead: autoRead, isReading: isReading, onBookmark: onBookmark, tapZones: tapZones, onTapAction: onTapAction, book: book, initialPassage: initialPassage, initialPassageScope: initialPassageScope, onLocationHintVisible: onLocationHintVisible, model: model, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: annotations, onAnnotation: onAnnotation, onToggleControls: onToggleControls, onLocation: onLocation, onSelection: onSelection, onVisiblePage: onVisiblePage, onDictionary: onDictionary, onEdit: onEdit)
     }
     func updateUIViewController(_ controller: EPUBHostController, context: Context) {
         controller.tapZones = tapZones
@@ -209,6 +210,7 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
     private var typography: ReaderTypography
     private var paper: String
     private var annotations: [Annotation]
+    private let onAnnotation: ([UUID]) -> Void
     private let onLocationHintVisible: (SourcePassage) -> Void
     private var hintVisibilityTask: Task<Void, Never>?
     private var hintObserved = false
@@ -230,10 +232,10 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
         #endif
     }
 
-    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, tapZones: ReaderTapZones?, onTapAction: @escaping (ReaderTapAction) -> Void, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, onLocationHintVisible: @escaping (SourcePassage) -> Void, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void, onEdit: @escaping (SourcePassage) -> Void) {
+    init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, tapZones: ReaderTapZones?, onTapAction: @escaping (ReaderTapAction) -> Void, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, onLocationHintVisible: @escaping (SourcePassage) -> Void, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onAnnotation: @escaping ([UUID]) -> Void, onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void, onEdit: @escaping (SourcePassage) -> Void) {
         self.tapZones = tapZones; self.onTapAction = onTapAction
         self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
-        bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations
+        bookID = book.id; self.model = model; self.fontSize = fontSize; self.lineSpacing = lineSpacing; self.typography = typography; self.paper = paper; self.annotations = annotations; self.onAnnotation = onAnnotation
         self.initialPassage = initialPassage; self.initialPassageScope = initialPassageScope; self.onLocationHintVisible = onLocationHintVisible
         self.onToggleControls = onToggleControls; self.onLocation = onLocation; self.onSelection = onSelection; self.onVisiblePage = onVisiblePage; self.onDictionary = onDictionary; self.onEdit = onEdit
         super.init(nibName: nil, bundle: nil)
@@ -302,6 +304,7 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
                 traceLocation("open", locator: locator, offset: book.position.offset)
                 pendingTranslationLocator = locator
                 var templates = HTMLDecorationTemplate.defaultTemplates()
+                templates["annotation-discussion"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-discussion-hit' style='background: transparent !important;'/>")
                 templates["location-hint"] = HTMLDecorationTemplate(layout: .boxes, element: { decoration in
                     "<div class='moread-location-hint-\(decoration.id)' style='background-color: rgba(255,149,0,.3) !important; border-radius: 3px;'/>"
                 })
@@ -322,6 +325,11 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
                 }
                 let reader = try EPUBNavigatorViewController(publication: publication, initialLocation: locator, config: config)
                 navigator = reader; reader.delegate = self
+                reader.observeDecorationInteractions(inGroup: "annotation-discussion") { [weak self] event in
+                    guard let self, !closed, isReading, self.navigator?.currentSelection == nil,
+                          let tag = event.decoration.userInfo["annotationTag"] as? String else { return }
+                    onAnnotation(AnnotationHit.ids(from: tag))
+                }
                 addChild(reader); reader.view.frame = view.bounds
                 reader.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                 view.addSubview(reader.view); reader.didMove(toParent: self)
@@ -398,6 +406,18 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
             return Decoration(id: annotation.id.uuidString, locator: locator, style: style)
         }
         navigator?.apply(decorations: decorations, in: "annotations")
+        var targets: [Decoration] = []
+        if let book = model.books.first(where: { $0.id == bookID }), let store = model.store {
+            for chapterID in Set(annotations.map { $0.passage.chapter }).sorted() {
+                guard let chapter = try? store.chapter(chapterID, in: book) else { continue }
+                for hit in AnnotationHit.ranges(annotations: annotations, chapter: chapter) {
+                    let passage = SourcePassage(bookID: bookID, chapter: chapter, offset: hit.range.location, text: (chapter.text as NSString).substring(with: hit.range))
+                    guard let locator = locator(for: passage) else { continue }
+                    targets.append(Decoration(id: "\(chapterID):\(hit.range.location)", locator: locator, style: .init(id: "annotation-discussion"), userInfo: ["annotationTag": hit.tag]))
+                }
+            }
+        }
+        navigator?.apply(decorations: targets, in: "annotation-discussion")
     }
     private func locator(for passage: SourcePassage, publication: Publication? = nil) -> Locator? {
         guard let book = model.books.first(where: { $0.id == bookID }), passage.bookID == bookID,

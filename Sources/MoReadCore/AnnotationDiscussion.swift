@@ -79,3 +79,28 @@ public struct AnnotationDiscussion: Sendable {
         records.annotations[index].replies?.removeAll { $0.id == reply.id }
     }
 }
+
+public struct AnnotationHit: Equatable, Sendable {
+    public let range: NSRange
+    public let ids: [UUID]
+    public var tag: String { "moread-annotation:" + ids.map(\.uuidString).joined(separator: ",") }
+    public static func ids(from tag: String) -> [UUID] {
+        guard tag.hasPrefix("moread-annotation:") else { return [] }
+        return tag.dropFirst("moread-annotation:".count).split(separator: ",").compactMap { UUID(uuidString: String($0)) }
+    }
+    public static func ranges(annotations: [Annotation], chapter: Chapter) -> [Self] {
+        var starts: [Int: Set<UUID>] = [:], ends: [Int: Set<UUID>] = [:]
+        for annotation in annotations where annotation.passage.isValid(in: chapter, scope: .wholeBook) && !annotation.passage.text.isEmpty {
+            let start = annotation.passage.offset, end = start + annotation.passage.text.utf16.count
+            starts[start, default: []].insert(annotation.id); ends[end, default: []].insert(annotation.id)
+        }
+        let boundaries = Set(starts.keys).union(ends.keys).sorted()
+        var active: Set<UUID> = [], result: [Self] = []
+        for (index, offset) in boundaries.enumerated() {
+            active.subtract(ends[offset] ?? []); active.formUnion(starts[offset] ?? [])
+            guard index + 1 < boundaries.count, !active.isEmpty else { continue }
+            result.append(Self(range: NSRange(location: offset, length: boundaries[index + 1] - offset), ids: active.sorted { $0.uuidString < $1.uuidString }))
+        }
+        return result
+    }
+}

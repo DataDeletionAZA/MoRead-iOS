@@ -60,7 +60,7 @@
             };
             snapshot.replaceChild(copy(document.documentElement), snapshot.documentElement); state.snapshot = snapshot;
         }
-        const decorations = ['annotations', 'speech'].flatMap(name => {
+        const decorations = ['annotations', 'annotation-discussion', 'speech'].flatMap(name => {
             const group = window.readium?.getDecorations(name);
             return (group?.items ?? []).map(item => {
                 const selector = state.selector(item.range.commonAncestorContainer);
