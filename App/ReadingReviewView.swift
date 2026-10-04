@@ -186,6 +186,7 @@ struct ReadingReviewPager: View {
             }
     }
     private func card(_ entry: ReadingReviewEntry, size: CGSize) -> some View {
+        let motion = self.motion, tiltValue = tilt.value, reduceMotion = self.reduceMotion
         let horizontal = motion == .paper ? 0.0 : motion == .flow ? 40.0 : 22.0
         let vertical = motion == .paper ? 0.0 : 18.0
         return VStack(alignment: .leading, spacing: 18) {
@@ -209,7 +210,7 @@ struct ReadingReviewPager: View {
                 if motion != .paper {
                     GeometryReader { proxy in
                         let position = proxy.frame(in: .named("review-pager")).minX / max(1, size.width)
-                        let frame = motion.frame(position: position, tiltX: tilt.value.x, tiltY: tilt.value.y, reduceMotion: reduceMotion)
+                        let frame = motion.frame(position: position, tiltX: tiltValue.x, tiltY: tiltValue.y, reduceMotion: reduceMotion)
                         LinearGradient(colors: [.clear, .white.opacity(colorScheme == .dark ? 0.07 : 0.26), .clear],
                                        startPoint: UnitPoint(x: frame.glare - 0.7, y: 0), endPoint: UnitPoint(x: frame.glare + 0.7, y: 1))
                             .background(.black.opacity(frame.shade)).clipShape(RoundedRectangle(cornerRadius: 24))
@@ -219,7 +220,7 @@ struct ReadingReviewPager: View {
             }
             .visualEffect { content, proxy in
                 let width = max(1, proxy.size.width), position = proxy.frame(in: .named("review-pager")).minX / width
-                let frame = motion.frame(position: position, tiltX: tilt.value.x, tiltY: tilt.value.y, reduceMotion: reduceMotion)
+                let frame = motion.frame(position: position, tiltX: tiltValue.x, tiltY: tiltValue.y, reduceMotion: reduceMotion)
                 return content.scaleEffect(frame.scale).opacity(frame.alpha)
                     .rotationEffect(.degrees(frame.rotationZ))
                     .rotation3DEffect(.degrees(frame.rotationX), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
