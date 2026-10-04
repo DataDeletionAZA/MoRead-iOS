@@ -90,6 +90,11 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         try KeychainStore.save(key, for: settings.id)
         stop(); cloudSettings = settings; UserDefaults.standard.set(data, forKey: "speech.cloud")
     }
+    func selectCloudVoice(_ voice: SavedVoice) throws {
+        let value = try voice.applying(to: cloudSettings)
+        let data = try JSONEncoder().encode(value)
+        stop(); cloudSettings = value; UserDefaults.standard.set(data, forKey: "speech.cloud")
+    }
     func stopAndWait() async {
         let pending = cloudTask, preparation = preparationTask; stop(); await preparation?.value; await pending?.value
     }

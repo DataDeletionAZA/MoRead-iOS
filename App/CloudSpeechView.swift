@@ -8,6 +8,7 @@ struct CloudSpeechView: View {
     @State private var key = ""
     @State private var loadingKey = true
     @State private var keyLoaded = false
+    @State private var keyEdited = false
     @State private var message: String?
     @State private var cacheBytes: Int64 = 0
     @State private var clearing = false
@@ -20,7 +21,7 @@ struct CloudSpeechView: View {
                 Toggle("使用云端声音", isOn: $settings.enabled).accessibilityIdentifier("cloud-speech-enabled")
             } footer: { Text("开启后，朗读的文字会发送到所选语音服务商，并按该服务商规则计费。生成的声音来自 AI，音频保存在本机供再次播放。") }
             Section("语音服务商") {
-                Picker("接口类型", selection: Binding(get: { settings.service }, set: { settings.preset($0); key = ""; message = nil })) {
+                Picker("接口类型", selection: Binding(get: { settings.service }, set: { settings.preset($0); key = ""; keyEdited = true; message = nil })) {
                     ForEach(SpeechService.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.accessibilityIdentifier("cloud-speech-service").disabled(loadingKey)
                 field("服务地址", text: $settings.baseURL, id: "cloud-speech-url")
@@ -42,9 +43,10 @@ struct CloudSpeechView: View {
                         ForEach(MimoSpeech.voices, id: \.self) { Text($0 == "mimo_default" ? "默认音色" : $0).tag($0) }
                     }.pickerStyle(.navigationLink).accessibilityIdentifier("mimo-voice-presets")
                 }
+                if !designingVoice { NavigationLink("从音色库选择") { VoiceLibraryView(configuration: settings, previewAllowed: keyLoaded && !loadingKey && settings == speech.cloudSettings && !keyEdited, select: { settings = try $0.applying(to: settings) }) } }
                 if !designingVoice { field(settings.service == .fish ? "声音 ID（可选）" : "声音 ID", text: $settings.voice, id: "cloud-speech-voice") }
                 if designingVoice { Text("在下面的朗读要求中描述声音，例如年龄、语气和口音。").font(.caption).foregroundStyle(.secondary) }
-                SecureField("API 密钥", text: Binding(get: { key }, set: { key = $0; keyLoaded = true })).textInputAutocapitalization(.never).autocorrectionDisabled().focused($focusedField, equals: "cloud-speech-key").accessibilityIdentifier("cloud-speech-key").disabled(loadingKey)
+                SecureField("API 密钥", text: Binding(get: { key }, set: { key = $0; keyLoaded = true; keyEdited = true })).textInputAutocapitalization(.never).autocorrectionDisabled().focused($focusedField, equals: "cloud-speech-key").accessibilityIdentifier("cloud-speech-key").disabled(loadingKey)
                 Text("声音 ID 请填写服务商提供的名称。密钥保存在这台设备的系统钥匙串中。").font(.caption).foregroundStyle(.secondary)
             }
             Section("声音表现") {
@@ -76,7 +78,7 @@ struct CloudSpeechView: View {
             Section {
                 Button("保存声音设置") {
                     focusedField = nil
-                    do { try speech.saveCloudSettings(settings, key: key); settings = speech.cloudSettings; message = "已保存。可以打开一本书，点“听书”开始。" }
+                    do { try speech.saveCloudSettings(settings, key: key); settings = speech.cloudSettings; keyEdited = false; message = "已保存。可以打开一本书，点“听书”开始。" }
                     catch { library.error = error.localizedDescription }
                 }.accessibilityIdentifier("save-cloud-speech").disabled(loadingKey || !keyLoaded)
                 if let message { Text(message).foregroundStyle(.secondary).accessibilityIdentifier("cloud-speech-saved") }

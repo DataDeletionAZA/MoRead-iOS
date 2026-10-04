@@ -125,6 +125,7 @@ public enum BackupArchive {
             completed += written
         }
         _ = try ReviewCardLibrary(root: staging).templates()
+        _ = try VoiceLibrary(root: staging).voices()
         _ = try TextReplacementStore(root: staging).rules()
         _ = try ImageLibrary(root: staging).images()
         _ = try ImageLibrary(root: staging).selectedBackground()

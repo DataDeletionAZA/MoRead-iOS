@@ -484,7 +484,10 @@ struct SettingsView: View {
                     NavigationLink("图片库") { ImageLibraryView() }
                     NavigationLink("主题与外观") { ThemeView() }
                 }
-                Section("听书") { NavigationLink("云端声音与缓存") { CloudSpeechView() } }
+                Section("听书") {
+                    NavigationLink("云端声音与缓存") { CloudSpeechView() }
+                    NavigationLink("云端音色库") { VoiceLibraryView() }
+                }
                 Section("书籍与记录") {
                     NavigationLink("整理书架") { ShelfManager() }
                     NavigationLink("备份与恢复") { BackupView() }
