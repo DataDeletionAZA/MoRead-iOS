@@ -78,6 +78,7 @@ public struct ReviewCardGradient: Equatable, Sendable {
 }
 
 public struct ReviewCardCSS: Equatable, Sendable {
+    public var clipsText = false
     public var color: ReviewCardColor?
     public var quoteColor: ReviewCardColor?
     public var background: ReviewCardColor?
@@ -181,6 +182,7 @@ public struct ReviewCardCSS: Equatable, Sendable {
             default: throw MoReadError.invalid("样式属性“\(key)”无效。")
             }
         }
+        result.clipsText = clipText
         if clipText {
             guard let gradient = result.backgroundGradient, result.backgroundImageID == nil else { throw MoReadError.invalid("文字渐变需要搭配 linear-gradient。") }
             result.textGradient = gradient; result.backgroundGradient = nil; result.background = nil; result.backgroundSpecified = false

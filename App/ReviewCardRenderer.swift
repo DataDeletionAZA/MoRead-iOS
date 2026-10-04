@@ -9,8 +9,21 @@ struct ReviewCardOptions: Equatable {
 }
 
 enum ReviewCardRenderer {
+    static func rgba(_ color: ReviewCardColor) -> UIColor {
+        let value = color.rgba
+        return UIColor(red: CGFloat((value >> 24) & 255) / 255, green: CGFloat((value >> 16) & 255) / 255, blue: CGFloat((value >> 8) & 255) / 255, alpha: CGFloat(value & 255) / 255)
+    }
+    static func gradient(_ gradient: ReviewCardGradient, in bounds: CGRect, context: CGContext) {
+        guard let colors = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: gradient.colors.map { rgba($0).cgColor } as CFArray, locations: gradient.stops.map { CGFloat($0) }) else { return }
+        let radians = gradient.angle * .pi / 180, dx = sin(radians), dy = -cos(radians)
+        let length = abs(bounds.width * dx) + abs(bounds.height * dy)
+        let start = CGPoint(x: bounds.midX - dx * length / 2, y: bounds.midY - dy * length / 2)
+        let end = CGPoint(x: bounds.midX + dx * length / 2, y: bounds.midY + dy * length / 2)
+        context.drawLinearGradient(colors, start: start, end: end, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    }
+
     static func image(entry: ReadingReviewEntry, template: ReviewCardTemplate, options: ReviewCardOptions,
-                      font: UIFont?, background: UIImage?, cover: Bool) throws -> UIImage {
+                      font: UIFont?, background: UIImage?, cover: Bool, ruleFonts: [UUID: UIFont] = [:], ruleImages: [UUID: UIImage] = [:]) throws -> UIImage {
         try template.validate()
         let css = try ReviewCardCSS.parse(template.css ?? "")
         let width: CGFloat = 1080, gutter = CGFloat(min(432, max(12, (css.padding ?? template.padding) + (css.inset ?? 0)))), textWidth = width - gutter * 2
@@ -18,18 +31,6 @@ enum ReviewCardRenderer {
         let radius = css.radius ?? template.cornerRadius, borderWidth = css.borderWidth ?? template.borderWidth
         let extraTop = css.top ?? 0, extraBottom = css.bottom ?? 0
         func color(_ rgb: Int) -> UIColor { UIColor(red: CGFloat((rgb >> 16) & 255) / 255, green: CGFloat((rgb >> 8) & 255) / 255, blue: CGFloat(rgb & 255) / 255, alpha: 1) }
-        func rgba(_ color: ReviewCardColor) -> UIColor {
-            let value = color.rgba
-            return UIColor(red: CGFloat((value >> 24) & 255) / 255, green: CGFloat((value >> 16) & 255) / 255, blue: CGFloat((value >> 8) & 255) / 255, alpha: CGFloat(value & 255) / 255)
-        }
-        func gradient(_ gradient: ReviewCardGradient, in bounds: CGRect, context: CGContext) {
-            guard let colors = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: gradient.colors.map { rgba($0).cgColor } as CFArray, locations: gradient.stops.map { CGFloat($0) }) else { return }
-            let radians = gradient.angle * .pi / 180, dx = sin(radians), dy = -cos(radians)
-            let length = abs(bounds.width * dx) + abs(bounds.height * dy)
-            let start = CGPoint(x: bounds.midX - dx * length / 2, y: bounds.midY - dy * length / 2)
-            let end = CGPoint(x: bounds.midX + dx * length / 2, y: bounds.midY + dy * length / 2)
-            context.drawLinearGradient(colors, start: start, end: end, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-        }
         let foreground = css.color.map(rgba) ?? color(template.foreground), accent = color(template.accent)
         var quoteFont = font ?? UIFont.systemFont(ofSize: fontSize)
         if font == nil {
@@ -54,6 +55,7 @@ enum ReviewCardRenderer {
             return NSAttributedString(string: text, attributes: attributes)
         }
         let quote = block(entry.quote.isEmpty ? entry.title : entry.quote, font: quoteFont, styled: true)
+        let quoteLayout = try ReviewCardTextLayout(base: quote, width: textWidth, rules: template.syntaxEnabled == true ? template.syntaxRules ?? [] : [], gradient: css.textGradient, fonts: ruleFonts, images: ruleImages)
         let plain = (try? AttributedString(markdown: entry.body, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))).map { String($0.characters) } ?? entry.body
         let thought = options.thought && !plain.isEmpty ? block(plain, font: .systemFont(ofSize: 32)) : nil
         var metadata: [String] = []
@@ -69,7 +71,7 @@ enum ReviewCardRenderer {
             guard value.length > 0 else { return 0 }
             return ceil(value.boundingRect(with: CGSize(width: textWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height)
         }
-        let quoteHeight = height(quote), thoughtHeight = thought.map(height) ?? 0, footerHeight = height(footer)
+        let quoteHeight = quoteLayout.height, thoughtHeight = thought.map(height) ?? 0, footerHeight = height(footer)
         let footerBottom: CGFloat = options.watermark ? 144 : 80
         let contentHeight = 216 + extraTop + extraBottom + quoteHeight + (thought == nil ? 0 : 100 + thoughtHeight) + 96 + footerHeight + footerBottom
         guard contentHeight.isFinite, contentHeight <= 8192 else { throw MoReadError.invalid("这条内容较长，请使用文字分享以保留全文。") }
@@ -92,19 +94,7 @@ enum ReviewCardRenderer {
             let breathingRoom = (cardHeight - contentHeight) * 0.42
             ("“" as NSString).draw(at: CGPoint(x: gutter - 8, y: 32 + breathingRoom), withAttributes: [.font: UIFont.systemFont(ofSize: 150), .foregroundColor: accent])
             var y = 216 + extraTop + breathingRoom
-            let quoteBounds = CGRect(x: 0, y: 0, width: textWidth, height: quoteHeight)
-            if let paint = css.textGradient, quoteHeight > 0 {
-                let mask = UIGraphicsImageRenderer(size: quoteBounds.size, format: format).image { _ in
-                    let text = NSMutableAttributedString(attributedString: quote)
-                    text.addAttribute(.foregroundColor, value: UIColor.white, range: NSRange(location: 0, length: text.length))
-                    text.draw(with: quoteBounds, options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
-                }
-                let painted = UIGraphicsImageRenderer(size: quoteBounds.size, format: format).image { layer in
-                    gradient(paint, in: quoteBounds, context: layer.cgContext)
-                    mask.draw(in: quoteBounds, blendMode: .destinationIn, alpha: 1)
-                }
-                painted.draw(at: CGPoint(x: gutter, y: y))
-            } else { quote.draw(with: quoteBounds.offsetBy(dx: gutter, dy: y), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil) }
+            quoteLayout.draw(at: CGPoint(x: gutter, y: y), context: context)
             y += quoteHeight + extraBottom
             if let thought {
                 y += 60; accent.setStroke(); context.setLineWidth(3); context.move(to: CGPoint(x: gutter, y: y)); context.addLine(to: CGPoint(x: gutter + 80, y: y)); context.strokePath()

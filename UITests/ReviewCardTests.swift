@@ -2,6 +2,58 @@ import XCTest
 
 final class ReviewCardUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
+    func testQuotationRulePreviewValidationAndPersistence() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
+        app.buttons["批注"].tap(); app.buttons["读书笔记与梗概"].tap(); app.buttons["新建笔记"].tap()
+        let title = "Rain and 「a light in the window and a quiet place to read while the rain falls」 Home."
+        app.textFields["reading-note-title"].tap(); app.textFields["reading-note-title"].typeText(title)
+        app.textViews["reading-note-content"].tap(); app.textViews["reading-note-content"].typeText("A quiet place to return to.\n")
+        app.buttons["保存"].tap(); app.navigationBars["读书笔记与梗概"].buttons.firstMatch.tap()
+        app.buttons["划线与笔记回顾"].tap(); app.buttons["review-entry-" + title].tap(); app.buttons["review-card-export"].tap()
+        XCTAssertTrue(app.images["review-card-preview"].waitForExistence(timeout: 10))
+        app.buttons["新建自定义模板"].tap()
+        let name = app.textFields["review-card-template-name"]; name.tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (name.value as? String ?? "").count) + "Quotation card\n")
+        func openRules() {
+            for _ in 0..<12 { if app.buttons["编辑文字规则"].isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(app.buttons["编辑文字规则"].isHittable)
+            app.buttons["编辑文字规则"].tap()
+        }
+        for _ in 0..<12 { if app.switches["review-rules-enabled"].isHittable { break }; app.swipeUp() }
+        let enabled = app.switches["review-rules-enabled"]
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(enabled.value as? String, "1"); openRules()
+        app.buttons["添加文字规则"].tap()
+        let ruleName = app.textFields["review-rule-name"]; ruleName.tap()
+        ruleName.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (ruleName.value as? String ?? "").count) + "Window\n")
+        app.buttons["检查当前摘录"].tap()
+        XCTAssertEqual(app.staticTexts["review-rule-matches"].label, "找到 1 处匹配")
+        let css = app.textViews["review-rule-css"]
+        for _ in 0..<10 { if css.isHittable { break }; app.swipeUp() }
+        css.tap(); css.typeText("padding: 1em;")
+        app.buttons["review-rule-save"].tap()
+        XCTAssertTrue(app.alerts["请检查文字规则"].waitForExistence(timeout: 5)); app.alerts.buttons["好"].tap()
+        for _ in 0..<6 { if css.frame.maxY < app.frame.maxY - 100 { break }; app.swipeUp() }
+        css.tap(); css.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (css.value as? String ?? "").count))
+        css.typeText("color: linear-gradient(to right, #c64a26, #446bd0); font-weight: bold; text-decoration: underline;\n")
+        app.buttons["review-rule-save"].tap()
+        XCTAssertTrue(app.buttons["review-rule-Window"].waitForExistence(timeout: 5))
+        app.navigationBars["文字着色规则"].buttons.firstMatch.tap(); app.buttons["review-card-template-save"].tap()
+        XCTAssertTrue(app.images["review-card-preview"].waitForExistence(timeout: 10)); XCTAssertFalse(app.staticTexts["review-card-error"].exists)
+        let rendered = XCTAttachment(screenshot: app.screenshot()); rendered.name = "review-card-quotation-gradient"; rendered.lifetime = .keepAlways; add(rendered)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.buttons["书架选项"].tap(); app.buttons["划线与笔记回顾"].tap(); app.buttons["review-entry-" + title].tap(); app.buttons["review-card-export"].tap()
+        app.buttons["review-card-style"].tap(); app.buttons["Quotation card"].tap(); app.buttons["编辑模板"].tap(); openRules()
+        app.buttons["review-rule-Window"].tap()
+        app.buttons["检查当前摘录"].tap(); XCTAssertEqual(app.staticTexts["review-rule-matches"].label, "找到 1 处匹配")
+        for _ in 0..<10 { if css.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue((css.value as? String ?? "").contains("linear-gradient(to right"))
+        app.buttons["取消"].tap(); app.navigationBars["文字着色规则"].buttons.firstMatch.tap(); app.buttons["取消"].tap()
+        XCTAssertTrue(app.images["review-card-preview"].waitForExistence(timeout: 10))
+    }
     func testLongCardKeepsTextExportAndCanHideThought() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--long-review-card"]; app.launch()
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
@@ -54,6 +106,7 @@ final class ReviewCardUITests: XCTestCase {
         app.buttons["review-card-template-save"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "padding：")).firstMatch.waitForExistence(timeout: 5))
         app.alerts.buttons["好"].tap()
+        for _ in 0..<6 { if css.frame.maxY < app.frame.maxY - 100 { break }; app.swipeUp() }
         css.tap(); css.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (css.value as? String ?? "").count))
         let style = "color: #38444b; color: linear-gradient(to right, #dc7858, #6590c5); background: linear-gradient(135deg, #f7f5ef, #d7e6f2); border-width: 0.05em; border-radius: 1em; font-size: 1.2em; text-align: center;"
         css.typeText(style + "\n"); XCTAssertTrue((css.value as? String ?? "").contains("text-align: center;"))

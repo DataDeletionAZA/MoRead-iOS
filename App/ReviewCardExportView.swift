@@ -54,7 +54,7 @@ struct ReviewCardExportView: View {
                 .task { load() }
                 .task(id: request) { await render() }
                 .sheet(item: $editing) { value in
-                    ReviewCardTemplateEditor(initial: value) { value in
+                    ReviewCardTemplateEditor(initial: value, text: entry.quote.isEmpty ? entry.title : entry.quote) { value in
                         guard let store = library.store, !library.maintenance else { throw MoReadError.invalid("书库暂不可用。") }
                         try ReviewCardLibrary(root: store.root).save(value); load(); selected = value.id
                     }
@@ -95,7 +95,14 @@ struct ReviewCardExportView: View {
             if let id = imageID { background = UIImage(data: try ImageLibrary(root: store.root).data(id)) }
             else if cover { background = try store.coverData(for: book.id).flatMap(UIImage.init(data:)) }
             else { background = nil }
-            let image = try ReviewCardRenderer.image(entry: entry, template: style, options: options, font: library.customFont(fontID, size: css.size ?? style.fontSize), background: background, cover: cover)
+            let rules = style.syntaxEnabled == true ? style.syntaxRules ?? [] : []
+            let styles = try rules.filter(\.enabled).map { try $0.style() }
+            var ruleFonts: [UUID: UIFont] = [:], ruleImages: [UUID: UIImage] = [:]
+            for paint in styles {
+                if let id = paint.customFontID { ruleFonts[id] = library.customFont(id, size: css.size ?? style.fontSize) }
+                if let id = paint.backgroundImageID { ruleImages[id] = UIImage(data: try ImageLibrary(root: store.root).data(id)) }
+            }
+            let image = try ReviewCardRenderer.image(entry: entry, template: style, options: options, font: library.customFont(fontID, size: css.size ?? style.fontSize), background: background, cover: cover, ruleFonts: ruleFonts, ruleImages: ruleImages)
             guard let data = image.pngData() else { throw MoReadError.invalid("图片生成失败，请重试。") }
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MoRead-回顾-" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -110,8 +117,9 @@ private struct ReviewCardTemplateEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: ReviewCardTemplate
     @State private var error: String?
+    let text: String
     let save: (ReviewCardTemplate) throws -> Void
-    init(initial: ReviewCardTemplate, save: @escaping (ReviewCardTemplate) throws -> Void) { _draft = State(initialValue: initial); self.save = save }
+    init(initial: ReviewCardTemplate, text: String, save: @escaping (ReviewCardTemplate) throws -> Void) { _draft = State(initialValue: initial); self.text = text; self.save = save }
     var body: some View {
         NavigationStack {
             Form {
@@ -145,6 +153,10 @@ private struct ReviewCardTemplateEditor: View {
                     Slider(value: $draft.padding, in: 24...280) { Text("左右留白") }; Text("左右留白 \(draft.padding, specifier: "%.0f")")
                     Slider(value: $draft.cornerRadius, in: 0...141) { Text("圆角") }; Text("圆角 \(draft.cornerRadius, specifier: "%.0f")")
                     Slider(value: $draft.borderWidth, in: 0...23.5) { Text("边框粗细") }; Text("边框粗细 \(draft.borderWidth, specifier: "%.1f")")
+                }
+                Section("文字着色规则") {
+                    Toggle("启用文字规则", isOn: Binding(get: { draft.syntaxEnabled == true }, set: { draft.syntaxEnabled = $0 })).accessibilityIdentifier("review-rules-enabled")
+                    NavigationLink("编辑文字规则") { ReviewCardRulesView(rules: Binding(get: { draft.syntaxRules ?? [] }, set: { draft.syntaxRules = $0 }), text: text) }
                 }
                 Section("高级文字样式") {
                     Text("CSS 是用文字描述样式的方式，会覆盖上方对应选项。每项以分号结束，em 表示一个基准字号的长度。")

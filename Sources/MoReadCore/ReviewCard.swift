@@ -23,9 +23,14 @@ public struct ReviewCardTemplate: Codable, Equatable, Identifiable, Sendable {
     public var underline = false
     public var strikethrough = false
     public var css: String?
+    public var syntaxEnabled: Bool?
+    public var syntaxRules: [ReviewCardSyntaxRule]?
     public init() {}
     public func validate() throws {
         _ = try ReviewCardCSS.parse(css ?? "")
+        let rules = syntaxRules ?? []
+        guard rules.count <= 64, Set(rules.map(\.id)).count == rules.count else { throw MoReadError.invalid("文字规则最多 64 条，标识不能重复。") }
+        for rule in rules { try rule.validate() }
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 80,
               [background, foreground, accent].allSatisfy({ (0...0xFFFFFF).contains($0) }),
               gradientEnd.map({ (0...0xFFFFFF).contains($0) }) ?? true,
