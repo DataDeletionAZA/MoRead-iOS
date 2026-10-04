@@ -152,6 +152,7 @@ extension ReaderTapZonesTests {
         XCTAssertEqual(search.value as? String, "j")
         app.typeKey("j", modifierFlags: []); XCTAssertNotEqual(search.value as? String, "j")
         if app.buttons["close"].exists { app.buttons["close"].tap() }
+        else if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
         app.buttons["完成"].tap(); pageIs(1)
         app.typeKey("j", modifierFlags: []); pageIs(2)
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()

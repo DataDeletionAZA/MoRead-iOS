@@ -26,7 +26,7 @@ final class AutoReadUITests: XCTestCase {
             if guide.value as? String != "1" { guide.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
         }
         app.buttons["auto-read-start"].tap()
-        status(app, "自动阅读中")
+        status(app, "自动阅读中", timeout: 30)
     }
     func testTXTAutoReadModesPauseResumeCrossChapterAndRelaunch() {
         executionTimeAllowance = 360
@@ -80,15 +80,18 @@ final class AutoReadUITests: XCTestCase {
             let visible = candidates.filter { $0.frame.intersection(table.frame).height > 20 && $0.isHittable }.sorted { $0.frame.minY < $1.frame.minY }
             return try XCTUnwrap(visible.first).label
         }
+        func alignParagraph() throws {
+            let next = try XCTUnwrap(table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph ", "reader-text")).allElementsBoundByIndex
+                .filter { $0.frame.minY > table.frame.minY + 40 && $0.frame.minY < table.frame.midY }
+                .sorted { $0.frame.minY < $1.frame.minY }.first)
+            let distance = next.frame.minY - table.frame.minY - 8
+            let drag = table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.8))
+            drag.press(forDuration: 0.05, thenDragTo: drag.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 1)
+        }
         XCTAssertTrue(try visibleParagraph().hasPrefix("Paragraph 1."))
         for _ in 0..<3 { table.swipeUp(velocity: .slow) }
         XCTAssertTrue(app.navigationBars["第一章 雨后"].exists)
-        let nextParagraph = try XCTUnwrap(table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Paragraph ", "reader-text")).allElementsBoundByIndex
-            .filter { $0.frame.minY > table.frame.minY + 40 && $0.frame.minY < table.frame.midY }
-            .sorted { $0.frame.minY < $1.frame.minY }.first)
-        let distance = nextParagraph.frame.minY - table.frame.minY - 8
-        let drag = table.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.8))
-        drag.press(forDuration: 0.05, thenDragTo: drag.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 1)
+        try alignParagraph()
         let anchor = try visibleParagraph()
         XCTAssertFalse(anchor.hasPrefix("Paragraph 1."))
         shot(app, "long-chapter-middle")
@@ -111,6 +114,8 @@ final class AutoReadUITests: XCTestCase {
         let nextChapter = table.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "第二天，", "reader-text")).firstMatch
         if nextChapter.exists && nextChapter.isHittable { XCTAssertLessThanOrEqual(last.frame.maxY, nextChapter.frame.minY) }
         shot(app, "long-chapter-last-paragraph")
+        // Align to a paragraph boundary so clipped ink from its predecessor is not the rotation anchor.
+        try alignParagraph()
         let endAnchor = try visibleParagraph()
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }

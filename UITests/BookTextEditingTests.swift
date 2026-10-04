@@ -46,8 +46,13 @@ final class BookTextEditingTests: XCTestCase {
             }
             let original = try XCTUnwrap(edit.value as? String)
             XCTAssertFalse(original.isEmpty)
-            edit.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0)).withOffset(CGVector(dx: 0, dy: 20)).tap()
-            edit.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: original.count) + "EDITED\(index)")
+            edit.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 12, dy: 12)).doubleTap()
+            let allLabels = NSPredicate(format: "label IN %@", ["Select All", "全选", "全選"])
+            let selectAll = app.menuItems.matching(allLabels).firstMatch
+            if selectAll.exists { selectAll.tap() }
+            else if app.buttons.matching(allLabels).firstMatch.exists { app.buttons.matching(allLabels).firstMatch.tap() }
+            screenshot(app, "source-editor-selection-\(index)")
+            edit.typeText("EDITED\(index)")
             XCTAssertEqual(edit.value as? String, "EDITED\(index)")
             app.buttons["source-edit-save"].tap()
             XCTAssertTrue(edit.waitForNonExistence(timeout: 15))
