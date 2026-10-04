@@ -101,24 +101,8 @@ extension CompanionModel {
                 }
                 return result
             } else if call.name == "search_book" {
-                let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks), query = try ReaderTools.query(args)
-                let options = try ReaderTools.searchOptions(args, book: book)
-                var semantic: [RetrievalCandidate] = []
-                var notice = ""
-                if (self.settings.vectorBooks ?? []).contains(book.id) {
-                    do {
-                        let (embedding, embeddingKey, fingerprint) = try self.embeddingConnection()
-                        semantic = try await BookMemory.recall(query: query, books: [book], root: root, fingerprint: fingerprint, buildMissingIndex: conversation.bookID != nil, firstChapter: options.first, lastChapter: options.last, embed: { texts in try await EmbeddingClient.embed(provider: embedding, key: embeddingKey, texts: texts) })
-                    } catch is CancellationError { throw CancellationError() }
-                    catch { try Task.checkCancellation(); notice = "向量检索暂不可用，以下为本机关键词检索结果。\n" }
-                }
-                try ReaderTools.validate(book, current: library.books)
-                let evidence = semantic
-                let work = Task.detached { try CompanionContextBuilder.build(query: query, books: [book], currentBook: nil, store: LibraryStore(root: root), vector: evidence, firstChapter: options.first, lastChapter: options.last, topK: options.topK, chapterOrder: options.chapterOrder) }
-                var context = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
-                if let status = try await self.rerankContext(&context, query: query, selection: nil, library: library) { notice += status + "\n" }
-                if let coverage = context.retrievalNotice { notice += coverage + "\n" }
-                output = ReaderToolOutput(text: notice + (context.passages.isEmpty ? "未检索到候选，但这不证明相关事件不存在。" : "以下为相关已读原文候选，需核验内容；不是全部匹配，也不代表问题前提成立。"), passages: context.passages, books: [book])
+                let book = try ReaderTools.book(arguments: args, currentBook: conversation.bookID, books: availableBooks)
+                output = try await self.searchBookForTool(call, book: book, library: library, buildIndex: conversation.bookID != nil)
             } else {
                 let work = Task.detached { try ReaderTools.execute(call, currentBook: conversation.bookID, books: availableBooks, store: LibraryStore(root: root)) }
                 output = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
@@ -134,6 +118,27 @@ extension CompanionModel {
             try latest.validateSources(books: library.books)
             for book in availableBooks where accessed.contains(book.id) { try ReaderTools.validate(book, current: library.books) }
         }, report: { event in try self.recordTool(event, conversationID: conversationID, responseID: responseID) })
+    }
+    func searchBookForTool(_ call: ChatToolCall, book: Book, library: LibraryModel, buildIndex: Bool = true) async throws -> ReaderToolOutput {
+        guard let root = library.store?.root else { throw MoReadError.invalid("书库暂不可用。") }
+        let args = try call.object(), query = try ReaderTools.query(args)
+        let options = try ReaderTools.searchOptions(args, book: book)
+        var semantic: [RetrievalCandidate] = []
+        var notice = ""
+        if (self.settings.vectorBooks ?? []).contains(book.id) {
+            do {
+                let (embedding, embeddingKey, fingerprint) = try self.embeddingConnection()
+                semantic = try await BookMemory.recall(query: query, books: [book], root: root, fingerprint: fingerprint, buildMissingIndex: buildIndex, firstChapter: options.first, lastChapter: options.last, embed: { texts in try await EmbeddingClient.embed(provider: embedding, key: embeddingKey, texts: texts) })
+            } catch is CancellationError { throw CancellationError() }
+            catch { try Task.checkCancellation(); notice = "向量检索暂不可用，以下为本机关键词检索结果。\n" }
+        }
+        try ReaderTools.validate(book, current: library.books)
+        let evidence = semantic
+        let work = Task.detached { try CompanionContextBuilder.build(query: query, books: [book], currentBook: nil, store: LibraryStore(root: root), vector: evidence, firstChapter: options.first, lastChapter: options.last, topK: options.topK, chapterOrder: options.chapterOrder) }
+        var context = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+        if let status = try await self.rerankContext(&context, query: query, selection: nil, library: library) { notice += status + "\n" }
+        if let coverage = context.retrievalNotice { notice += coverage + "\n" }
+        return ReaderToolOutput(text: notice + (context.passages.isEmpty ? "未检索到候选，但这不证明相关事件不存在。" : "以下为相关已读原文候选，需核验内容；不是全部匹配，也不代表问题前提成立。"), passages: context.passages, books: [book])
     }
     private func saveToolSources(_ output: ReaderToolOutput, conversationID: UUID, responseID: UUID) throws -> String {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }), let message = conversations[index].messages.firstIndex(where: { $0.id == responseID }) else { throw CancellationError() }

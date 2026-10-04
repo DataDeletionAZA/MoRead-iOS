@@ -89,7 +89,7 @@ public enum ReadingReview {
         case .note(let value): records.notes?.removeAll { $0.id == value.id }
         }
     }
-    private static func requireCurrent(_ entry: ReadingReviewEntry, book: Book, records: BookRecords) throws {
+    static func requireCurrent(_ entry: ReadingReviewEntry, book: Book, records: BookRecords) throws {
         guard entry.book.id == book.id,
               entries(books: [book], records: [book.id: records]).contains(where: { $0.id == entry.id && $0.content == entry.content }) else {
             throw MoReadError.invalid("这条记录或可阅读范围已变化，请重新打开后再操作。")

@@ -69,7 +69,7 @@ extension CompanionModel {
         current.model = (settings.embeddingModel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return current == embedding
     }
-    func recallPersonaMemory(query: String, conversation: Conversation, identity: ChatIdentity, library: LibraryModel) async throws -> String {
+    func recallPersonaMemory(query: String, conversation: Conversation, identity: ChatIdentity, library: LibraryModel, accessedBooks: (([MemoryBookScope]) -> Void)? = nil) async throws -> String {
         let policy = settings.personaMemory ?? PersonaMemorySettings()
         guard policy.enabled, !policy.disabledCharacters.contains(conversation.characterID), let root = library.store?.root,
               FileManager.default.fileExists(atPath: PersonaMemoryStore.url(in: root).path) else { return "" }
@@ -99,6 +99,7 @@ extension CompanionModel {
                 guard let store else { throw MoReadError.invalid("对话存储尚未打开。") }
                 try store.save(updated); conversations[index] = updated
             }
+            accessedBooks?(origins.flatMap(\.books))
             let lines = entries.map { "- [\($0.identity?.label ?? "本人")] \($0.text)" }.joined(separator: "\n")
             return (profile.text.isEmpty ? "" : "\n\n【对用户本人的了解】\n" + profile.text) + (lines.isEmpty ? "" : "\n\n【相关长期记忆】来自过去对话，仅作交流背景，不替代原文证据；保持本人和扮演身份的区别：\n" + lines)
         } catch is CancellationError { throw CancellationError() }

@@ -151,6 +151,7 @@ public enum BackupArchive {
             let records = try library.records(for: book), notes = records.notes ?? []
             guard Set(notes.map(\.id)).count == notes.count else { throw MoReadError.invalid("备份包含重复笔记编号。") }
             for note in notes { try note.validate() }
+            for annotation in records.annotations { try AnnotationDiscussion.validateReplies(annotation) }
             let knowledge = records.chapterKnowledge ?? []
             guard Set(knowledge.map(\.chapter)).count == knowledge.count else { throw MoReadError.invalid("备份包含重复的章节提纲。") }
             for entry in knowledge {

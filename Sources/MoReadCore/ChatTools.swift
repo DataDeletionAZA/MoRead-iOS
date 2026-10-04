@@ -207,12 +207,12 @@ public enum ChatToolEvent: Sendable {
 }
 
 public enum ChatToolLoop {
-    public static func run(tools: [ChatTool], stream: ([ChatToolExchange]) async throws -> ChatToolRound,
+    public static func run(tools: [ChatTool], maximumRounds: Int = 8, stream: ([ChatToolExchange]) async throws -> ChatToolRound,
                            execute: (ChatToolCall) async throws -> String, validate: () async throws -> Void,
                            report: (ChatToolEvent) async throws -> Void) async throws {
         var exchanges: [ChatToolExchange] = [], resultBytes = 0
         let allowed = Set(tools.map(\.name))
-        for _ in 0..<8 {
+        for _ in 0..<min(8, max(1, maximumRounds)) {
             try Task.checkCancellation(); try await validate()
             let round = try await stream(exchanges)
             try Task.checkCancellation(); try await validate()
@@ -239,6 +239,6 @@ public enum ChatToolLoop {
             }
             exchanges.append(ChatToolExchange(round: round, results: results))
         }
-        throw MoReadError.invalid("已达到本轮 8 轮查询上限，已保留查到的内容；可继续提问。")
+        throw MoReadError.invalid("已达到本轮 \(min(8, max(1, maximumRounds))) 轮查询上限，请缩小问题范围后重试。")
     }
 }

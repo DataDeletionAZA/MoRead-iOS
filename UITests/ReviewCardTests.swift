@@ -2,6 +2,53 @@ import XCTest
 
 final class ReviewCardUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
+    func testAnnotationDiscussionReplyStopFailureAndRestart() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--review-motion-sample", "--simulate-discussion"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        func open() {
+            app.buttons["书架选项"].tap(); app.buttons["划线与笔记回顾"].tap()
+            let entry = app.buttons["review-entry-划线与批注"]; XCTAssertTrue(entry.waitForExistence(timeout: 10)); entry.tap()
+            let menu = app.buttons.matching(identifier: "review-record-actions").allElementsBoundByIndex.first { app.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }!
+            menu.coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["批注讨论"].tap()
+            XCTAssertTrue(app.staticTexts["discussion-opening"].waitForExistence(timeout: 10))
+        }
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<10 {
+                if element.exists && element.isHittable && element.frame.midY > 120 && element.frame.midY < app.frame.maxY - 50 { return }
+                if element.exists && element.frame.midY < 120 { app.swipeDown() } else { app.swipeUp() }
+            }
+        }
+        func send(_ text: String) {
+            let draft = app.textViews["discussion-draft"]; reveal(draft); draft.tap(); draft.typeText(text)
+            app.buttons["discussion-keyboard-done"].tap()
+            let button = app.buttons["discussion-send"]; reveal(button); button.tap()
+        }
+        func saved(_ text: String) -> XCUIElement { app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'discussion-reply-' AND label == %@", text)).firstMatch }
+        func settled() {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["discussion-stop"])], timeout: 15), .completed)
+        }
+        open(); send("My first thought.")
+        XCTAssertTrue(saved("My first thought.").waitForExistence(timeout: 5))
+        let invite = app.switches["discussion-invite"]; reveal(invite); invite.coordinate(withNormalizedOffset: .init(dx: 0.9, dy: 0.5)).tap(); XCTAssertEqual(invite.value as? String, "1")
+        send("What do you think?"); settled(); XCTAssertFalse(app.staticTexts["discussion-error"].exists)
+        let response = "我觉得书店里的灯光，像在等一个愿意停下来的人。"
+        XCTAssertTrue(saved(response).waitForExistence(timeout: 10))
+        send("slow please")
+        let stop = app.buttons["discussion-stop"]; XCTAssertTrue(stop.waitForExistence(timeout: 5)); reveal(stop); stop.tap(); settled()
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'discussion-reply-' AND label == %@", response)).count, 1)
+        send("fail please"); settled()
+        XCTAssertTrue(app.staticTexts["discussion-error"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'discussion-reply-' AND label == %@", response)).count, 1)
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-discussion"]; app.launch(); open()
+        XCTAssertTrue(saved("My first thought.").exists); XCTAssertTrue(saved(response).exists)
+        reveal(saved(response))
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "annotation-discussion-restored"; shot.lifetime = .keepAlways; add(shot)
+        saved(response).swipeLeft(); app.buttons["删除发言"].tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: saved(response))], timeout: 10), .completed)
+        XCTAssertTrue(saved("What do you think?").exists)
+        app.terminate(); app.launch(); open(); XCTAssertFalse(saved(response).exists)
+    }
     func testEditAnnotationAndCharacterNoteDeleteAndRestart() {
         executionTimeAllowance = 300
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--review-motion-sample", "--review-edit-sample"]; app.launch()
@@ -14,7 +61,7 @@ final class ReviewCardUITests: XCTestCase {
             let menus = app.buttons.matching(identifier: "review-record-actions")
             XCTAssertTrue(menus.firstMatch.waitForExistence(timeout: 10))
             guard let menu = menus.allElementsBoundByIndex.first(where: { app.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) else { XCTFail("Current record actions are not visible"); return }
-            menu.tap(); app.buttons[name].tap()
+            menu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap(); app.buttons[name].tap()
         }
         func replace(_ field: XCUIElement, _ text: String) {
             XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()

@@ -15,6 +15,7 @@ final class BackupTests: XCTestCase {
         var records = BookRecords()
         records.bookmarks = [Bookmark(position: book.position, label: "灯塔")]
         records.annotations = [Annotation(passage: SourcePassage(bookID: book.id, chapter: chapter, offset: 0, text: "灯塔"), note: "地点")]
+        records.annotations[0].replies = [AnnotationReply(text: "像回家的路", author: "我")]
         records.readingSeconds = ["2026-09-19": 123]
         records.recordReading(from: Date(timeIntervalSince1970: 1_789_780_800), to: Date(timeIntervalSince1970: 1_789_784_400), timeZone: TimeZone(secondsFromGMT: 0)!)
         try store.saveRecords(records, for: book)
@@ -45,6 +46,7 @@ final class BackupTests: XCTestCase {
         let prepared = try await BackupArchive.prepare(zip, beside: root)
         try BackupArchive.activate(prepared, replacing: root)
         XCTAssertEqual(try store.books(), [cleared])
+        XCTAssertEqual(try store.records(for: cleared).annotations, records.annotations)
         XCTAssertEqual(try store.records(for: cleared).bookmarks, records.bookmarks)
         XCTAssertEqual(try store.records(for: cleared).readingSeconds, records.readingSeconds)
         XCTAssertEqual(try store.records(for: cleared).readingHours, records.readingHours)

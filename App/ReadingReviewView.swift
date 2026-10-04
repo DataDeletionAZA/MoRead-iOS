@@ -119,6 +119,7 @@ struct ReadingReviewPager: View {
     }
     @State private var source: SourceRequest?
     @State private var editing: ReadingReviewEntry?
+    @State private var discussing: ReadingReviewEntry?
     @State private var deleting: ReadingReviewEntry?
     @State private var loading = false
     @State private var error: String?
@@ -135,7 +136,7 @@ struct ReadingReviewPager: View {
     @State private var composing: CompositionRequest?
     private var index: Int? { entries.firstIndex { $0.id == selected } }
     private var motion: ReviewFocusMotion { ReviewFocusMotion(saved: motionValue) }
-    private var usesTilt: Bool { visible && scenePhase == .active && !reduceMotion && motion != .paper && source == nil && exporting == nil && composing == nil && editing == nil && deleting == nil && !loading }
+    private var usesTilt: Bool { visible && scenePhase == .active && !reduceMotion && motion != .paper && source == nil && exporting == nil && composing == nil && editing == nil && discussing == nil && deleting == nil && !loading }
     init(entries: [ReadingReviewEntry], initialID: String? = nil) {
         _entries = State(initialValue: entries); _sessionEntries = State(initialValue: entries)
         _selected = State(initialValue: entries.first(where: { $0.id == initialID })?.id ?? entries.first?.id)
@@ -193,6 +194,14 @@ struct ReadingReviewPager: View {
             .task(id: usesTilt) { tilt.setEnabled(usesTilt) }
             .task(id: request) { await refresh() }
             .sheet(item: $editing) { ReviewRecordEditor(entry: $0) }
+            .sheet(item: $discussing) { entry in
+                if case .annotation(let annotation) = entry.content {
+                    NavigationStack {
+                        AnnotationDiscussionView(bookID: entry.book.id, annotationID: annotation.id)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { discussing = nil } } }
+                    }
+                }
+            }
             .alert(item: $deleting) { entry in
                 Alert(title: Text("删除这条记录？"), message: Text("这条划线或笔记将被删除，书籍原文保持完整。"),
                       primaryButton: .destructive(Text("删除")) { delete(entry) }, secondaryButton: .cancel(Text("取消")))
@@ -227,6 +236,7 @@ struct ReadingReviewPager: View {
                 ShareLink("分享这篇记录", item: entry.markdown)
                 Spacer()
                 Menu("记录操作", systemImage: "ellipsis.circle") {
+                    if case .annotation = entry.content { Button("批注讨论", systemImage: "text.bubble") { discussing = entry } }
                     Button("编辑记录", systemImage: "square.and.pencil") { editing = entry }
                     Button("复制全文", systemImage: "doc.on.doc") { UIPasteboard.general.string = entry.markdown }
                     Button("删除记录", systemImage: "trash", role: .destructive) { deleting = entry }

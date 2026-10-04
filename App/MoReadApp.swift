@@ -64,7 +64,7 @@ final class LibraryModel: ObservableObject {
             }
             #if DEBUG
             if reset, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--reset-test-library") {
-                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography", "reader.tapZones", "reader.keys", "reader.autoRead", "stats.widgets", "review.focusMotion"] { UserDefaults.standard.removeObject(forKey: key) }
+                for key in ["app.tintRGB", "reader.pageMode", "reader.fontSize", "reader.lineSpacing", "reader.paper", "reader.typography", "reader.tapZones", "reader.keys", "reader.autoRead", "stats.widgets", "review.focusMotion", "discussion.character"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             #endif
             let storage = try LibraryStore(root: root)
@@ -226,7 +226,7 @@ final class LibraryModel: ObservableObject {
                 }
             }
             #endif
-            let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)
+            var book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)
             #if DEBUG
             try addLocationAnnotation(to: book)
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--syntax-reading-sample") {
@@ -244,6 +244,9 @@ final class LibraryModel: ObservableObject {
                 var last = ReadingNote(title: "灯塔随记", content: "远处的灯塔亮起了灯。", book: book)
                 last.updatedAt = Date(timeIntervalSince1970: 1)
                 try store.modifyRecords(for: book) { $0.annotations = [annotation]; $0.notes = [middle, last] }
+                if ProcessInfo.processInfo.arguments.contains("--simulate-discussion") {
+                    book.readThrough = .init(chapter: 0, offset: chapter.text.utf16.count); try store.save(book)
+                }
             }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--long-review-card") {
                 let note = ReadingNote(title: "长篇读书笔记", content: "**灯塔**与*书店*\n" + String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000) + "长笔记的最后一行。", book: book)

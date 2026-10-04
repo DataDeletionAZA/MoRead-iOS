@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 
 public struct Annotation: Codable, Identifiable, Hashable, Sendable {
+    public var replies: [AnnotationReply]?
     public var id = UUID()
     public var passage: SourcePassage
     public var generationKey: String?
@@ -171,10 +172,12 @@ public final class LibraryStore {
     }
     public func notesMarkdown(for book: Book) throws -> String {
         let records = try records(for: book)
+        let books = try books()
         let annotations = records.annotations.map { annotation in
             let heading = book.chapters.first { $0.id == annotation.passage.chapter }?.title ?? ""
             let author = annotation.characterName == nil ? "" : "\n\n" + annotation.authorLabel
-            return "## \(heading)\(author)\n\n> " + annotation.passage.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n\(annotation.note)\n"
+            let discussion = (annotation.replies ?? []).filter { $0.visible(in: books) }.map { "### " + $0.author + "\n\n" + $0.text + "\n" }.joined(separator: "\n")
+            return "## \(heading)\(author)\n\n> " + annotation.passage.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n\(annotation.note)\n" + (discussion.isEmpty ? "" : "\n" + discussion)
         }.joined(separator: "\n")
         let notes = (records.notes ?? []).map { "## \($0.title)\n\n\($0.authorLabel) · \($0.kind == "plot_summary" ? "剧情梗概" : "读书笔记")\n\n\($0.content)\n" }.joined(separator: "\n")
         return "# \(book.title)\n\n" + annotations + "\n" + notes
