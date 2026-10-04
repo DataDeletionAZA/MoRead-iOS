@@ -16,6 +16,9 @@ public struct CompanionStatistics: Sendable {
     public let conversations: Int
     public let bookIDs: Set<UUID>
     public let roundsByDay: [Date: Int]
+    public let roundsByHour: [Int]
+    public let story: [CompanionStoryDay]
+    public var peakHour: Int? { roundsByHour.indices.filter { roundsByHour[$0] > 0 }.max { (roundsByHour[$0], $0) < (roundsByHour[$1], $1) } }
     public var activeDays: Int { roundsByDay.count }
     public let firstChatDate: Date?
     public let companionshipDays: Int?
@@ -24,12 +27,12 @@ public struct CompanionStatistics: Sendable {
     public let today: Date
     public let calendar: Calendar
 
-    public init(conversations: [Conversation], books: [Book], records: [UUID: BookRecords] = [:], scope: CompanionStatsScope = .all, period: CompanionStatsPeriod = .all, now: Date = Date(), timeZone: TimeZone = .current) {
+    public init(conversations: [Conversation], books: [Book], records: [UUID: BookRecords] = [:], memories: [PersonaMemory] = [], scope: CompanionStatsScope = .all, period: CompanionStatsPeriod = .all, now: Date = Date(), timeZone: TimeZone = .current) {
         let calendar = ReadingCalendar.calendar(timeZone: timeZone), today = calendar.startOfDay(for: now)
         let firstDay = period.days.flatMap { calendar.date(byAdding: .day, value: 1 - $0, to: today) }
         func day(_ date: Date) -> Date? { date.timeIntervalSince1970.isFinite ? calendar.startOfDay(for: date) : nil }
         func includes(_ date: Date) -> Bool { date <= today && (firstDay.map { date >= $0 } ?? true) }
-        struct Round { let reply: UUID; let conversation: UUID; let book: UUID?; let date: Date; let books: [UUID]; let order: (Date, Int, String) }
+        struct Round { let reply: UUID; let conversation: UUID; let book: UUID?; let date: Date; let books: [UUID]; let character: UUID; let order: (Date, Int, String) }
         struct Words { let message: UUID; let book: UUID?; let date: Date; let count: Int; let order: (Date, Int, String) }
         var rounds: [Round] = [], words: [Words] = []
         for chat in conversations {
@@ -49,7 +52,7 @@ public struct CompanionStatistics: Sendable {
                 let legacy = user.bookScopes?.map(\.id) ?? message.bookScopes?.map(\.id) ?? Array(chat.sourceLimits.keys)
                 let associated = user.sourceBookIDs ?? message.sourceBookIDs ?? legacy
                 let ids = chat.bookID.map { [$0] } ?? associated
-                rounds.append(.init(reply: message.id, conversation: chat.id, book: chat.bookID, date: date, books: ids, order: order(user)))
+                rounds.append(.init(reply: message.id, conversation: chat.id, book: chat.bookID, date: date, books: ids, character: chat.characterID, order: order(user)))
                 pending = nil
             }
         }
@@ -71,6 +74,11 @@ public struct CompanionStatistics: Sendable {
                 return subtotal + entry.value
             }
         }
+        roundsByHour = (0..<24).map { hour in selected.filter { calendar.component(.hour, from: $0.order.0) == hour }.count }
+        let storyRounds = unique.filter { scope.includes($0.book) && $0.date <= today }.map {
+            CompanionStoryRound(id: $0.reply, at: $0.order.0, characterID: $0.character, library: $0.book == nil, bookIDs: Set($0.books).intersection(retained))
+        }
+        story = CompanionStoryDay.build(rounds: storyRounds, memories: memories, conversations: conversations, books: books, records: records, scope: scope, firstDay: firstDay, today: today, calendar: calendar)
         self.today = today; self.calendar = calendar
     }
 }

@@ -11,11 +11,12 @@ struct CompanionStatisticsView: View {
     @State private var error: String?
     @State private var refresh = UUID()
     @State private var explanation = false
+    @State private var visibleDays = 21
     private struct Request: Equatable {
         let scope: CompanionStatsScope; let period: CompanionStatsPeriod
-        let conversations: [Conversation]; let books: [Book]; let revision: UUID; let refresh: UUID
+        let conversations: [Conversation]; let books: [Book]; let revision: UUID; let refresh: UUID; let memoryRevision: UUID; let characters: [UUID]
     }
-    private var request: Request { .init(scope: scope, period: period, conversations: companion.conversations, books: library.books, revision: library.recordsRevision, refresh: refresh) }
+    private var request: Request { .init(scope: scope, period: period, conversations: companion.conversations, books: library.books, revision: library.recordsRevision, refresh: refresh, memoryRevision: companion.personaMemoryRevision, characters: companion.characters.map(\.id)) }
     var body: some View {
         List {
             Section {
@@ -47,6 +48,30 @@ struct CompanionStatisticsView: View {
                     if stats.rounds == 0 { Text("这个范围还没有完整的交流记录。").font(.subheadline).foregroundStyle(.secondary) }
                 } header: { Text(period == .all ? "最近 35 天" : period.label) }
                   footer: { Text("交流天数和轮数按所选周期汇总。阅读时长来自这些交流所涉及书籍的阅读记录。") }
+                if !stats.story.isEmpty {
+                    Section("陪伴的时刻") {
+                        CompanionHourDial(hours: stats.roundsByHour)
+                            .frame(height: 140).accessibilityIdentifier("companion-story-hours")
+                        if let hour = stats.peakHour {
+                            Text("最常在 \(hour):00—\(hour + 1):00 交流").accessibilityIdentifier("companion-story-peak")
+                        }
+                    }
+                    ForEach(Array(stats.story.prefix(visibleDays))) { day in
+                        Section {
+                            HStack {
+                                CompanionHourDial(hours: day.roundsByHour).frame(width: 52, height: 52)
+                                Text("\(day.rounds) 轮交流 · 阅读 \(Int(day.readingSeconds / 60)) 分钟").font(.subheadline)
+                            }
+                            ForEach(day.events) { event in
+                                CompanionStoryRow(event: event, characters: companion.characters, books: library.books)
+                            }
+                        } header: { Text(day.date.formatted(date: .complete, time: .omitted)) }
+                    }
+                    if visibleDays < stats.story.count {
+                        Button("显示更早的记录（剩余 \(stats.story.count - visibleDays) 天）") { visibleDays += 30 }
+                            .accessibilityIdentifier("companion-story-more")
+                    }
+                }
             }
         }.navigationTitle("陪伴足迹")
             .task(id: request) { await load() }
@@ -81,12 +106,17 @@ struct CompanionStatisticsView: View {
     private func load() async {
         guard let store = library.store else { loading = false; error = "书库尚未打开。"; return }
         let query = request
-        loading = true; error = nil
+        loading = true; error = nil; visibleDays = 21
         let work = Task.detached(priority: .userInitiated) {
             var records: [UUID: BookRecords] = [:]
             for book in query.books { try Task.checkCancellation(); records[book.id] = try store.records(for: book) }
+            var memories: [PersonaMemory] = []
+            if FileManager.default.fileExists(atPath: PersonaMemoryStore.url(in: store.root).path) {
+                let memoryStore = try PersonaMemoryStore(root: store.root)
+                for character in query.characters { try Task.checkCancellation(); memories += try memoryStore.list(character) }
+            }
             try Task.checkCancellation()
-            return CompanionStatistics(conversations: query.conversations, books: query.books, records: records, scope: query.scope, period: query.period)
+            return CompanionStatistics(conversations: query.conversations, books: query.books, records: records, memories: memories, scope: query.scope, period: query.period)
         }
         do {
             let value = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }

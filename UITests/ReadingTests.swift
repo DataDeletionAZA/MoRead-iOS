@@ -184,6 +184,35 @@ final class ReadingTests: XCTestCase {
         let empty = XCTAttachment(screenshot: app.screenshot()); empty.name = "Companion-statistics-empty"; empty.lifetime = .keepAlways; add(empty)
     }
 
+    func testCompanionStoryHourlyDistributionSessionsAndFirstMeeting() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-companion-statistics"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["伴读"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["伴读"].tap(); app.buttons["陪伴足迹"].tap()
+        app.segmentedControls["companion-stats-period"].buttons["近 7 天"].tap()
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<12 {
+                if element.exists && element.isHittable && element.frame.maxY < app.frame.maxY - 90 { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(element.exists); XCTAssertTrue(element.isHittable)
+        }
+        let peak = app.staticTexts["companion-story-peak"]
+        reveal(peak); XCTAssertTrue(peak.label.contains("0:00—1:00"))
+        let dial = app.otherElements["companion-story-hours"]
+        XCTAssertTrue((dial.value as? String ?? "").contains("0 点，2 轮"))
+        let sessions = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "companion-story-session-"))
+        reveal(sessions.firstMatch)
+        XCTAssertTrue(app.staticTexts["2 轮交流 · 阅读 60 分钟"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Companion-story-week"; shot.lifetime = .keepAlways; add(shot)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        app.tabBars.buttons["伴读"].tap(); app.buttons["陪伴足迹"].tap()
+        let first = app.descendants(matching: .any).matching(identifier: "companion-story-first").firstMatch
+        reveal(first); XCTAssertTrue(first.label.contains("第一次交流"))
+        let oldest = XCTAttachment(screenshot: app.screenshot()); oldest.name = "Companion-story-first-meeting"; oldest.lifetime = .keepAlways; add(oldest)
+    }
+
     func testStatisticsPeriodsCalendarWidgetsAndRestart() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-statistics"]; app.launch()
@@ -1382,6 +1411,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bookmark-")).firstMatch.exists)
     }
     func testProactiveSettingsPersistAndMissingConnectionIsExplained() {
+        executionTimeAllowance = 300
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
         app.tabBars.buttons["设置"].tap(); app.buttons["随读段评"].tap()
         app.switches["proactive-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()

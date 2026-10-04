@@ -88,4 +88,59 @@ final class CompanionStatisticsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(Conversation.self, from: JSONEncoder().encode(legacy))
         XCTAssertNil(decoded.messages[0].sourceBookIDs)
     }
+    func testStorySessionsMilestonesHourlyCountsAndMemoryBoundaries() throws {
+        let book = Book(title: "夜读", chapters: [.init(id: 0, title: "一", text: "正文")])
+        var chat = Conversation(title: "伴读", bookID: book.id, characterID: UUID())
+        for _ in 0..<9 { chat.messages += pair(daysAgo: 15) }
+        let calendar = ReadingCalendar.calendar(timeZone: zone)
+        let start = calendar.startOfDay(for: now)
+        for minute in [60, 90, 121, 180] {
+            var messages = pair(daysAgo: 0)
+            messages[0].createdAt = start.addingTimeInterval(Double(minute * 60))
+            messages[1].createdAt = messages[0].createdAt.addingTimeInterval(1)
+            chat.messages += messages
+        }
+        for index in chat.messages.indices { chat.messages[index].originalConversationID = chat.id }
+        var branch = chat; branch.id = UUID()
+        var record = BookRecords(); record.readingSeconds = [ReadingCalendar.key(start, calendar: calendar): 600]
+        let origin = try MemoryOrigin(conversation: chat, through: chat.messages.last!.id)
+        var memory = PersonaMemory(characterID: chat.characterID, bookID: book.id, identity: nil, text: "喜欢夜读", origins: [origin]); memory.updatedAt = start.addingTimeInterval(7200)
+        var future = memory; future.id = UUID(); future.updatedAt = start.addingTimeInterval(172800)
+        let week = CompanionStatistics(conversations: [branch, chat], books: [book], records: [book.id: record], memories: [memory, memory, future], period: .week, now: now, timeZone: zone)
+        XCTAssertEqual(week.rounds, 4); XCTAssertEqual(week.roundsByHour[1], 2); XCTAssertEqual(week.peakHour, 1)
+        let day = try XCTUnwrap(week.story.first)
+        XCTAssertEqual(week.story.count, 1); XCTAssertEqual(day.rounds, 4); XCTAssertEqual(day.readingSeconds, 600)
+        let sessions = day.events.filter { if case .session = $0.kind { true } else { false } }
+        XCTAssertEqual(sessions.map(\.rounds), [2, 1, 1]); XCTAssertEqual(sessions.first?.end, start.addingTimeInterval(5400))
+        XCTAssertFalse(sessions.contains { $0.firstMeeting })
+        XCTAssertTrue(day.events.contains { if case .milestone(10) = $0.kind { true } else { false } })
+        XCTAssertFalse(day.events.contains { if case .firstWords = $0.kind { true } else { false } })
+        XCTAssertEqual(day.events.filter { if case .memory = $0.kind { true } else { false } }.count, 1)
+        chat.messages[0].content = "修改来源"
+        let invalid = CompanionStatistics(conversations: [chat], books: [book], memories: [memory], now: now, timeZone: zone)
+        XCTAssertFalse(invalid.story.flatMap(\.events).contains { if case .memory = $0.kind { true } else { false } })
+        XCTAssertTrue(CompanionStatistics(conversations: [chat], books: [book], memories: [memory], scope: .library, now: now, timeZone: zone).story.isEmpty)
+    }
+
+    func testStoryMidnightLibraryBookUnionPersonaAndPeakTie() throws {
+        let a = Book(title: "甲", chapters: []), b = Book(title: "乙", chapters: [])
+        let calendar = ReadingCalendar.calendar(timeZone: zone), start = calendar.startOfDay(for: now)
+        var chat = Conversation(title: "书库", bookID: nil, characterID: UUID())
+        for (minute, book) in [(-10, a.id), (10, a.id), (20, b.id), (100, b.id), (110, b.id)] {
+            var messages = pair(daysAgo: 0, books: [book])
+            messages[0].createdAt = start.addingTimeInterval(Double(minute * 60)); messages[1].createdAt = messages[0].createdAt
+            chat.messages += messages
+        }
+        var other = Conversation(title: "另一角色", bookID: nil, characterID: UUID())
+        other.messages = pair(daysAgo: 0, books: [a.id]); other.messages[0].createdAt = start.addingTimeInterval(7000)
+        let stats = CompanionStatistics(conversations: [chat, other], books: [a, b], now: now, timeZone: zone)
+        XCTAssertEqual(stats.story.count, 2); XCTAssertEqual(stats.roundsByHour[23], 1); XCTAssertEqual(stats.peakHour, 1)
+        let sessions = stats.story[0].events.filter { if case .session = $0.kind { true } else { false } }
+        XCTAssertEqual(sessions.map(\.rounds), [2, 2, 1]); XCTAssertEqual(sessions[0].bookIDs, [a.id, b.id])
+        XCTAssertTrue(sessions[0].firstMeeting); XCTAssertFalse(sessions[1].firstMeeting)
+        XCTAssertEqual(stats.story[1].rounds, 1)
+        let tied = CompanionStatistics(conversations: [chat], books: [a, b], now: now, timeZone: zone)
+        XCTAssertEqual(tied.peakHour, 1)
+    }
+
 }
