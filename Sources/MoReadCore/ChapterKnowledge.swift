@@ -124,18 +124,34 @@ public struct ChapterKnowledge: Codable, Equatable, Sendable {
     public static func parseCharacters(_ raw: String, part: KnowledgePart) throws -> [KnowledgeCharacter] {
         struct Characters: Decodable { let characters: [Draft.Character] }
         guard part.start >= 0, part.text.utf16.count <= 10_000, part.start <= Int.max - part.text.utf16.count,
-              let draft = try? JSONDecoder().decode(Characters.self, from: jsonData(raw)), draft.characters.count <= 24 else {
-            throw MoReadError.invalid("人物资料格式无效或条目过多。")
+              let draft = try? JSONDecoder().decode(Characters.self, from: characterData(raw)), draft.characters.count <= 24 else {
+            throw MoReadError.invalid("人物资料格式不完整或条目过多，请重试或提高模型输出上限。")
         }
         return try verifyCharacters(draft.characters, part: part)
     }
     static func jsonData(_ raw: String) throws -> Data {
         guard raw.utf16.count <= 64_000 else { throw MoReadError.invalid("整理结果过长。") }
         var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean.hasPrefix("```json") { clean.removeFirst(7) } else if clean.hasPrefix("```") { clean.removeFirst(3) }
-        if clean.hasSuffix("```") { clean.removeLast(3) }
+        if clean.hasPrefix("\u{FEFF}") { clean.removeFirst(); clean = clean.trimmingCharacters(in: .whitespacesAndNewlines) }
+        func structured(_ value: String) -> Bool {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(value.utf8)) else { return false }
+            return object is [String: Any] || object is [Any]
+        }
+        if !structured(clean), let start = clean.firstIndex(where: { $0 == "{" || $0 == "[" }),
+           let end = clean.lastIndex(of: clean[start] == "{" ? "}" : "]"), end > start {
+            let candidate = String(clean[start...end])
+            if structured(candidate) { clean = candidate }
+        }
         return Data(clean.utf8)
     }
+    private static func characterData(_ raw: String) throws -> Data {
+        let data = try jsonData(raw)
+        if let array = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+            return try JSONSerialization.data(withJSONObject: ["characters": array])
+        }
+        return data
+    }
+
     private static func verify(_ fact: Draft.Fact, part: KnowledgePart) throws -> KnowledgeFact {
         let text = fact.text.trimmingCharacters(in: .whitespacesAndNewlines), quote = fact.quote.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...600).contains(text.utf16.count), (4...300).contains(quote.utf16.count) else { throw MoReadError.invalid("整理结果缺少简短描述或原文依据。") }

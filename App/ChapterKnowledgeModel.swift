@@ -86,11 +86,15 @@ extension CompanionModel {
             if ProcessInfo.processInfo.arguments.contains("--knowledge-fail") { throw MoReadError.invalid("整理服务暂不可用。") }
             let quote = TextBoundary.prefix(plan.source.parts[0].text.trimmingCharacters(in: .whitespacesAndNewlines), end: 14)
             let raw = try JSONSerialization.data(withJSONObject: ["outline": "林遥推开书店的大门，开始了这一天的阅读。", "summary": [["text": "林遥走进书店。", "quote": quote]]])
+            if ProcessInfo.processInfo.arguments.contains("--knowledge-text-correction") {
+                let text = messages.count == 2 ? "{\"outline\":\"未完成" : "整理如下：\n```JSON\n" + String(decoding: raw, as: UTF8.self) + "\n```"
+                return .init(text: text, calls: [], replay: Data("[]".utf8))
+            }
             return .init(text: "", calls: [.init(id: UUID().uuidString, name: tool.name, arguments: String(decoding: raw, as: UTF8.self))], replay: Data("{}".utf8))
         }
         #endif
         var provider = plan.provider; provider.maxTokens = min(provider.maxTokens, 6000)
-        return try await ChatClient.turn(provider: provider, key: key, messages: messages, tools: [tool], exchanges: exchanges, temperature: 0.2, onDelta: { _ in })
+        return try await ChatClient.turn(provider: provider, key: key, messages: messages, tools: [tool], exchanges: exchanges, temperature: 0.2, allowStructuredCorrection: true, onDelta: { _ in })
     }
     #if DEBUG
     var simulatedKnowledge: Bool { ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--simulate-knowledge") }

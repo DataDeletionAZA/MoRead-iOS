@@ -932,7 +932,7 @@ final class ReadingTests: XCTestCase {
     func testChapterKnowledgePreviewSaveEvidenceFailureStopAndRelaunch() {
         executionTimeAllowance = 240
         let app = XCUIApplication()
-        func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-knowledge"] + extra; app.launch() }
+        func launch(_ extra: [String] = []) { app.launchArguments = ["--ui-testing", "--simulate-knowledge", "--knowledge-text-correction"] + extra; app.launch() }
         func tap(_ id: String) {
             let button = app.buttons[id]
             for _ in 0..<6 { if button.exists && button.isHittable { break }; app.swipeUp() }

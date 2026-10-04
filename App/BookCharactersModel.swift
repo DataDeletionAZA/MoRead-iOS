@@ -69,7 +69,7 @@ extension CompanionModel {
         }
         #endif
         var provider = provider; provider.maxTokens = min(provider.maxTokens, 6000)
-        return try await ChatClient.turn(provider: provider, key: key, messages: messages, tools: [tool], exchanges: exchanges, temperature: 0.2, onDelta: { _ in })
+        return try await ChatClient.turn(provider: provider, key: key, messages: messages, tools: [tool], exchanges: exchanges, temperature: 0.2, allowStructuredCorrection: true, onDelta: { _ in })
     }
     #if DEBUG
     var simulatedCharacters: Bool { ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--simulate-characters") }

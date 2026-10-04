@@ -121,7 +121,7 @@ struct ToolStreamAccumulator {
                 slots[index] = slot
             }
         case .responses:
-            if json["type"] as? String == "response.completed" { responses = (json["response"] as? [String: Any])?["output"] as? [[String: Any]] ?? [] }
+            if ["response.completed", "response.incomplete"].contains(json["type"] as? String ?? "") { responses = (json["response"] as? [String: Any])?["output"] as? [[String: Any]] ?? [] }
         case .claude:
             let type = json["type"] as? String
             if type == "content_block_start" { slots[try index(json["index"])] = json["content_block"] as? [String: Any] ?? [:] }
@@ -137,7 +137,7 @@ struct ToolStreamAccumulator {
         }
         guard slots.count <= 64, parts.count <= 4096, reasoning.count <= 256 else { throw MoReadError.invalid("工具数据块数量过多。") }
     }
-    func finish(text: String) throws -> ChatToolRound {
+    func finish(text: String, correctionTool: String? = nil) throws -> ChatToolRound {
         var calls: [ChatToolCall] = [], native: Any
         switch dialect {
         case .openAI:
@@ -161,7 +161,7 @@ struct ToolStreamAccumulator {
                 if slot["type"] as? String == "tool_use" {
                     let raw = try arguments[index] ?? Self.string(slot["input"] ?? [:])
                     let call = ChatToolCall(id: slot["id"] as? String ?? "", name: slot["name"] as? String ?? "", arguments: raw)
-                    slot["input"] = try call.object(); calls.append(call)
+                    slot["input"] = (try? call.object()) ?? [:]; calls.append(call)
                 }
                 blocks.append(slot)
             }
@@ -177,8 +177,13 @@ struct ToolStreamAccumulator {
         guard calls.count <= 8, Set(calls.map(\.id)).count == calls.count else { throw MoReadError.invalid("单轮工具调用过多或标识重复。") }
         for call in calls {
             guard !call.id.isEmpty, call.id.utf8.count <= 256, !call.name.isEmpty, call.name.utf8.count <= 128 else { throw MoReadError.invalid("工具调用标识无效。") }
-            _ = try call.object()
         }
+        if let correctionTool, calls.count == 1, let call = calls.first, call.name == correctionTool,
+           call.arguments.utf8.count <= 256 * 1024, (try? call.object()) == nil {
+            // Invalid arguments cannot be replayed as a native tool call, so correction uses ordinary dialogue.
+            return ChatToolRound(text: call.arguments, calls: [], replay: Data("[]".utf8))
+        }
+        for call in calls { _ = try call.object() }
         let replay = try JSONSerialization.data(withJSONObject: native)
         guard replay.count <= 2 * 1024 * 1024 else { throw MoReadError.invalid("工具续接消息过长。") }
         return ChatToolRound(text: text, calls: calls, replay: replay)
