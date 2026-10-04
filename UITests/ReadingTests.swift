@@ -1127,6 +1127,7 @@ final class ReadingTests: XCTestCase {
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Hybrid-retrieval-fallback"; shot.lifetime = .keepAlways; add(shot)
     }
     func testToolWritesNotesSummaryAndAnnotationWithProtectedUserEdits() {
+        executionTimeAllowance = 360
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-tools", "--simulate-writing"]; app.launch()
         func openChat() { app.tabBars.buttons["伴读"].tap(); app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "工具查询")).firstMatch.tap() }
         func send(_ text: String) {

@@ -9,6 +9,7 @@ struct ReadingReviewView: View {
     @State private var error: String?
     @State private var selected: ReadingReviewEntry?
     @State private var choosingBooks = false
+    @State private var composing: ReviewComposition.Mode?
     private struct Request: Equatable { let books: [Book]; let revision: UUID; let maintenance: Bool }
     private var request: Request { .init(books: library.books, revision: library.recordsRevision, maintenance: library.maintenance) }
     private var visible: [ReadingReviewEntry] { filter.apply(to: entries) }
@@ -60,8 +61,12 @@ struct ReadingReviewView: View {
             .toolbar {
                 Button("全屏回顾", systemImage: "rectangle.expand.vertical") { selected = visible.first }.disabled(visible.isEmpty)
                 if !visible.isEmpty { ShareLink("导出筛选结果", item: ReadingReview.markdown(visible)) }
+                Menu("邀请角色", systemImage: "sparkles") {
+                    ForEach(ReviewComposition.Mode.allCases) { mode in Button(mode.rawValue) { composing = mode } }
+                }.disabled(visible.isEmpty)
             }
             .task(id: request) { await load() }
+            .sheet(item: $composing) { ReviewComposer(entries: visible, mode: $0) }
             .fullScreenCover(item: $selected) { entry in NavigationStack { ReadingReviewPager(entries: visible, initialID: entry.id) } }
             .sheet(isPresented: $choosingBooks) {
                 NavigationStack {
@@ -101,6 +106,12 @@ struct ReadingReviewPager: View {
     @State private var selected: String?
     @State private var source: SourcePassage?
     @State private var sourceScope: ReadingScope?
+    private struct CompositionRequest: Identifiable {
+        let mode: ReviewComposition.Mode
+        let entries: [ReadingReviewEntry]
+        var id: ReviewComposition.Mode { mode }
+    }
+    @State private var composing: CompositionRequest?
     private var index: Int? { entries.firstIndex { $0.id == selected } }
     var body: some View {
         Group {
@@ -126,6 +137,11 @@ struct ReadingReviewPager: View {
         }.navigationTitle("阅读回顾").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu("邀请角色", systemImage: "sparkles") {
+                        ForEach(ReviewComposition.Mode.allCases) { mode in Button(mode.rawValue) { if let index { composing = .init(mode: mode, entries: [entries[index]]) } } }
+                    }.disabled(index == nil)
+                }
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button("上一篇", systemImage: "chevron.left") { if let index, index > 0 { selected = entries[index - 1].id } }.disabled(index == nil || index == 0)
                     Spacer()
@@ -136,6 +152,7 @@ struct ReadingReviewPager: View {
             }
             .onAppear { if index == nil { selected = entries.first(where: { $0.id == initialID })?.id ?? entries.first?.id } }
             .onChange(of: entries.map(\.id)) { _, ids in if !ids.isEmpty && (selected.map({ !ids.contains($0) }) ?? true) { selected = ids.first } }
+            .sheet(item: $composing) { request in ReviewComposer(entries: request.entries, mode: request.mode) }
             .sheet(item: $source) { passage in
                 NavigationStack {
                     ReaderView(bookID: passage.bookID, initialPassage: passage, initialPassageScope: sourceScope)
