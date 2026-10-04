@@ -1149,7 +1149,9 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "reading-note-Plot recap").count, 1)
         app.buttons["新建笔记"].tap()
         app.textFields["reading-note-title"].tap(); app.textFields["reading-note-title"].typeText("My reading note")
-        app.textViews["reading-note-content"].tap(); app.textViews["reading-note-content"].typeText("The lighthouse reminds me of home.")
+        let noteContent = app.textViews["reading-note-content"]
+        noteContent.tap(); noteContent.typeText("The lighthouse reminds me of home.\n")
+        XCTAssertEqual((noteContent.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), "The lighthouse reminds me of home.")
         app.buttons["保存"].tap()
         XCTAssertTrue(app.buttons["reading-note-My reading note"].waitForExistence(timeout: 5))
         let author = app.buttons["reading-notes-author"]
