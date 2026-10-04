@@ -9,6 +9,23 @@ struct ReviewCardOptions: Equatable {
 }
 
 enum ReviewCardRenderer {
+    struct Rendered {
+        let image: UIImage
+        let png: Data
+    }
+    static func render(entry: ReadingReviewEntry, template: ReviewCardTemplate, options: ReviewCardOptions,
+                       font: UIFont?, background: UIImage?, cover: Bool, ruleFonts: [UUID: UIFont], ruleImages: [UUID: UIImage]) async throws -> Rendered {
+        let work = Task.detached(priority: .userInitiated) { () throws -> Rendered in
+            try Task.checkCancellation()
+            let image = try image(entry: entry, template: template, options: options, font: font, background: background, cover: cover, ruleFonts: ruleFonts, ruleImages: ruleImages)
+            try Task.checkCancellation()
+            guard let data = image.pngData() else { throw MoReadError.invalid("图片生成失败，请重试。") }
+            try Task.checkCancellation()
+            return Rendered(image: image, png: data)
+        }
+        return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+    }
+
     static func rgba(_ color: ReviewCardColor) -> UIColor {
         let value = color.rgba
         return UIColor(red: CGFloat((value >> 24) & 255) / 255, green: CGFloat((value >> 16) & 255) / 255, blue: CGFloat((value >> 8) & 255) / 255, alpha: CGFloat(value & 255) / 255)
