@@ -11,13 +11,8 @@ public enum GeminiSpeech {
     ]
 
     static func body(settings s: CloudSpeechSettings, text: String) -> [String: Any] {
-        var style = [s.instructions.trimmingCharacters(in: .whitespacesAndNewlines)]
-        if !s.emotion.isEmpty { style.append("Emotion: " + s.emotion) }
-        if s.speed != 1 { style.append("Speak at \(s.speed) times normal speed") }
-        if s.volume != 1 { style.append(s.volume < 1 ? "Speak softly" : "Speak with a louder delivery") }
-        if s.pitch != 0 { style.append(s.pitch < 0 ? "Use a lower vocal pitch" : "Use a higher vocal pitch") }
         var part: [String: Any] = ["type": "text", "text": text]
-        let instruction = style.filter { !$0.isEmpty }.joined(separator: "; ")
+        let instruction = s.speechStyle
         if !instruction.isEmpty { part["annotations"] = [["type": "speech_metadata", "style": instruction]] }
         return ["model": s.model.hasPrefix("models/") ? String(s.model.dropFirst(7)) : s.model,
                 "store": false, "input": [["type": "user_input", "content": [part]]],

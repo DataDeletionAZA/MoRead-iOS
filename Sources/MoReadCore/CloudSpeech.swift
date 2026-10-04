@@ -2,8 +2,8 @@ import Foundation
 import CryptoKit
 
 public enum SpeechService: String, Codable, CaseIterable, Sendable {
-    case openAI, miniMax, gmi, gemini
-    public var label: String { switch self { case .openAI: return "OpenAI 兼容"; case .miniMax: return "MiniMax"; case .gmi: return "GMI Cloud"; case .gemini: return "Gemini TTS" } }
+    case openAI, miniMax, gmi, gemini, mimo, fish
+    public var label: String { switch self { case .openAI: return "OpenAI 兼容"; case .miniMax: return "MiniMax"; case .gmi: return "GMI Cloud"; case .gemini: return "Gemini TTS"; case .mimo: return "小米 MiMo"; case .fish: return "Fish Audio" } }
 }
 
 public struct CloudSpeechSettings: Codable, Equatable, Sendable {
@@ -29,16 +29,26 @@ public struct CloudSpeechSettings: Codable, Equatable, Sendable {
         case .miniMax: baseURL = "https://api.minimax.io/v1"; model = "speech-2.8-hd"; voice = "English_expressive_narrator"
         case .gmi: baseURL = "https://console.gmicloud.ai"; model = "minimax-tts-speech-2.8-hd"; voice = "English_expressive_narrator"
         case .gemini: baseURL = "https://generativelanguage.googleapis.com/v1beta"; model = "gemini-3.8-flash-tts"; voice = "Sulafat"
+        case .mimo: baseURL = "https://api.xiaomimimo.com/v1"; model = "mimo-v2.5-tts"; voice = "mimo_default"
+        case .fish: baseURL = "https://api.fish.audio/v1"; model = "s2.1-pro"; voice = ""
         }
     }
     public func validated() -> Self {
         var result = self
         result.speed = speed.isFinite ? min(service == .openAI ? 4 : 2, max(service == .openAI ? 0.25 : 0.5, speed)) : 1
-        result.volume = volume.isFinite ? min(10, max(0, volume)) : 1
+        result.volume = volume.isFinite ? min(10, max(service == .fish ? 0.1 : 0, volume)) : 1
         result.pitch = min(12, max(-12, pitch))
         result.maximumCharacters = min(2000, max(80, maximumCharacters)); result.cacheMegabytes = min(2048, max(50, cacheMegabytes))
         result.instructions = String(instructions.prefix(4096))
         return result
+    }
+    var speechStyle: String {
+        var style = [instructions.trimmingCharacters(in: .whitespacesAndNewlines)]
+        if !emotion.isEmpty { style.append("Emotion: " + emotion) }
+        if speed != 1 { style.append("Speak at \(speed) times normal speed") }
+        if volume != 1 { style.append(volume < 1 ? "Speak softly" : "Speak with a louder delivery") }
+        if pitch != 0 { style.append(pitch < 0 ? "Use a lower vocal pitch" : "Use a higher vocal pitch") }
+        return style.filter { !$0.isEmpty }.joined(separator: "; ")
     }
 }
 
@@ -46,8 +56,9 @@ public enum CloudSpeechClient {
     public static let maximumAudioBytes = 30 * 1024 * 1024
     public static func request(settings: CloudSpeechSettings, key: String, text: String) throws -> URLRequest {
         let s = settings.validated()
-        guard !key.isEmpty, !key.contains(where: { $0.isNewline }), !s.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.model.utf8.count <= 512,
-              !s.voice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.voice.utf8.count <= 512,
+        guard !key.isEmpty, !key.contains(where: { $0.isNewline }), !s.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.model.utf8.count <= 512, !s.model.contains(where: { $0.isNewline }),
+              (s.service != .fish || s.model.utf8.allSatisfy { (33...126).contains($0) }),
+              (s.service == .fish || s.service == .mimo || !s.voice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty), s.voice.utf8.count <= 512,
               s.baseURL.utf8.count <= 8192, s.groupID.utf8.count <= 512, s.emotion.utf8.count <= 128, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf16.count <= 4096,
               var url = URLComponents(string: s.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               url.scheme?.lowercased() == "https", url.host?.isEmpty == false, url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else {
@@ -56,6 +67,10 @@ public enum CloudSpeechClient {
         let endpoint: String
         var body: [String: Any]
         switch s.service {
+        case .mimo:
+            endpoint = "chat/completions"; body = try MimoSpeech.body(settings: s, text: text)
+        case .fish:
+            endpoint = "tts"; body = FishSpeech.body(settings: s, text: text)
         case .openAI:
             endpoint = "audio/speech"
             body = ["model": s.model, "input": text, "voice": s.voice, "speed": s.speed, "response_format": "mp3"]
@@ -96,12 +111,14 @@ public enum CloudSpeechClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         if s.service == .gemini { request.setValue(key, forHTTPHeaderField: "x-goog-api-key") }
         else { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
+        if s.service == .fish { request.setValue(s.model, forHTTPHeaderField: "model") }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return request
     }
     public static func cacheKey(settings: CloudSpeechSettings, text: String) throws -> String {
         let value = try request(settings: settings, key: "cache", text: text)
         var bytes = Data((value.url!.absoluteString + "\n").utf8); bytes.append(value.httpBody!)
+        if settings.service == .fish { bytes.append(Data(("\nmodel:" + settings.model).utf8)) }
         return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
     }
     public static func validateAudio(_ data: Data) throws -> Data {
@@ -181,10 +198,11 @@ public enum CloudSpeechClient {
             }
             return data
         }
-        let limit = settings.service == .openAI ? maximumAudioBytes : settings.service == .gemini ? maximumAudioBytes * 4 / 3 + 65536 : maximumAudioBytes * 2 + 65536
+        let limit = [.openAI, .fish].contains(settings.service) ? maximumAudioBytes : [.gemini, .mimo].contains(settings.service) ? maximumAudioBytes * 4 / 3 + 65536 : maximumAudioBytes * 2 + 65536
         var data = try await fetch(original, limit: limit)
         switch settings.service {
-        case .openAI: return try validateAudio(data)
+        case .openAI, .fish: return try validateAudio(data)
+        case .mimo: return try MimoSpeech.decode(data)
         case .miniMax: return try decodeMiniMax(data)
         case .gemini: return try GeminiSpeech.decode(data)
         case .gmi:

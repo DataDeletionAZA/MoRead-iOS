@@ -3,6 +3,56 @@ import XCTest
 
 final class CloudSpeechTests: XCTestCase {
     private var audio: Data { Data([73, 68, 51] + Array(repeating: UInt8(0), count: 30)) }
+    func testMimoPreservesTextAndRejectsIncompleteAudio() throws {
+        var s = CloudSpeechSettings(); s.preset(.mimo)
+        s.instructions = "A gentle narrator"; s.emotion = "happy"; s.speed = 1.2
+        let text = "她说：「雨停了。」😀"
+        let request = try CloudSpeechClient.request(settings: s, key: "local-test", text: text)
+        XCTAssertEqual(request.url?.absoluteString, "https://api.xiaomimimo.com/v1/chat/completions")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer local-test")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.last, ["role": "assistant", "content": text])
+        XCTAssertTrue(messages.first?["content"]?.contains("A gentle narrator") == true)
+        XCTAssertEqual((body["audio"] as? [String: String])?["voice"], "mimo_default")
+        XCTAssertEqual((body["audio"] as? [String: String])?["format"], "wav")
+        s.model += "-voicedesign"; s.voice = ""
+        let design = try CloudSpeechClient.request(settings: s, key: "local-test", text: text)
+        let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: design.httpBody!) as? [String: Any])
+        XCTAssertNil((fields["audio"] as? [String: Any])?["voice"])
+        XCTAssertEqual((fields["audio"] as? [String: Any])?["optimize_text_preview"] as? Bool, false)
+        s.instructions = ""; s.emotion = ""; s.speed = 1
+        XCTAssertThrowsError(try CloudSpeechClient.request(settings: s, key: "local-test", text: text))
+        func reply(_ reason: String, _ encoded: String) throws -> Data {
+            try JSONSerialization.data(withJSONObject: ["choices": [["finish_reason": reason, "message": ["audio": ["data": encoded]]]]])
+        }
+        XCTAssertEqual(try MimoSpeech.decode(reply("stop", audio.base64EncodedString())), audio)
+        for reason in ["length", "content_filter"] { XCTAssertThrowsError(try MimoSpeech.decode(reply(reason, audio.base64EncodedString()))) }
+        for invalid in ["", "%%%", Data("<html>not audio</html>".utf8).base64EncodedString()] { XCTAssertThrowsError(try MimoSpeech.decode(reply("stop", invalid))) }
+        XCTAssertEqual(try JSONDecoder().decode(CloudSpeechSettings.self, from: JSONEncoder().encode(s)), s)
+    }
+    func testFishModelHeadersStyleTagsAndCacheSeparation() throws {
+        var s = CloudSpeechSettings(); s.preset(.fish); s.voice = " voice-id "; s.emotion = "fearful"; s.instructions = "[gently]"; s.volume = 0.5
+        let request = try CloudSpeechClient.request(settings: s, key: "local-test", text: "原文😀")
+        XCTAssertEqual(request.url?.absoluteString, "https://api.fish.audio/v1/tts")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "model"), "s2.1-pro")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+        XCTAssertNil(body["model"]); XCTAssertEqual(body["reference_id"] as? String, "voice-id")
+        XCTAssertEqual(body["text"] as? String, "[scared][gently]原文😀")
+        XCTAssertEqual((body["prosody"] as? [String: Double])?["volume"] ?? 0, -6.0206, accuracy: 0.001)
+        let key = try CloudSpeechClient.cacheKey(settings: s, text: "原文😀")
+        s.model = "s2-pro"
+        XCTAssertNotEqual(key, try CloudSpeechClient.cacheKey(settings: s, text: "原文😀"))
+        s.model = "s1"; s.instructions = "Do not read this direction aloud"; s.voice = ""; s.volume = 0
+        XCTAssertEqual(s.validated().volume, 0.1)
+        let legacy = try CloudSpeechClient.request(settings: s, key: "local-test", text: "原文😀")
+        let legacyBody = try XCTUnwrap(JSONSerialization.jsonObject(with: legacy.httpBody!) as? [String: Any])
+        XCTAssertEqual(legacyBody["text"] as? String, "(scared)原文😀"); XCTAssertNil(legacyBody["reference_id"])
+        XCTAssertEqual((legacyBody["prosody"] as? [String: Double])?["volume"], -20)
+        XCTAssertEqual(try JSONDecoder().decode(CloudSpeechSettings.self, from: JSONEncoder().encode(s)), s)
+        s.model = "s2-pro\nInjected: value"
+        XCTAssertThrowsError(try CloudSpeechClient.request(settings: s, key: "local-test", text: "原文"))
+    }
     func testRequestsResponsesAndDownloadCredentials() throws {
         var settings = CloudSpeechSettings()
         let request = try CloudSpeechClient.request(settings: settings, key: "test-key", text: "雨停了。")

@@ -1611,6 +1611,13 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(app.textViews["reader-text"].firstMatch.value as? String, text)
     }
     func testCachedCloudAudioPauseSeekAndChapterTimer() {
+        checkCachedCloudAudio(services: ["openAI", "gemini"])
+    }
+    func testMimoFishCachedAudioPauseSeekAndChapterTimer() {
+        executionTimeAllowance = 300
+        checkCachedCloudAudio(services: ["mimo", "fish"])
+    }
+    private func checkCachedCloudAudio(services: [String]) {
         var wave = Data()
         func word<T: FixedWidthInteger>(_ value: T) { var little = value.littleEndian; withUnsafeBytes(of: &little) { wave.append(contentsOf: $0) } }
         let samples = 24000
@@ -1618,7 +1625,7 @@ final class ReadingTests: XCTestCase {
         word(UInt16(1)); word(UInt16(1)); word(UInt32(8000)); word(UInt32(16000)); word(UInt16(2)); word(UInt16(16))
         wave.append(Data("data".utf8)); word(UInt32(samples * 2))
         for index in 0..<samples { word(Int16(sin(Double(index) * 2 * .pi * 220 / 8000) * 100)) }
-        for service in ["openAI", "gemini"] {
+        for service in services {
         let app = XCUIApplication()
         app.launchEnvironment["MOREAD_TEST_SPEECH_SERVICE"] = service
         app.launchArguments = ["--ui-testing", "--reset-test-library"]
@@ -1647,6 +1654,35 @@ final class ReadingTests: XCTestCase {
         XCTAssertFalse(app.alerts["需要处理"].exists)
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = service + "-cached-speech"; attachment.lifetime = .keepAlways; add(attachment)
         app.terminate()
+        }
+    }
+    func testMimoFishSettingsVoicesAndDirectionsPersist() {
+        executionTimeAllowance = 300
+        for (service, model, voice) in [("小米 MiMo", "mimo-v2.5-tts", "Mia"), ("Fish Audio", "s2.1-pro", "voice-local-test")] {
+            let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
+            app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
+            let enabled = app.switches["cloud-speech-enabled"]
+            XCTAssertTrue(enabled.waitForExistence(timeout: 10)); enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            app.buttons["cloud-speech-service"].tap(); app.buttons[service].tap()
+            XCTAssertEqual(app.textFields["cloud-speech-model"].value as? String, model)
+            if service == "小米 MiMo" {
+                let presets = app.buttons["mimo-voice-presets"]; revealListElement(presets, in: app); presets.tap()
+                app.buttons[voice].tap()
+            } else {
+                let field = app.textFields["cloud-speech-voice"]; revealListElement(field, in: app); field.tap(); field.typeText(voice); app.buttons["完成"].tap()
+            }
+            let key = app.secureTextFields["cloud-speech-key"]; revealListElement(key, in: app); key.tap(); key.typeText("speech-local-test-key"); app.buttons["完成"].tap()
+            let instructions = app.descendants(matching: .any)["cloud-speech-instructions"]
+            revealListElement(instructions, in: app); instructions.tap(); instructions.typeText("A warm narrator"); app.buttons["完成"].tap()
+            let save = app.buttons["save-cloud-speech"]; revealListElement(save, in: app); save.tap()
+            XCTAssertTrue(app.staticTexts["cloud-speech-saved"].waitForExistence(timeout: 5))
+            app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+            app.tabBars.buttons["设置"].tap(); tapSettingsRow("云端声音与缓存", in: app)
+            XCTAssertTrue(app.buttons["cloud-speech-service"].label.contains(service)); XCTAssertEqual(enabled.value as? String, "1")
+            let field = app.textFields["cloud-speech-voice"]; revealListElement(field, in: app); XCTAssertEqual(field.value as? String, voice)
+            revealListElement(instructions, in: app); XCTAssertEqual(instructions.value as? String, "A warm narrator")
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = service + "-speech-settings"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
         }
     }
     func testGeminiSpeechSettingsAndVoicePersist() {

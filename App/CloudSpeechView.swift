@@ -13,6 +13,7 @@ struct CloudSpeechView: View {
     @State private var clearing = false
     @State private var confirmClear = false
     @FocusState private var focusedField: String?
+    private var designingVoice: Bool { settings.service == .mimo && settings.model.lowercased().hasSuffix("-voicedesign") }
     var body: some View {
         Form {
             Section {
@@ -35,7 +36,14 @@ struct CloudSpeechView: View {
                         ForEach(GeminiSpeech.voices, id: \.id) { Text($0.id + " · " + $0.style).tag($0.id) }
                     }.pickerStyle(.navigationLink).accessibilityIdentifier("gemini-voice-presets")
                 }
-                field("声音 ID", text: $settings.voice, id: "cloud-speech-voice")
+                if settings.service == .mimo && !designingVoice {
+                    Picker("MiMo 预设音色", selection: $settings.voice) {
+                        if !MimoSpeech.voices.contains(settings.voice) { Text("自定义：" + settings.voice).tag(settings.voice) }
+                        ForEach(MimoSpeech.voices, id: \.self) { Text($0 == "mimo_default" ? "默认音色" : $0).tag($0) }
+                    }.pickerStyle(.navigationLink).accessibilityIdentifier("mimo-voice-presets")
+                }
+                if !designingVoice { field(settings.service == .fish ? "声音 ID（可选）" : "声音 ID", text: $settings.voice, id: "cloud-speech-voice") }
+                if designingVoice { Text("在下面的朗读要求中描述声音，例如年龄、语气和口音。").font(.caption).foregroundStyle(.secondary) }
                 SecureField("API 密钥", text: Binding(get: { key }, set: { key = $0; keyLoaded = true })).textInputAutocapitalization(.never).autocorrectionDisabled().focused($focusedField, equals: "cloud-speech-key").accessibilityIdentifier("cloud-speech-key").disabled(loadingKey)
                 Text("声音 ID 请填写服务商提供的名称。密钥保存在这台设备的系统钥匙串中。").font(.caption).foregroundStyle(.secondary)
             }
@@ -47,16 +55,20 @@ struct CloudSpeechView: View {
                     Text("tts-1 和 tts-1-hd 只使用声音与语速；其他支持朗读要求的模型还会收到上面的描述。").font(.caption).foregroundStyle(.secondary)
                 }
                 if settings.service != .openAI {
-                    if settings.service == .gemini {
-                        TextField("朗读要求（可选）", text: $settings.instructions, axis: .vertical).lineLimit(2...5).focused($focusedField, equals: "instructions")
-                        Text("语速、音量、音调和情绪作为声音表现要求发送，由模型决定实际效果。也可填写服务商提供的自定义声音 ID。").font(.caption).foregroundStyle(.secondary)
+                    if [.gemini, .mimo, .fish].contains(settings.service) {
+                        TextField(designingVoice ? "朗读要求" : "朗读要求（可选）", text: $settings.instructions, axis: .vertical).lineLimit(2...5).focused($focusedField, equals: "instructions").accessibilityIdentifier("cloud-speech-instructions")
                     }
+                    if [.gemini, .mimo].contains(settings.service) {
+                        Text("语速、音量、音调和情绪作为声音表现要求发送，由模型决定实际效果。").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if settings.service == .fish { Text("Fish S2 系列可使用朗读要求；S1 和 speech 系列使用预设情绪。声音 ID 可从 Fish 的音色页面复制。").font(.caption).foregroundStyle(.secondary) }
                     LabeledContent("音量", value: settings.volume.formatted(.number.precision(.fractionLength(1))))
-                    Slider(value: $settings.volume, in: 0...10, step: 0.1).accessibilityLabel("云端音量")
-                    Stepper("音调 \(settings.pitch)", value: $settings.pitch, in: -12...12)
+                    Slider(value: $settings.volume, in: settings.service == .fish ? 0.1...10 : 0...10, step: 0.1).accessibilityLabel("云端音量")
+                    if settings.service != .fish { Stepper("音调 \(settings.pitch)", value: $settings.pitch, in: -12...12) }
                     Picker("情绪", selection: $settings.emotion) {
                         Text("自动").tag("")
                         ForEach([("calm", "平静"), ("happy", "开心"), ("sad", "悲伤"), ("angry", "生气"), ("fearful", "害怕"), ("disgusted", "厌恶"), ("surprised", "惊讶")], id: \.0) { Text($0.1).tag($0.0) }
+                        if settings.service == .fish { Text("低语").tag("whispering") }
                     }
                 }
                 Stepper("每段最多 \(settings.maximumCharacters) 字", value: $settings.maximumCharacters, in: 80...2000, step: 80)

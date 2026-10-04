@@ -34,7 +34,7 @@
 - 共用图片库：从照片导入、预览、重命名、删除，用于阅读或角色聊天背景；旧阅读背景自动带入，图片及选择随完整备份保存。
 - 每个角色独立设置聊天背景与蒙版、导入字体、80%–160% 字号，以及圆角、描边、纸片、玻璃气泡和双方颜色；角色资料中实时预览，保存后用于该角色的对话，删除图片或字体后，对应背景或字体自动恢复默认。
 - 系统连续听书、当前文字高亮、锁屏播放控制，声音搜索与试听，保存语速和音调。
-- OpenAI 兼容、MiniMax、GMI 和 Gemini 云端听书，连续播放、按声音参数复用本机音频及缓存空间管理。
+- OpenAI 兼容、MiniMax、GMI、Gemini、小米 MiMo 和 Fish Audio 云端听书，连续播放、按声音参数复用本机音频及缓存空间管理。
 - 听书文字净化：从「听书 → 听书文字净化」管理独立的普通文字或正则替换规则，支持顺序、开关、编辑、删除和本机预览。TXT 与 EPUB 的系统、云端朗读共用规则，匹配在后台进行；替换只用于朗读，原文、书签和批注不变。整句为空时自动跳过，章节定时计入净化后全空的章节；音频缓存按实际朗读文字区分，规则随完整备份保存。
 - 按播放分钟数或自然读完章节数的睡眠定时，暂停时暂停计时，支持章节切换和章内定位。
 - 自填服务商地址、模型与密钥，支持 OpenAI 兼容、Responses、Claude、Gemini 四种聊天接口。
@@ -115,6 +115,8 @@
 Gemini TTS 可选择 30 个预设音色，或手动填写自定义声音 ID；默认模型为 `gemini-3.8-flash-tts`，支持自填 HTTPS 服务地址与模型。朗读要求、情绪、语速、音量和音调作为声音表现指令发送，与正文分开；实际效果由模型决定。请求关闭服务端交互存储，音频接受 WAV 或单声道 16 位 PCM，并复用连续听书、缓存和睡眠定时。接口格式参考 [Gemini 语音生成](https://ai.google.dev/gemini-api/docs/speech-generation)。
 
 Gemini 核心检查覆盖请求地址、密钥传递、正文与声音指令分离、音频解码、错误响应拒绝和缓存。模拟器使用本地音频检查连续播放、暂停、跳章与章节定时，并检查音色选择、保存和重启恢复；真实服务商合成及真机播放仍需验收。
+
+小米 MiMo 默认使用 `mimo-v2.5-tts`，可选择预设音色或填写音色名称；声音要求和朗读原文分开发送，以 WAV 音频播放。使用 `-voicedesign` 模型时，在朗读要求中填写声音描述。Fish Audio 默认使用 `s2.1-pro`，可填写音色页面的声音 ID，以 MP3 音频播放；支持语速、音量、情绪和 S2 系列的朗读要求，S1／speech 系列使用预设情绪。两家服务均复用连续听书、缓存和睡眠定时；更换 Fish 模型会分别保存音频。接口格式参考 [MiMo 语音合成](https://mimo.mi.com/docs/en-US/quick-start/usage-guide/audio/speech-synthesis)及 [Fish Audio 语音合成](https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech)。真实服务商合成和真机播放仍需验收。
 
 <p><img src="docs/screenshots/txt-reading.png" alt="TXT 阅读界面" width="260"> <img src="docs/screenshots/paged-reading.png" alt="TXT 分页阅读" width="260"> <img src="docs/screenshots/epub-reading.png" alt="EPUB 阅读界面" width="260"> <img src="docs/screenshots/import-preview.png" alt="TXT 导入预览" width="260"> <img src="docs/screenshots/listening.png" alt="听书与睡眠定时" width="260"></p>
 
