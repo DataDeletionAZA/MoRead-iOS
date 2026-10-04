@@ -111,7 +111,7 @@ final class ContinuousTextController: ReaderKeyboardController, UITableViewDataS
         let style = old.content.font != parent.content.font || old.content.fontSize != parent.content.fontSize
             || old.content.presentation.chineseConversionMode != parent.content.presentation.chineseConversionMode
             || old.content.lineSpacing != parent.content.lineSpacing || old.content.typography != parent.content.typography
-            || old.content.ink != parent.content.ink || old.content.wordGlosses != parent.content.wordGlosses || old.revision != parent.revision
+            || old.content.syntaxAssets.id != parent.content.syntaxAssets.id || old.content.ink != parent.content.ink || old.content.wordGlosses != parent.content.wordGlosses || old.revision != parent.revision
         if navigation || style {
             if style, !navigation { parent.content.autoRead.pause("排版改变，已暂停") }
             cache.removeAll()

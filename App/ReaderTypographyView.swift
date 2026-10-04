@@ -6,12 +6,21 @@ struct ReaderTypographyView: View {
     @Binding var value: ReaderTypography
     @EnvironmentObject private var model: LibraryModel
     let isEPUB: Bool
+    var sample = "「欢迎阅读墨知。」"
+    var syntaxError: String?
     var body: some View {
         Form {
             if isEPUB {
                 Section {
                     Toggle("保留原书排版", isOn: $value.publisherStyles).accessibilityIdentifier("reader-publisher-styles")
                 } footer: { Text("关闭后，下面的字体、段落设置会统一应用到可重排的 EPUB 正文。固定版式 EPUB 仍保持原页面。") }
+            }
+            if !isEPUB {
+                Section("文字着色规则") {
+                    Toggle("启用文字规则", isOn: Binding(get: { value.syntaxEnabled == true }, set: { value.syntaxEnabled = $0 })).accessibilityIdentifier("reader-syntax-enabled")
+                    NavigationLink("编辑文字规则") { ReviewCardRulesView(rules: Binding(get: { value.syntaxRules ?? [] }, set: { value.syntaxRules = $0 }), text: sample, paragraphs: true) }
+                    if let syntaxError { Text(syntaxError).foregroundStyle(.red) }
+                }
             }
             Section("字体") {
                 Picker("字体", selection: $value.font) {

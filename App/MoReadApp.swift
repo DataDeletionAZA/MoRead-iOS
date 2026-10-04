@@ -177,6 +177,9 @@ final class LibraryModel: ObservableObject {
             guard let store else { return }
             var chapters = try TextImporter.chapters(Self.sampleText)
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--syntax-reading-sample") {
+                chapters[0].text = "她说：「The lighthouse shines through the rain, and this story reminds me of home.」😀\n\n" + String(repeating: "林遥推开书店的门，开始阅读这封来自灯塔的信。\n\n", count: 45)
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--continuous-short-chapters") {
                 chapters = [Chapter(id: 0, title: "短章一", text: "清晨，林遥打开了书店的门。她把第一封信放在桌上，慢慢读完最后一行。"),
                             Chapter(id: 1, title: "短章二", text: "中午，江舟送来一张地图。两个人沿着河岸走向灯塔，途中停下来读第二封信。"),
@@ -210,6 +213,11 @@ final class LibraryModel: ObservableObject {
             #endif
             let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--syntax-reading-sample") {
+                let chapter = try store.chapter(0, in: book), range = (chapters[0].text as NSString).range(of: "lighthouse")
+                let annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: range.location, text: "lighthouse"), style: "wave")
+                try store.modifyRecords(for: book) { $0.annotations.append(annotation) }
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--long-review-card") {
                 let note = ReadingNote(title: "长篇读书笔记", content: String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000), book: book)
                 try note.validate(); try store.modifyRecords(for: book) { $0.notes = [note] }

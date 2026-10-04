@@ -4,13 +4,14 @@ import MoReadCore
 struct ReviewCardRulesView: View {
     @Binding var rules: [ReaderSyntaxRule]
     let text: String
+    var paragraphs = false
     @State private var editing: ReaderSyntaxRule?
     var body: some View {
         List {
             Section {
                 Button("添加文字规则") { editing = .init() }.disabled(rules.count >= 64)
                 Button("添加对白示例") { rules += ReaderSyntaxRule.examples }.disabled(rules.count > 61)
-            } footer: { Text("规则应用于卡片摘录；笔记卡片应用于标题。重叠时排在前面的规则优先。") }
+            } footer: { Text(paragraphs ? "规则逐段应用于正文。重叠时排在前面的规则优先。" : "规则应用于卡片摘录；笔记卡片应用于标题。重叠时排在前面的规则优先。") }
             Section {
                 ForEach($rules) { $rule in
                     HStack {
@@ -25,7 +26,7 @@ struct ReviewCardRulesView: View {
         }.navigationTitle("文字着色规则").navigationBarTitleDisplayMode(.inline)
             .toolbar { EditButton() }
             .sheet(item: $editing) { rule in
-                ReviewCardRuleEditor(initial: rule, text: text) { rule in
+                ReviewCardRuleEditor(initial: rule, text: text, paragraphs: paragraphs) { rule in
                     if let index = rules.firstIndex(where: { $0.id == rule.id }) { rules[index] = rule }
                     else if rules.count < 64 { rules.append(rule) }
                 }
@@ -40,8 +41,9 @@ private struct ReviewCardRuleEditor: View {
     @State private var error: String?
     @State private var matchCount: Int?
     let text: String
+    let paragraphs: Bool
     let save: (ReaderSyntaxRule) -> Void
-    init(initial: ReaderSyntaxRule, text: String, save: @escaping (ReaderSyntaxRule) -> Void) { _draft = State(initialValue: initial); self.text = text; self.save = save }
+    init(initial: ReaderSyntaxRule, text: String, paragraphs: Bool, save: @escaping (ReaderSyntaxRule) -> Void) { _draft = State(initialValue: initial); self.text = text; self.paragraphs = paragraphs; self.save = save }
     var body: some View {
         NavigationStack {
             Form {
@@ -58,8 +60,8 @@ private struct ReviewCardRuleEditor: View {
                         TextField("匹配表达式", text: $draft.pattern, axis: .vertical).font(.system(.body, design: .monospaced)).accessibilityIdentifier("review-rule-pattern")
                         Toggle("忽略大小写", isOn: $draft.ignoreCase)
                     }
-                    Button("检查当前摘录") {
-                        do { try draft.validate(); matchCount = try ReaderSyntax.matches(text, rules: [draft]).filter { !$0.glyphsOnly }.count }
+                    Button(paragraphs ? "检查当前正文" : "检查当前摘录") {
+                        do { try draft.validate(); matchCount = try (paragraphs ? ReaderSyntax.paragraphMatches(text, rules: [draft]) : ReaderSyntax.matches(text, rules: [draft])).filter { !$0.glyphsOnly }.count }
                         catch { self.error = error.localizedDescription }
                     }
                     if let matchCount { Text("找到 \(matchCount) 处匹配").accessibilityIdentifier("review-rule-matches") }

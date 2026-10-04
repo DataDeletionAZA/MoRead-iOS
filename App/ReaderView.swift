@@ -22,6 +22,15 @@ struct ReaderView: View {
     @State private var immersive = false
     @State private var chapter: Chapter?
     @State private var translatedText = TranslatedText(source: "")
+    @State private var syntaxAssets = ReaderSyntaxAssets.empty
+    @State private var syntaxError: String?
+    private struct SyntaxAssetRequest: Equatable {
+        let typography: ReaderTypography
+        let fonts: [ImportedFont]
+        let images: [ImportedImage]
+        let root: URL?
+    }
+    private var syntaxAssetRequest: SyntaxAssetRequest { .init(typography: typography, fonts: model.fonts, images: model.images, root: model.store?.root) }
     @State private var wordGlosses: [String: DictionaryGloss] = [:]
     @State private var visiblePage: SourcePassage?
     @State private var selectionIsTranslation = false
@@ -112,6 +121,7 @@ struct ReaderView: View {
 
     private var observedReader: some View {
         readingScreen
+        .task(id: syntaxAssetRequest) { await loadSyntaxAssets() }
         .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: book?.chapters.map(\.revision)) { _, _ in
@@ -297,7 +307,7 @@ struct ReaderView: View {
                                 var value = typography; value.epubScroll = enabled; typographyData = value.encoded()
                             })) { Text("左右翻页").tag(false); Text("上下滚动").tag(true) }.accessibilityIdentifier("epub-page-mode")
                         }
-                        NavigationLink("字体与段落") { ReaderTypographyView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }), isEPUB: book.format == "epub") }
+                        NavigationLink("字体与段落") { ReaderTypographyView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() }), isEPUB: book.format == "epub", sample: translatedText.text, syntaxError: syntaxError) }
                         NavigationLink("阅读辅助") { EnglishReadingView(value: Binding(get: { typography }, set: { typographyData = $0.encoded() })) }
                         Section("文字") {
                             Stepper(value: $fontSize, in: 14...36, step: 1) { LabeledContent("字号", value: "\(Int(fontSize))") }.accessibilityIdentifier("reader-font-size-stepper")
@@ -420,11 +430,30 @@ struct ReaderView: View {
         }
     }
 
+    private func loadSyntaxAssets() async {
+        syntaxError = nil
+        let request = syntaxAssetRequest
+        guard request.typography.syntaxEnabled == true, let root = request.root else { syntaxAssets = .empty; return }
+        do {
+            let styles = try (request.typography.syntaxRules ?? []).filter(\.enabled).map { try $0.style() }
+            var assets = ReaderSyntaxAssets()
+            for style in styles { if let id = style.customFontID { assets.fonts[id] = model.customFont(id, size: 21) } }
+            let ids = Set(styles.compactMap(\.backgroundImageID)).intersection(request.images.map(\.id))
+            let work = Task.detached(priority: .userInitiated) {
+                var images: [UUID: UIImage] = [:]
+                for id in ids { try Task.checkCancellation(); images[id] = UIImage(data: try ImageLibrary(root: root).data(id)) }
+                return images
+            }
+            assets.images = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            try Task.checkCancellation(); syntaxAssets = assets
+        } catch is CancellationError {} catch { if !Task.isCancelled { syntaxError = error.localizedDescription } }
+    }
+
     private func textContent(book: Book, chapter: Chapter, presentation: TranslatedText? = nil) -> TextReader {
         TextReader(autoRead: autoRead, onAutoNext: {
             guard chapter.id + 1 < book.chapters.count else { return false }
             loadChapter(chapter.id + 1, automatic: true); return true
-        }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
+        }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, syntaxAssets: syntaxAssets, onSyntaxError: { message in DispatchQueue.main.async { if syntaxError != message { syntaxError = message } } }, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.bookID == bookID && $0.passage.isValid(in: chapter, scope: .wholeBook) }, wordGlosses: wordGlosses,
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, tapZones: tapZones, onTapAction: performTapAction, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
@@ -598,6 +627,8 @@ struct TextReader {
     let fontSize: Double
     let lineSpacing: Double
     let typography: ReaderTypography
+    let syntaxAssets: ReaderSyntaxAssets
+    let onSyntaxError: (String) -> Void
     let paper: UIColor
     let backgroundImage: UIImage?
     let ink: UIColor
@@ -628,6 +659,7 @@ struct TextReader {
         for insertion in presentation.insertions {
             value.addAttributes([.font: font.withSize(font.pointSize * 0.9), .foregroundColor: ink.withAlphaComponent(0.78), .paragraphStyle: translatedParagraph], range: insertion.textRange)
         }
+        applySyntax(to: value)
         for annotation in annotations {
             for range in presentation.displayRanges(forSource: NSRange(location: annotation.passage.offset, length: annotation.passage.text.utf16.count)) {
                 if annotation.style == "highlight" { value.addAttribute(.backgroundColor, value: UIColor.systemYellow.withAlphaComponent(0.28), range: range) }
@@ -655,13 +687,20 @@ struct TextReader {
 }
 
 final class AnnotationLayoutManager: NSLayoutManager {
+    var drawingSyntaxMask = false
     static let waveKey = NSAttributedString.Key("MoReadWaveUnderline")
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
-        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        drawSyntaxGlyphs(for: glyphsToShow, at: origin)
         drawWordGlosses(for: glyphsToShow, at: origin)
+    }
+    func drawBaseGlyphs(for glyphs: NSRange, at origin: CGPoint) { super.drawGlyphs(forGlyphRange: glyphs, at: origin) }
+    override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        drawSyntaxBackground(for: glyphsToShow, at: origin)
+        super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
     }
     override func drawUnderline(forGlyphRange glyphRange: NSRange, underlineType underlineVal: NSUnderlineStyle, baselineOffset: CGFloat, lineFragmentRect lineRect: CGRect, lineFragmentGlyphRange lineGlyphRange: NSRange, containerOrigin: CGPoint) {
         let index = characterIndexForGlyph(at: glyphRange.location)
+        if drawingSyntaxMask, let storage = textStorage, index < storage.length, storage.attribute(.underlineColor, at: index, effectiveRange: nil) != nil { return }
         guard let storage = textStorage, index < storage.length, storage.attribute(Self.waveKey, at: index, effectiveRange: nil) as? Bool == true,
               let container = textContainer(forGlyphAt: glyphRange.location, effectiveRange: nil) else {
             super.drawUnderline(forGlyphRange: glyphRange, underlineType: underlineVal, baselineOffset: baselineOffset, lineFragmentRect: lineRect, lineFragmentGlyphRange: lineGlyphRange, containerOrigin: containerOrigin)

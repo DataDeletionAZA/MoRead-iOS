@@ -134,7 +134,7 @@ final class TextPagesController: ReaderKeyboardController, UIPageViewControllerD
         pager?.gestureRecognizers.filter { $0 is UITapGestureRecognizer }.forEach { $0.isEnabled = content.tapZones == nil }
         footer.isHidden = content.immersive; footerHeight.constant = content.immersive ? 0 : 44
         let navigation = old.navigationID != content.navigationID
-        let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography || old.wordGlosses != content.wordGlosses
+        let geometry = old.presentation != content.presentation || old.font != content.font || old.fontSize != content.fontSize || old.lineSpacing != content.lineSpacing || old.typography != content.typography || old.wordGlosses != content.wordGlosses || old.syntaxAssets.id != content.syntaxAssets.id
         if old.presentation != content.presentation { anchor = content.presentation.displayOffset(forSource: old.presentation.sourceOffset(forDisplay: anchor)) }
         if navigation || geometry || !content.isReading { bookmarkPull?.cancel() }
         if navigation { anchor = content.presentation.displayOffset(forSource: content.offset); if transitioning { needsPagination = true } }

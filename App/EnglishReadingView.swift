@@ -27,11 +27,16 @@ extension TextReader {
     func applyEnglishReading(to value: NSMutableAttributedString) {
         guard typography.englishBionic == true || typography.englishLearning == true else { return }
         let mode = typography.englishLearning == true ? typography.wordAnnotationMode ?? .inline : .off
-        let bold = UIFont(descriptor: font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(.traitBold)) ?? font.fontDescriptor, size: font.pointSize)
         var spacedParagraphs = Set<Int>()
         for run in EnglishReading.words(in: presentation.source) {
             if typography.englishBionic == true {
-                for range in presentation.displayRanges(forSource: run.prefix) { value.addAttribute(.font, value: bold, range: range) }
+                for range in presentation.displayRanges(forSource: run.prefix) {
+                    value.enumerateAttribute(.font, in: range) { current, range, _ in
+                        let base = current as? UIFont ?? font
+                        let bold = UIFont(descriptor: base.fontDescriptor.withSymbolicTraits(base.fontDescriptor.symbolicTraits.union(.traitBold)) ?? base.fontDescriptor, size: base.pointSize)
+                        value.addAttribute(.font, value: bold, range: range)
+                    }
+                }
             }
             guard mode != .off, let gloss = wordGlosses[run.word] else { continue }
             for range in presentation.displayRanges(forSource: run.range) {
@@ -71,7 +76,7 @@ extension AnnotationLayoutManager {
                 let width = max(item.bounds.width, 2 * min(center - left, right - center))
                 let small = UIFont.systemFont(ofSize: font.pointSize * 0.46)
                 let style = NSMutableParagraphStyle(); style.alignment = .center; style.lineBreakMode = .byTruncatingTail
-                let attributes: [NSAttributedString.Key: Any] = [.font: small, .foregroundColor: (storage.attribute(.foregroundColor, at: item.range.location, effectiveRange: nil) as? UIColor ?? .label).withAlphaComponent(0.75), .paragraphStyle: style]
+                let attributes: [NSAttributedString.Key: Any] = [.font: small, .foregroundColor: ((storage.attribute(ReaderSyntaxPaint.key, at: item.range.location, effectiveRange: nil) as? ReaderSyntaxPaint)?.ink ?? storage.attribute(.foregroundColor, at: item.range.location, effectiveRange: nil) as? UIColor ?? .label).withAlphaComponent(0.75), .paragraphStyle: style]
                 for (row, text) in item.text.enumerated() where !text.isEmpty {
                     let y = line.maxY - font.pointSize * (row == 0 ? 1.12 : 0.58)
                     (text as NSString).draw(with: CGRect(x: center - width / 2 + origin.x, y: y + origin.y, width: width, height: small.lineHeight), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attributes, context: nil)
