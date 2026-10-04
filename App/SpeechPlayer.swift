@@ -116,6 +116,7 @@ final class SpeechPlayer: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         let value = AVSpeechUtterance(string: text)
         value.rate = settings.rate; value.pitchMultiplier = settings.pitch; value.voice = voice
+        trace("voice=\(voice.identifier) rate=\(value.rate) length=\(text.utf16.count)")
         return value
     }
     func preview(library: LibraryModel) {

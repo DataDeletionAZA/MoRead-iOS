@@ -213,6 +213,14 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
     private var pendingTranslationLocator: Locator?
     private var translationCache: (chapter: Int, source: String, records: UUID?, rows: [ParagraphTranslation])?
 
+    private func traceLocation(_ event: String, locator: Locator?, offset: Int? = nil) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--trace-epub-location") else { return }
+        let selector = locator?.locations["cssSelector"] as? String ?? "none"
+        NSLog("%@", "MoReadEPUB \(event) offset=\(offset ?? -1) href=\(locator?.href.string ?? "none") selector=\(selector) before=\(locator?.text.before?.utf16.count ?? 0) highlight=\(locator?.text.highlight?.utf16.count ?? 0) after=\(locator?.text.after?.utf16.count ?? 0)")
+        #endif
+    }
+
     init(autoRead: AutoReadSession, isReading: Bool, onBookmark: @escaping () -> String, tapZones: ReaderTapZones?, onTapAction: @escaping (ReaderTapAction) -> Void, book: Book, initialPassage: SourcePassage?, initialPassageScope: ReadingScope?, model: LibraryModel, fontSize: Double, lineSpacing: Double, typography: ReaderTypography, paper: String, annotations: [Annotation], onToggleControls: @escaping () -> Void, onLocation: @escaping (Data) -> Void, onSelection: @escaping (SourcePassage, Bool) -> Void, onVisiblePage: @escaping (SourcePassage?) -> Void, onDictionary: @escaping (String, SourcePassage?) -> Void, onEdit: @escaping (SourcePassage) -> Void) {
         self.tapZones = tapZones; self.onTapAction = onTapAction
         self.autoRead = autoRead; self.isReading = isReading; self.onBookmark = onBookmark
@@ -282,6 +290,7 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
                     let link = publication.readingOrder[min(book.position.chapter, publication.readingOrder.count - 1)]
                     locator = saved ?? Locator(href: link.url(), mediaType: link.mediaType ?? .xhtml, locations: .init(progression: 0))
                 }
+                traceLocation("open", locator: locator, offset: book.position.offset)
                 pendingTranslationLocator = locator
                 var templates = HTMLDecorationTemplate.defaultTemplates()
                 templates["wave"] = HTMLDecorationTemplate(layout: .boxes, element: "<div class='moread-wave'/>", stylesheet: """
@@ -451,6 +460,7 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
         return navigator.publication.readingOrder.last?.url().string.components(separatedBy: "#")[0] == location.href.string.components(separatedBy: "#")[0] ? .end : .waiting
     }
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
+        traceLocation("navigator", locator: locator)
         refreshVisiblePage(recordPosition: true)
     }
     @objc private func capturePage(_ notification: Notification) {
@@ -501,18 +511,20 @@ final class EPUBHostController: ReaderKeyboardController, EPUBNavigatorDelegate 
         }
         let restoring = !selecting && pendingTranslationLocator?.href.string.components(separatedBy: "#")[0] == href.string.components(separatedBy: "#")[0] ? pendingTranslationLocator : nil
         let result = try await reader.evaluateJavaScript(EPUBSourceBlock.script(blocks: blocks, selecting: selecting, translations: translations, restoring: restoring, typography: selecting ? nil : typography, vocabulary: wordGlosses, conversion: book.chineseConversion ?? .off)).get()
-        if restoring == pendingTranslationLocator, result is [String: Any] { pendingTranslationLocator = nil }
+        traceLocation("mapped selecting=\(selecting) restoring=\(restoring != nil) canceled=\(Task.isCancelled)", locator: restoring, offset: (result as? [String: Any])?["start"] as? Int)
         try Task.checkCancellation()
         guard model.store === store, !model.maintenance, reader.currentLocation?.href == href,
               let value = result as? [String: Any], let start = value["start"] as? Int, let end = value["end"] as? Int,
               start >= 0, end > start, end <= chapter.text.utf16.count,
               TextBoundary.floor(start, in: chapter.text) == start, TextBoundary.floor(end, in: chapter.text) == end,
               try store.chapter(index, in: book).revision == chapter.revision else { return nil }
+        if restoring == pendingTranslationLocator { pendingTranslationLocator = nil }
         if value["changed"] as? Bool == true { autoRead.pause("正文排版改变，已暂停") }
         var passage = SourcePassage(bookID: bookID, chapter: chapter, offset: start, text: (chapter.text as NSString).substring(with: NSRange(location: start, length: end - start)))
         if let selector = value["selector"] as? String {
             let text = try Locator.Text(json: value["text"])
             let locator = Locator(href: href, mediaType: .xhtml, locations: .init(otherLocations: ["cssSelector": selector]), text: text)
+            traceLocation("source selecting=\(selecting)", locator: locator, offset: start)
             passage.epubLocator = try JSONSerialization.data(withJSONObject: locator.json)
         }
         if selecting, value["translation"] as? Bool != true {

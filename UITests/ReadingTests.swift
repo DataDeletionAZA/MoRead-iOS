@@ -1701,8 +1701,8 @@ final class ReadingTests: XCTestCase {
         let savedRate = rate.value as? String; XCTAssertNotNil(savedRate)
         app.buttons["speech-voice-picker"].tap()
         let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("en-US\n")
-        let voice = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "speech-voice-en-US-")).firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("Samantha\n")
+        let voice = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["speech-voice-en-US-com.apple.voice.compact.en-US.Samantha", "speech-voice-en-US-com.apple.voice.super-compact.en-US.Samantha"])).firstMatch
         XCTAssertTrue(voice.waitForExistence(timeout: 10)); let voiceName = voice.label; voice.tap()
         app.terminate(); app.launchArguments = ["--ui-testing", "--trace-system-speech"]; app.launch()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()
@@ -2023,7 +2023,7 @@ final class ReadingTests: XCTestCase {
         let app = XCUIApplication()
         let url = try XCTUnwrap(Bundle(for: ReadingTests.self).url(forResource: "Bilingual", withExtension: "epub"))
         app.launchEnvironment["MOREAD_TEST_EPUB"] = try Data(contentsOf: url).base64EncodedString()
-        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-epub", "--simulate-translations"]
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-epub", "--simulate-translations", "--trace-epub-location"]
         app.launch()
         let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店 · EPUB")).firstMatch
         XCTAssertTrue(book.waitForExistence(timeout: 20)); book.tap()
@@ -2083,7 +2083,7 @@ final class ReadingTests: XCTestCase {
         app.buttons["批注"].tap(); XCTAssertTrue(app.staticTexts["The"].waitForExistence(timeout: 5)); app.buttons["完成"].tap()
         let mark = XCTAttachment(screenshot: app.screenshot()); mark.name = "epub-repeated-paragraph-highlight"; mark.lifetime = .keepAlways; add(mark)
         app.buttons["书签"].tap(); app.buttons["添加当前位置书签"].tap(); app.buttons["完成"].tap()
-        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-translations"]; app.launch()
+        app.terminate(); app.launchArguments = ["--ui-testing", "--simulate-translations", "--trace-epub-location"]; app.launch()
         XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap(); XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
         page(); XCTAssertEqual(rows().first, second.first)
         XCTAssertEqual(app.staticTexts["translations-paragraph-count"].label, "当前页包含 \(secondCount) 个英文段落"); close()
