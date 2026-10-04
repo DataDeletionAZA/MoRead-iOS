@@ -1913,6 +1913,7 @@ final class ReadingTests: XCTestCase {
         rule.typeText("^第[一二]章.*$")
         XCTAssertEqual(rule.value as? String, "^第[一二]章.*$")
         app.buttons["更新预览"].tap()
+        app.swipeUp()
         XCTAssertTrue(app.staticTexts["import-preview"].waitForExistence(timeout: 10))
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
         app.buttons["confirm-text-import"].tap()

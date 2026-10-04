@@ -100,6 +100,8 @@ struct TextImportView: View {
     @State private var encoding = TextEncoding.automatic
     @State private var rule = "automatic"
     @State private var custom = ""
+    @State private var assistantOpen = false
+    @State private var assistantProposal: ChapterRuleProposal?
     @State private var rules: [ChapterRule] = []
     @State private var chapters: [Chapter] = []
     @State private var detectedEncoding = ""
@@ -122,13 +124,18 @@ struct TextImportView: View {
                     Picker("章节规则", selection: $rule) {
                         Text("自动识别").tag("automatic")
                         Text("自定义规则").tag("custom")
+                        if let assistantProposal { Text("AI：" + assistantProposal.name).tag("assistant") }
                         ForEach(rules) { Text($0.name).tag(String($0.id)) }
                     }.pickerStyle(.navigationLink)
                     if rule == "custom" {
                         TextField("例如：^第[一二三四五六七八九十0-9]+章.*$", text: $custom, axis: .vertical).font(.system(.body, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled().focused($editingRule).accessibilityIdentifier("import-rule")
                         Text("规则用于匹配章节标题所在的整行。修改后点击“更新预览”，确认目录与正文是否正确。").font(.caption).foregroundStyle(.secondary)
                     }
+                    if rule == "assistant", let assistantProposal {
+                        Button("编辑 AI 规则") { custom = assistantProposal.regex; rule = "custom" }.accessibilityIdentifier("import-ai-edit")
+                    }
                     Button("更新预览") { editingRule = false; refresh() }.disabled(busy)
+                    Button("AI 辅助识别章节") { editingRule = false; assistantOpen = true }.disabled(busy).accessibilityIdentifier("import-ai-open")
                     if busy { ProgressView(model.importing ? "正在加入书架…" : "正在识别正文与目录…") }
                     if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("import-error") }
                     if !chapters.isEmpty {
@@ -163,7 +170,13 @@ struct TextImportView: View {
             .task { title = draft.url.deletingPathExtension().lastPathComponent; rules = (try? TextImporter.rules()) ?? []; refresh() }
             .onChange(of: encoding) { _, _ in refresh() }
             .onChange(of: rule) { _, _ in refresh() }
-            .onChange(of: custom) { _, _ in task?.cancel(); revision = UUID(); chapters = []; busy = false; error = nil }
+            .onChange(of: custom) { _, _ in if rule == "custom" { task?.cancel(); revision = UUID(); chapters = []; busy = false; error = nil } }
+            .sheet(isPresented: $assistantOpen) {
+                ChapterRuleAssistantView(url: draft.url, encoding: encoding.encoding) { proposal in
+                    assistantProposal = proposal
+                    if rule == "assistant" { refresh() } else { rule = "assistant" }
+                }
+            }
             .onDisappear { task?.cancel() }
     }
     private func refresh() {
@@ -172,7 +185,8 @@ struct TextImportView: View {
         if rule == "custom" {
             guard !custom.isEmpty else { busy = false; return }
             pattern = custom
-        } else { pattern = rules.first { String($0.id) == rule }?.rule }
+        } else if rule == "assistant" { pattern = assistantProposal?.regex }
+        else { pattern = rules.first { String($0.id) == rule }?.rule }
         busy = true
         let encoding = encoding.encoding, url = draft.url, current = UUID()
         revision = current

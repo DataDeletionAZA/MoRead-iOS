@@ -116,10 +116,12 @@ public enum TextImporter {
         }
         let source = text as NSString
         var lines: [(start: Int, end: Int, title: String)] = []
-        source.enumerateSubstrings(in: NSRange(location: 0, length: source.length), options: [.byLines]) { line, range, full, _ in
+        source.enumerateSubstrings(in: NSRange(location: 0, length: source.length), options: [.byLines]) { line, range, full, stop in
+            if Task.isCancelled { stop.pointee = true; return }
             let title = (line ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !title.isEmpty, range.length <= 80 { lines.append((full.location, full.location + full.length, title)) }
         }
+        try Task.checkCancellation()
         var best: [(start: Int, end: Int, title: String)] = []
         for expression in expressions {
             try Task.checkCancellation()
