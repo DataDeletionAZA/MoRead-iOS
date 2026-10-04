@@ -95,18 +95,22 @@ struct DictionaryWebView: UIViewRepresentable {
             } else { decisionHandler(target.scheme == url.scheme && target.host == url.host && target.path == url.path && navigationAction.targetFrame?.isMainFrame == true ? .allow : .cancel) }
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            webView.scrollView.setContentOffset(parent.position, animated: false); restoring = false
+            // WebKit can finish navigation before UIKit receives the document's scroll size.
+            let position = parent.position
             let script = """
             (() => { const rows = [], walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let node;
             while (node = walker.nextNode()) { if (!node.parentElement.closest('script,style,noscript,iframe,object,template') && node.nodeValue.trim()) rows.push(node.nodeValue.trim()); }
+            window.scrollTo(\(position.x), \(position.y));
             return rows.join('\\n'); })()
             """
             webView.evaluateJavaScript(script) { [weak self] value, error in
-                guard let self, active, error == nil, let text = value as? String else { return }
+                guard let self, active else { return }
+                restoring = false
+                guard error == nil, let text = value as? String else { return }
                 parent.plainText = text
             }
         }
-        func scrollViewDidScroll(_ scrollView: UIScrollView) { if !restoring { parent.position = scrollView.contentOffset } }
+        func scrollViewDidScroll(_ scrollView: UIScrollView) { if active, !restoring { parent.position = scrollView.contentOffset } }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { parent.error = "词典排版加载失败：" + error.localizedDescription }
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { parent.error = "词典排版已中断，请重新查询。" }
     }

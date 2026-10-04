@@ -41,7 +41,7 @@ struct RootView: View {
                 }
             }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--import-test-dictionary") {
-                for (key, ext) in [("MOREAD_TEST_MDX", "mdx"), ("MOREAD_TEST_MDD", "mdd")] {
+                for (key, ext) in [("MOREAD_TEST_MDX", "mdx"), ("MOREAD_TEST_MDD", "mdd"), ("MOREAD_TEST_MDX_SECOND", "mdx")] {
                     if let encoded = ProcessInfo.processInfo.environment[key], encoded.utf8.count <= 1_000_000, let data = Data(base64Encoded: encoded) {
                         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + ext)
                         do {

@@ -185,6 +185,51 @@ final class DictionaryTests: XCTestCase {
         app.buttons["删除词典"].tap(); app.sheets.buttons.matching(identifier: "dictionary-delete-confirm").firstMatch.tap()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: toggle)], timeout: 10), .completed)
     }
+    func testLongDictionaryScrollBoundariesAndSourcePosition() throws {
+        executionTimeAllowance = 240
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-dictionary"]
+        app.launchEnvironment["MOREAD_TEST_MDX"] = try fixture("sample-scroll.mdx")
+        app.launchEnvironment["MOREAD_TEST_MDX_SECOND"] = try fixture("sample-v2.mdx")
+        app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 15)); book.tap(); app.buttons["目录"].tap(); app.buttons["查字词"].tap()
+        lookup(app, "apple")
+        let sources = app.buttons["dictionary-source"]
+        XCTAssertTrue(sources.waitForExistence(timeout: 10)); sources.tap(); app.buttons["滚动词典"].tap()
+        let web = app.webViews.firstMatch, top = web.staticTexts["长释义起点"], bottom = web.staticTexts["长释义终点"]
+        XCTAssertTrue(top.waitForExistence(timeout: 10))
+        let initialTop = sources.frame.minY
+        func drag(_ from: CGFloat, _ to: CGFloat) {
+            web.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: from)).press(forDuration: 0.05, thenDragTo: web.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: to)))
+        }
+        drag(0.25, 0.8)
+        XCTAssertTrue(sources.exists); XCTAssertEqual(sources.frame.minY, initialTop, accuracy: 2)
+        for _ in 0..<18 { if bottom.isHittable { break }; drag(0.8, 0.2) }
+        XCTAssertTrue(bottom.isHittable)
+        drag(0.8, 0.2); drag(0.8, 0.2)
+        XCTAssertEqual(sources.frame.minY, initialTop, accuracy: 2)
+        drag(0.25, 0.75)
+        let paragraphs = web.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "段落 "))
+        let anchor = try XCTUnwrap(paragraphs.allElementsBoundByIndex.first { $0.isHittable && $0.frame.minY > web.frame.minY + 20 })
+        let anchorLabel = anchor.label, anchorY = anchor.frame.minY
+        sources.tap(); app.buttons["MoRead Test"].tap()
+        XCTAssertTrue(web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "苹果")).firstMatch.waitForExistence(timeout: 10))
+        sources.tap(); app.buttons["滚动词典"].tap()
+        let restored = web.staticTexts[anchorLabel]
+        XCTAssertTrue(restored.waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: restored)], timeout: 10), .completed)
+        XCTAssertEqual(restored.frame.minY, anchorY, accuracy: 5)
+        app.buttons["dictionary-simple"].tap(); app.buttons["dictionary-simple"].tap()
+        XCTAssertEqual(restored.frame.minY, anchorY, accuracy: 5)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "dictionary-long-scroll-restored"; screenshot.lifetime = .keepAlways; add(screenshot)
+        for _ in 0..<18 { if top.isHittable { break }; drag(0.25, 0.8) }
+        XCTAssertTrue(top.isHittable); drag(0.25, 0.8)
+        XCTAssertTrue(sources.exists); XCTAssertEqual(sources.frame.minY, initialTop, accuracy: 2)
+        app.navigationBars.buttons.element(boundBy: 0).tap(); app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 5))
+    }
     func testStaticDictionaryDisplayAndPlainTextFallback() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-dictionary"]

@@ -13,3 +13,5 @@ The original seven fixtures come from MoRead commit `2cd4e1761f4b9433c42aac7ffb7
 `sample-display.mdx` contains synthetic `layout` and `hidden` entries for the iOS dictionary view. It includes a local SVG, an external link to the reserved `.invalid` domain, script text, and a hidden-body style. UI checks cover local rendering, blocked content scripts and external navigation, and plain-text reading without style/script contents. It was generated with the same writemdict revision listed above.
 
 `sample-reading.mdx` contains synthetic English sample-book words and Chinese chapter-heading words, each with a short test definition. It uses the same writemdict revision and checks selection-to-vocabulary source navigation in TXT and EPUB.
+
+`sample-scroll.mdx` contains one synthetic `apple` entry titled `滚动词典`: a heading, 30 numbered Chinese paragraphs and an end marker. It uses the same writemdict revision. UI checks use it alongside `sample-v2.mdx` to exercise both scroll boundaries, return to a saved paragraph after changing dictionaries, and switch between formatted and plain text.
