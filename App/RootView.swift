@@ -339,6 +339,7 @@ struct BookshelfView: View {
                     Menu("书架选项", systemImage: "ellipsis.circle") {
                         Button("筛选与排序", systemImage: "line.3.horizontal.decrease.circle") { showFilters = true }
                         NavigationLink("整理书架", destination: ShelfManager())
+                        NavigationLink("划线与笔记回顾", destination: ReadingReviewView())
                     }
                 }
                 ToolbarItem(placement: .primaryAction) { Button("导入", systemImage: "plus") { picker = true }.disabled(model.importing) }

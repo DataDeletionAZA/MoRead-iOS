@@ -51,49 +51,12 @@ struct ReadingNotesView: View {
                 Button("新建笔记", systemImage: "square.and.pencil") { creating = true }
             }
             .sheet(isPresented: $creating) { if let book { NavigationStack { ReadingNoteEditor(book: book, original: nil) } } }
-            .fullScreenCover(isPresented: $reviewing) { NavigationStack { ReadingNotesReview(notes: visible) } }
+            .fullScreenCover(isPresented: $reviewing) { if let book { NavigationStack { ReadingReviewPager(entries: visible.map { ReadingReviewEntry(book: book, content: .note($0)) }) } } }
             .task(id: library.recordsRevision) { reload() }
             .onAppear { reload() }
             .onChange(of: authors.map(\.id)) { _, ids in if author != "all" && !ids.contains(author) { author = "all" } }
     }
     private func reload() { library.perform { if let book, let store = library.store { notes = try store.records(for: book).notes ?? [] } } }
-}
-
-private struct ReadingNotesReview: View {
-    let notes: [ReadingNote]
-    @Environment(\.dismiss) private var dismiss
-    @State private var selected: UUID?
-    private var index: Int? { notes.firstIndex { $0.id == selected } }
-    var body: some View {
-        Group {
-            if notes.isEmpty { ContentUnavailableView("没有符合条件的笔记", systemImage: "note.text") }
-            else {
-                TabView(selection: $selected) {
-                    ForEach(notes) { note in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 18) {
-                                Text(note.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
-                                ReadingNoteContent(note: note)
-                            }.padding(24)
-                        }.tag(Optional(note.id))
-                    }
-                }.tabViewStyle(.page(indexDisplayMode: .never))
-            }
-        }
-        .navigationTitle("笔记回顾").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button("上一篇", systemImage: "chevron.left") { if let index, index > 0 { selected = notes[index - 1].id } }.disabled(index == nil || index == 0)
-                Spacer()
-                Text(index.map { "\($0 + 1) / \(notes.count)" } ?? "0 / 0").monospacedDigit().accessibilityIdentifier("reading-review-position")
-                Spacer()
-                Button("下一篇", systemImage: "chevron.right") { if let index, index + 1 < notes.count { selected = notes[index + 1].id } }.disabled(index == nil || index == notes.count - 1)
-            }
-        }
-        .onAppear { if index == nil { selected = notes.first?.id } }
-        .onChange(of: notes.map(\.id)) { _, ids in if selected.map({ !ids.contains($0) }) ?? true { selected = ids.first } }
-    }
 }
 
 private struct ReadingNoteContent: View {

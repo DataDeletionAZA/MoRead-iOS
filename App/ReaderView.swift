@@ -330,6 +330,7 @@ struct ReaderView: View {
                 case .notes:
                     List {
                         NavigationLink("读书笔记与梗概") { ReadingNotesView(bookID: bookID) }
+                        NavigationLink("划线与笔记回顾") { ReadingReviewView(bookID: bookID) }
                         NavigationLink("随读段评设置") { ProactiveSettingsView() }
                         if companion.annotationBookID == bookID, let status = companion.annotationStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
                         if records.annotations.isEmpty { Text("长按正文，选择“批注”即可保存。").foregroundStyle(.secondary) }
