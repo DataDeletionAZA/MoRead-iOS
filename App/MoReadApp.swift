@@ -163,10 +163,25 @@ final class LibraryModel: ObservableObject {
                 }.value
                 book = try store.importBook(title: url.deletingPathExtension().lastPathComponent, chapters: chapters, original: url)
             }
+            #if DEBUG
+            try addLocationAnnotation(to: book)
+            #endif
             books.insert(book, at: 0)
             return book
         } catch { self.error = error.localizedDescription; return nil }
     }
+    #if DEBUG
+    private func addLocationAnnotation(to book: Book) throws {
+        guard ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--location-annotation-sample"), let store else { return }
+        for item in book.chapters {
+            let chapter = try store.chapter(item.id, in: book), quote = "一封没有署名的信"
+            let range = (chapter.text as NSString).range(of: quote)
+            guard range.location != NSNotFound else { continue }
+            let annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: range.location, text: quote), note: "这封信来自哪里？", style: "wave")
+            try store.modifyRecords(for: book) { $0.annotations.append(annotation) }
+        }
+    }
+    #endif
     static var sampleText: String {
         "第一章 雨后\n" + String(repeating: "雨停后，林遥推开旧书店的门。柜台上摆着一本空白的笔记，纸页带着淡淡的木香。她在第一页写下今天的日期，窗外的街道逐渐明亮。\n\n", count: 12)
             + "第二章 来信\n第二天，一封没有署名的信放在门口。林遥拆开信封，看见一张手绘地图。地图的尽头，是她小时候去过的灯塔。\n"
@@ -213,6 +228,7 @@ final class LibraryModel: ObservableObject {
             #endif
             let book = try store.importBook(title: "雨后的书店", author: "墨知示例", chapters: chapters)
             #if DEBUG
+            try addLocationAnnotation(to: book)
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--syntax-reading-sample") {
                 let chapter = try store.chapter(0, in: book), range = (chapters[0].text as NSString).range(of: "lighthouse")
                 let annotation = Annotation(passage: .init(bookID: book.id, chapter: chapter, offset: range.location, text: "lighthouse"), style: "wave")

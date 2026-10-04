@@ -34,6 +34,7 @@ struct ReaderView: View {
     private var syntaxAssetRequest: SyntaxAssetRequest { .init(typography: typography, fonts: model.fonts, images: model.images, root: model.store?.root) }
     @State private var wordGlosses: [String: DictionaryGloss] = [:]
     @State private var visiblePage: SourcePassage?
+    @State private var locationHint: ReaderLocationHint?
     @State private var selectionIsTranslation = false
     @State private var requestedOffset = 0
     @State private var navigationID = UUID()
@@ -59,6 +60,7 @@ struct ReaderView: View {
     @State private var opened = false
     @State private var initialSourceError: String?
     @State private var didLocateEPUB = false
+    private var readingActive: Bool { sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active }
     private var book: Book? { model.books.first { $0.id == bookID && !$0.removed } }
     private var completedChapter: Int? {
         guard let book else { return nil }
@@ -106,6 +108,7 @@ struct ReaderView: View {
                                     guard initialPassage.bookID == bookID, let source = try model.store?.chapter(initialPassage.chapter, in: book),
                                           initialPassage.isValid(in: source, scope: initialPassageScope ?? ReadingScope(through: book.readThrough)) else { throw MoReadError.invalid("原文或已读范围已经变化，请返回后重新打开。") }
                                     if book.format == "txt" { loadChapter(initialPassage.chapter, offset: initialPassage.offset) }
+                                    locationHint = ReaderLocationHint(passage: initialPassage)
                                 } else if book.format == "txt" { loadChapter(book.position.chapter, offset: book.position.offset) }
                             } catch { initialSourceError = error.localizedDescription; return }
                             sheet = initialSheet
@@ -124,6 +127,13 @@ struct ReaderView: View {
     private var observedReader: some View {
         readingScreen
         .task(id: syntaxAssetRequest) { await loadSyntaxAssets() }
+        .onChange(of: visiblePage) { _, value in if readingActive, book?.format == "txt" { locationHint?.observe(value) } }
+        .onChange(of: readingActive) { _, active in if active, book?.format == "txt" { locationHint?.observe(visiblePage) } }
+        .task(id: locationHint?.seen == true ? locationHint?.id : nil) {
+            guard let hint = locationHint, hint.seen else { return }
+            do { try await Task.sleep(for: .milliseconds(2600)) } catch { return }
+            if locationHint?.id == hint.id { locationHint = nil }
+        }
         .onChange(of: completedChapter) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: companion.settings.proactive) { _, _ in companion.generateAnnotations(bookID: bookID, library: model) }
         .onChange(of: book?.chapters.map(\.revision)) { _, _ in
@@ -144,6 +154,12 @@ struct ReaderView: View {
     var body: some View {
         observedReader
         .overlay { autoReadOverlay }
+        .overlay(alignment: .bottom) {
+            if readingActive, locationHint?.seen == true {
+                Text("已定位原文").font(.caption).padding(8).background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 52).allowsHitTesting(false).accessibilityIdentifier("reader-location-hint")
+            }
+        }
         .overlay(alignment: .bottom) {
             if let actionMessage {
                 Text(actionMessage).font(.callout).padding(12).background(.regularMaterial, in: Capsule())
@@ -252,15 +268,13 @@ struct ReaderView: View {
                         }
                         NavigationLink("书中人物") {
                             BookCharactersView(bookID: book.id) { passage in
-                                if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
-                                else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset)) }
+                                locate(passage)
                                 sheet = nil
                             }
                         }
                         NavigationLink("章节提纲") {
                             ChapterKnowledgeView(bookID: book.id) { passage in
-                                if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
-                                else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset)) }
+                                locate(passage)
                                 sheet = nil
                             }
                         }
@@ -331,8 +345,7 @@ struct ReaderView: View {
                 case .search:
                     List(results) { passage in
                         Button {
-                            if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
-                            else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: book.id, chapter: passage.chapter, offset: passage.offset, locator: passage.epubLocator)) }
+                            locate(passage)
                             sheet = nil
                         } label: {
                             VStack(alignment: .leading, spacing: 8) { Text(displayedChinese(book.chapters[passage.chapter].title)).font(.caption).foregroundStyle(.secondary); Text(displayedChinese(passage.text)).lineLimit(4) }.foregroundStyle(.primary)
@@ -362,7 +375,9 @@ struct ReaderView: View {
     @ViewBuilder private func readerContent(book: Book) -> some View {
         VStack(spacing: 0) {
             if book.format == "epub" {
-                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, tapZones: tapZones, onTapAction: performTapAction, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
+                EPUBReader(autoRead: autoRead, isReading: sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active, onBookmark: addBookmark, tapZones: tapZones, onTapAction: performTapAction, book: book, initialPassage: didLocateEPUB ? nil : initialPassage, initialPassageScope: initialPassageScope, fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, paper: paper, annotations: records.annotations, locationHint: locationHint, onLocationHintVisible: { passage in
+                    if readingActive, locationHint?.passage == passage { locationHint?.observe(passage) }
+                }, speechLocation: speech.location, onToggleControls: { immersive.toggle() }, onLocation: { data in
                     didLocateEPUB = true
                     var updated = self.book ?? book; updated.epubLocator = data; updated.lastOpened = Date(); model.update(updated)
                 }, onSelection: { passage, translated in selectionIsTranslation = translated; selection = passage; note = "" }, onVisiblePage: { visiblePage = $0 }, onDictionary: { word, source in dictionaryWord = word; dictionarySource = source; sheet = .dictionary }, onEdit: { editingPassage = $0 }).id("\(typography.customFontID?.uuidString ?? "")-\(model.readingBackgroundID)-\(paper == "image")-\(typography.backgroundOpacity ?? 0.25)-\(typography.backgroundRGB ?? 0xF7F2E3)-\(typography.epubScroll ?? false)-\(epubContentRevision)-\(book.chineseConversion?.rawValue ?? "off")")
@@ -380,13 +395,14 @@ struct ReaderView: View {
                             DispatchQueue.main.async { model.error = error.localizedDescription }
                             return nil
                         }
-                    }, onRead: { position, end, passage in
+                    }, onRead: { position, end, passages in
                         guard sheet == nil, selection == nil, editingPassage == nil, chat == nil, scenePhase == .active, var updated = self.book else { return }
                         if self.chapter?.id != position.chapter {
                             model.perform { self.chapter = try model.store?.chapter(position.chapter, in: updated); refreshTranslations() }
                         }
                         updated.record(position: position, visibleEnd: end); model.update(updated)
-                        visiblePage = passage
+                        visiblePage = passages.first
+                        for passage in passages { locationHint?.observe(passage) }
                     })
                 } else {
                     PagedTextReader(content: content, mode: ReaderPageMode(rawValue: pageMode) ?? .slide,
@@ -457,6 +473,9 @@ struct ReaderView: View {
             loadChapter(chapter.id + 1, automatic: true); return true
         }, presentation: presentation ?? translatedText, font: model.customFont(typography.customFontID, size: fontSize) ?? typography.uiFont(size: fontSize), fontSize: fontSize, lineSpacing: lineSpacing, typography: typography, syntaxAssets: syntaxAssets, onSyntaxError: { message in DispatchQueue.main.async { if syntaxError != message { syntaxError = message } } }, paper: UIColor(paperColor), backgroundImage: paper == "image" ? model.readingBackground : nil, ink: ink, night: paper == "night", offset: requestedOffset, navigationID: navigationID,
                    annotations: records.annotations.filter { $0.passage.bookID == bookID && $0.passage.isValid(in: chapter, scope: .wholeBook) }, wordGlosses: wordGlosses,
+                   locationHintID: locationHint?.id, locationRange: locationHint.flatMap { hint in
+                       hint.passage.bookID == bookID && hint.passage.isValid(in: chapter, scope: .wholeBook) ? NSRange(location: hint.passage.offset, length: hint.passage.text.utf16.count) : nil
+                   },
                    speechRange: speech.location.flatMap { $0.bookID == bookID && $0.chapter == chapter.id ? $0.range : nil },
                    immersive: immersive, tapZones: tapZones, onTapAction: performTapAction, onToggleControls: { immersive.toggle() }, onBookmark: addBookmark,
                    isReading: sheet == nil && selection == nil && editingPassage == nil && chat == nil && scenePhase == .active,
@@ -480,7 +499,16 @@ struct ReaderView: View {
             sheet = .dictionary
         })
     }
+    private func locate(_ passage: SourcePassage) {
+        guard let book, passage.bookID == bookID, let source = try? model.store?.chapter(passage.chapter, in: book),
+              passage.isValid(in: source, scope: .wholeBook) else { model.error = "原文已经变化，请重新打开。"; return }
+        if book.format == "txt" { loadChapter(passage.chapter, offset: passage.offset) }
+        else { NotificationCenter.default.post(name: .epubJump, object: EPUBJump(bookID: bookID, chapter: passage.chapter, offset: passage.offset, locator: passage.epubLocator, passage: passage)) }
+        locationHint = ReaderLocationHint(passage: passage)
+        if readingActive, book.format == "txt" { locationHint?.observe(visiblePage) }
+    }
     private func loadChapter(_ index: Int, offset: Int = 0, automatic: Bool = false) {
+        locationHint = nil
         if !automatic { autoRead.pause("阅读位置改变，已暂停") }
         guard let book, book.chapters.indices.contains(index) else { return }
         model.perform {
@@ -639,6 +667,9 @@ struct TextReader {
     let navigationID: UUID
     let annotations: [Annotation]
     let wordGlosses: [String: DictionaryGloss]
+    let locationHintID: UUID?
+    let locationRange: NSRange?
+    var locationDisplayRanges: [NSRange] { locationRange.map { presentation.displayRanges(forSource: $0) } ?? [] }
     let speechRange: NSRange?
     let immersive: Bool
     let tapZones: ReaderTapZones?
@@ -671,6 +702,10 @@ struct TextReader {
         }
         applyEnglishReading(to: value)
         return value
+    }
+    func applyTransientHighlights(to storage: NSTextStorage) {
+        for range in locationDisplayRanges { storage.addAttribute(.backgroundColor, value: UIColor.systemOrange.withAlphaComponent(0.3), range: range) }
+        for range in speechDisplayRanges { storage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range) }
     }
     func selectionActions(for range: NSRange) -> [UIAction] {
         guard range.location >= 0, range.length > 0, range.location <= text.utf16.count, range.length <= text.utf16.count - range.location,

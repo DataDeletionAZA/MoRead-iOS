@@ -149,12 +149,12 @@ final class TextPagesController: ReaderKeyboardController, UIPageViewControllerD
                 if let text = page.textView as? ReaderTextView { text.setPaper(content.paper, image: content.backgroundImage, opacity: content.typography.backgroundOpacity ?? 0.25) }
                 else { page.view.backgroundColor = content.paper }
             }
-            if old.speechRange != content.speechRange || old.annotations != content.annotations || old.ink != content.ink {
-                for previous in old.speechDisplayRanges {
+            if old.speechRange != content.speechRange || old.locationHintID != content.locationHintID || old.annotations != content.annotations || old.ink != content.ink {
+                for previous in old.speechDisplayRanges + old.locationDisplayRanges {
                     baseText.enumerateAttributes(in: previous) { attributes, range, _ in textStorage.setAttributes(attributes, range: range) }
                 }
-                for range in content.speechDisplayRanges { textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range) }
-                if let first = content.speechDisplayRanges.first, let index = index(containing: first.location), index != pageIndex { display(index, animated: false, preserving: first.location) }
+                content.applyTransientHighlights(to: textStorage)
+                if old.speechRange != content.speechRange, let first = content.speechDisplayRanges.first, let index = index(containing: first.location), index != pageIndex { display(index, animated: false, preserving: first.location) }
             }
             if navigation, let index = index(containing: anchor) { display(index, animated: false, preserving: anchor) }
             if content.isReading, !old.isReading { report() }
@@ -193,9 +193,7 @@ final class TextPagesController: ReaderKeyboardController, UIPageViewControllerD
             self.visible?.willMove(toParent: nil); self.visible?.view.removeFromSuperview(); self.visible?.removeFromParent(); self.visible = nil
             self.pages = [:]; self.textStorage = storage; self.layout = manager; self.containers = containers; self.ranges = ranges
             self.pagination = nil; self.spinner.stopAnimating(); self.pager?.view.isHidden = false
-            for range in self.parentReader.content.speechDisplayRanges {
-                storage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range)
-            }
+            self.parentReader.content.applyTransientHighlights(to: storage)
             self.display(self.index(containing: self.anchor) ?? 0, animated: false, preserving: self.anchor)
         }
     }

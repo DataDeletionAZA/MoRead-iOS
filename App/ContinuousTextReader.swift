@@ -10,7 +10,7 @@ struct ContinuousTextReader: UIViewControllerRepresentable {
     let content: TextReader
     let revision: UUID
     let chapterContent: (Int) -> (Chapter, TextReader)?
-    let onRead: (ReadingPosition, ReadingPosition, SourcePassage?) -> Void
+    let onRead: (ReadingPosition, ReadingPosition, [SourcePassage]) -> Void
     func makeUIViewController(context: Context) -> ContinuousTextController { ContinuousTextController(self) }
     func updateUIViewController(_ controller: ContinuousTextController, context: Context) { controller.update(self) }
     static func dismantleUIViewController(_ controller: ContinuousTextController, coordinator: ()) { controller.close() }
@@ -117,13 +117,12 @@ final class ContinuousTextController: ReaderKeyboardController, UITableViewDataS
             cache.removeAll()
             if style { heights.removeAll() }
             reload(at: navigation ? ReadingPosition(chapter: parent.currentChapter, offset: parent.content.offset) : position)
-        } else if old.content.speechRange != parent.content.speechRange {
+        } else if old.content.speechRange != parent.content.speechRange || old.content.locationHintID != parent.content.locationHintID {
             cache.removeAll()
             for case let cell as ContinuousChapterCell in table.visibleCells {
                 guard let path = table.indexPath(for: cell), let data = item(path.row) else { continue }
-                cell.configure(chapter: data.0, content: data.1, bookID: parent.bookID, minimumHeight: size.height, width: size.width)
-                cell.positionViewport(at: table.contentOffset.y - table.rectForRow(at: path).minY)
-                if let range = data.1.speechDisplayRanges.first {
+                cell.updateHighlights(data.1)
+                if old.content.speechRange != parent.content.speechRange, let range = data.1.speechDisplayRanges.first {
                     let rect = cell.rect(forDisplayOffset: range.location)
                     table.scrollRectToVisible(cell.textView.convert(rect, to: table), animated: false)
                 }
@@ -198,7 +197,8 @@ final class ContinuousTextController: ReaderKeyboardController, UITableViewDataS
             reportPending = false
             guard active, !restoring, generation == token, parentReader.content.isReading else { return }
             let paths = (table.indexPathsForVisibleRows ?? []).sorted()
-            var first: ReadingPosition?, end: ReadingPosition?, passage: SourcePassage?
+            var first: ReadingPosition?, end: ReadingPosition?
+            var passages: [SourcePassage] = []
             for path in paths {
                 guard let cell = table.cellForRow(at: path) as? ContinuousChapterCell, let content = cell.content else { return }
                 let visible = cell.textView.convert(table.bounds, from: table).intersection(cell.textView.bounds)
@@ -207,13 +207,13 @@ final class ContinuousTextController: ReaderKeyboardController, UITableViewDataS
                 if first == nil { first = ReadingPosition(chapter: path.row, offset: range?.location ?? content.presentation.source.utf16.count) }
                 if let range, range.length > 0 {
                     end = ReadingPosition(chapter: path.row, offset: NSMaxRange(range))
-                    if passage == nil { passage = cell.passage(range) }
+                    if let passage = cell.passage(range) { passages.append(passage) }
                 }
             }
             guard let first else { return }
             position = first
             cache = cache.filter { abs($0.key - first.chapter) <= 1 }
-            parentReader.onRead(first, max(first, end ?? first), passage)
+            parentReader.onRead(first, max(first, end ?? first), passages)
         }
     }
     @objc private func toggleControls(_ tap: UITapGestureRecognizer) {
@@ -242,6 +242,7 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
     private var viewportTop: NSLayoutConstraint!
     private(set) var content: TextReader?
     private var source: SourcePassage?
+    private var baseText = NSAttributedString(string: "")
     var measuredHeight: CGFloat { chapterHeight.constant }
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         let storage = NSTextStorage(), manager = AnnotationLayoutManager(), container = NSTextContainer(size: .zero)
@@ -263,19 +264,27 @@ private final class ContinuousChapterCell: UITableViewCell, UITextViewDelegate {
         NSLayoutConstraint.activate([textView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor), textView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor), viewportTop, viewportHeight, chapterHeight])
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-    override func prepareForReuse() { super.prepareForReuse(); content = nil; source = nil; textView.attributedText = nil }
+    override func prepareForReuse() { super.prepareForReuse(); content = nil; source = nil; baseText = NSAttributedString(string: ""); textView.attributedText = nil }
     func configure(chapter: Chapter, content: TextReader, bookID: UUID, minimumHeight: CGFloat, width: CGFloat) {
         self.content = content; viewportHeight.constant = max(1, minimumHeight)
         textView.frame.size = CGSize(width: max(1, width), height: max(1, minimumHeight))
         source = SourcePassage(bookID: bookID, chapter: chapter, offset: 0, text: "")
         textView.textContainerInset = content.typography.insets
-        textView.attributedText = content.attributedText
+        baseText = content.attributedText; textView.attributedText = baseText
         textView.layoutIfNeeded()
         textView.textContainer.size = CGSize(width: max(1, width - textView.textContainerInset.left - textView.textContainerInset.right), height: .greatestFiniteMagnitude)
         textView.layoutManager.ensureLayout(for: textView.textContainer)
         chapterHeight.constant = max(minimumHeight, ceil(textView.layoutManager.usedRect(for: textView.textContainer).maxY + textView.textContainerInset.top + textView.textContainerInset.bottom))
-        for range in content.speechDisplayRanges { textView.textStorage.addAttribute(.backgroundColor, value: UIColor.systemTeal.withAlphaComponent(0.3), range: range) }
+        content.applyTransientHighlights(to: textView.textStorage)
         textView.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "显示或收起阅读工具", actionHandler: { _ in content.onToggleControls(); return true })]
+    }
+    func updateHighlights(_ content: TextReader) {
+        guard let previous = self.content else { return }
+        for range in previous.locationDisplayRanges + previous.speechDisplayRanges {
+            baseText.enumerateAttributes(in: range) { attributes, range, _ in textView.textStorage.setAttributes(attributes, range: range) }
+        }
+        content.applyTransientHighlights(to: textView.textStorage)
+        self.content = content
     }
     func showError(minimumHeight: CGFloat) {
         content = nil; source = nil; chapterHeight.constant = max(1, minimumHeight); viewportHeight.constant = max(1, minimumHeight)

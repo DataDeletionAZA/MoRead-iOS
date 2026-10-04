@@ -353,6 +353,8 @@ final class ReadingTests: XCTestCase {
             tap("目录"); tap("插图廊")
             let picture = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "illustration-row-")).firstMatch
             XCTAssertTrue(picture.waitForExistence(timeout: 10)); picture.tap(); tap("illustration-read-source")
+            XCTAssertTrue(app.staticTexts["reader-location-hint"].waitForExistence(timeout: 10))
+            let located = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); located.name = epub ? "illustration-epub-located" : "illustration-text-located"; located.lifetime = .keepAlways; add(located)
         }
         open(false)
         XCTAssertTrue(app.navigationBars["第二章 来信"].waitForExistence(timeout: 10))
