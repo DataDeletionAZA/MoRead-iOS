@@ -64,7 +64,7 @@ private struct ReadingNoteContent: View {
     var body: some View {
         Text(note.authorLabel).font(.caption).foregroundStyle(.secondary)
         if let from = note.fromChapter, let to = note.toChapter { Text("覆盖第 \(from)–\(to) 章").font(.caption).foregroundStyle(.secondary) }
-        Text(.init(note.content)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+        ReadingReviewText(bodyText: note.content)
         ShareLink("分享这篇笔记", item: "# \(note.title)\n\n\(note.content)")
     }
 }
@@ -77,13 +77,11 @@ private struct ReadingNoteDetail: View {
     @State private var editing = false
     private var book: Book? { library.books.first { $0.id == bookID } }
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
             if let note {
-                VStack(alignment: .leading, spacing: 18) {
-                    ReadingNoteContent(note: note)
-                }.padding()
+                ReadingNoteContent(note: note)
             }
-        }.navigationTitle(note?.title ?? "笔记")
+        }.padding().navigationTitle(note?.title ?? "笔记")
             .toolbar { Button("编辑") { editing = true }.disabled(note == nil) }
             .sheet(isPresented: $editing) { if let book, let note { NavigationStack { ReadingNoteEditor(book: book, original: note) } } }
             .task(id: library.recordsRevision) { library.perform { if let book { note = try library.store?.records(for: book).notes?.first { $0.id == noteID } } } }

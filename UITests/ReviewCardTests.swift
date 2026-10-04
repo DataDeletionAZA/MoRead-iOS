@@ -59,6 +59,11 @@ final class ReviewCardUITests: XCTestCase {
         XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); app.buttons["add-sample"].tap()
         app.buttons["书架选项"].tap(); app.buttons["划线与笔记回顾"].tap()
         XCTAssertTrue(app.buttons["review-entry-长篇读书笔记"].waitForExistence(timeout: 10)); app.buttons["review-entry-长篇读书笔记"].tap()
+        let body = app.textViews["reading-review-body"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 10))
+        XCTAssertEqual(body.value as? String, "灯塔与书店\n" + String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000) + "长笔记的最后一行。")
+        body.swipeUp()
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "long-review-native-text"; shot.lifetime = .keepAlways; add(shot)
         XCTAssertTrue(app.buttons["review-card-export"].waitForExistence(timeout: 10))
         app.buttons["review-card-export"].tap()
         XCTAssertTrue(app.staticTexts["这条内容较长，请使用文字分享以保留全文。"].waitForExistence(timeout: 10))

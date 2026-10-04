@@ -10,6 +10,7 @@
 		019EED415FC533C1F03B245F /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = 1E5D54D0D74742D43FD22580 /* ReadiumNavigator */; };
 		0408C6FA4201DF73D7F676D7 /* Cover.epub in Resources */ = {isa = PBXBuildFile; fileRef = 3F6C6B247B6CA03880290F94 /* Cover.epub */; };
 		0886402407784524318950E4 /* BookCoverSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B4246095AE328B93E305E4 /* BookCoverSearchView.swift */; };
+		0BE261303770E0005D9C8BD3 /* ReadingReviewText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67964AD22ABBDF9704CC1E0 /* ReadingReviewText.swift */; };
 		0C485B0A9B02FCB6F5DE0CE5 /* BookCharactersModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A6A822B7A0704477463A1A /* BookCharactersModel.swift */; };
 		0DEC96A144207ADED6272C67 /* ChatAppearanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982B45D15C33463E1285A448 /* ChatAppearanceTests.swift */; };
 		0ED798016725307223BDA6D5 /* ChatAppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 546E734B9EFFA77040D2A107 /* ChatAppearanceView.swift */; };
@@ -231,6 +232,7 @@
 		F2A000AF2B1F60B26DB152AD /* ShelfViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViews.swift; sourceTree = "<group>"; };
 		F3C9DABF5235355057617EBC /* ReviewCardTextLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewCardTextLayout.swift; sourceTree = "<group>"; };
 		F5FB312D75D561393D1F1645 /* DictionaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryTests.swift; sourceTree = "<group>"; };
+		F67964AD22ABBDF9704CC1E0 /* ReadingReviewText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingReviewText.swift; sourceTree = "<group>"; };
 		FC72153D1357C94AC874213C /* AutoReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoReadTests.swift; sourceTree = "<group>"; };
 		FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 		FEEBBC3B9D8EA30E701591BD /* ImageGenerationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViews.swift; sourceTree = "<group>"; };
@@ -318,6 +320,7 @@
 				7DEBDFD9464F9BE8B1B39C0D /* ReaderTypographyView.swift */,
 				FDF56D81C2CA56FF1DA40F1E /* ReaderView.swift */,
 				711CE6FD1F1EE272D2CAAA67 /* ReadingNotesView.swift */,
+				F67964AD22ABBDF9704CC1E0 /* ReadingReviewText.swift */,
 				5C554AA1DC0D1D9806417B18 /* ReadingReviewView.swift */,
 				92F9A718B362358128272D03 /* ReplySuggestions.swift */,
 				C11477324D774EAB870E5221 /* RerankSettingsView.swift */,
@@ -604,6 +607,7 @@
 				8863B1DE85FB0E330B55382C /* ReaderTypographyView.swift in Sources */,
 				C9EC34D5540C069D639640E7 /* ReaderView.swift in Sources */,
 				85CD8ABACFC53F6E35957730 /* ReadingNotesView.swift in Sources */,
+				0BE261303770E0005D9C8BD3 /* ReadingReviewText.swift in Sources */,
 				CE4825D684D2E555D545F34F /* ReadingReviewView.swift in Sources */,
 				538DE09F849252EA5A84A5BE /* ReplySuggestions.swift in Sources */,
 				3FE4A055F33822AEEDEF6FE5 /* RerankSettingsView.swift in Sources */,

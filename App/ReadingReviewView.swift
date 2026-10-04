@@ -120,18 +120,15 @@ struct ReadingReviewPager: View {
             else {
                 TabView(selection: $selected) {
                     ForEach(entries) { entry in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 18) {
-                                Text(entry.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
-                                Text(entry.book.title + " · " + entry.author).font(.caption).foregroundStyle(.secondary)
-                                if !entry.quote.isEmpty { Text(entry.quote).textSelection(.enabled).padding().frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 12)) }
-                                if !entry.body.isEmpty { Text(.init(entry.body)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
-                                if let passage = entry.passage {
-                                    Button("返回原文", systemImage: "book") { sourceScope = entry.characterID == nil ? .wholeBook : nil; source = passage }
-                                }
-                                ShareLink("分享这篇记录", item: entry.markdown)
-                            }.padding(24)
-                        }.tag(Optional(entry.id))
+                        VStack(alignment: .leading, spacing: 18) {
+                            Text(entry.title).font(.title2.bold()).accessibilityIdentifier("reading-review-title")
+                            Text(entry.book.title + " · " + entry.author).font(.caption).foregroundStyle(.secondary)
+                            ReadingReviewText(quote: entry.quote, bodyText: entry.body)
+                            if let passage = entry.passage {
+                                Button("返回原文", systemImage: "book") { sourceScope = entry.characterID == nil ? .wholeBook : nil; source = passage }
+                            }
+                            ShareLink("分享这篇记录", item: entry.markdown)
+                        }.padding(24).tag(Optional(entry.id))
                     }
                 }.tabViewStyle(.page(indexDisplayMode: .never))
             }

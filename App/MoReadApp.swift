@@ -219,7 +219,7 @@ final class LibraryModel: ObservableObject {
                 try store.modifyRecords(for: book) { $0.annotations.append(annotation) }
             }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--long-review-card") {
-                let note = ReadingNote(title: "长篇读书笔记", content: String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000), book: book)
+                let note = ReadingNote(title: "长篇读书笔记", content: "**灯塔**与*书店*\n" + String(repeating: "灯塔在雨后的海边亮起，书店里有温暖的灯光。\n", count: 2000) + "长笔记的最后一行。", book: book)
                 try note.validate(); try store.modifyRecords(for: book) { $0.notes = [note] }
             }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
