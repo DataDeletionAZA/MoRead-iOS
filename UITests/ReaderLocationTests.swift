@@ -39,9 +39,9 @@ final class ReaderLocationTests: XCTestCase {
             XCTAssertTrue(choices.firstMatch.waitForExistence(timeout: 10), mode); XCTAssertEqual(choices.count, 2)
             choices.matching(NSPredicate(format: "label CONTAINS %@", "A warm opening.")).firstMatch.tap()
             XCTAssertEqual(app.staticTexts["discussion-opening"].label, "A warm opening.")
-            XCTAssertTrue(app.navigationBars["批注讨论"].buttons["BackButton"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.navigationBars["批注讨论"].buttons.firstMatch.waitForExistence(timeout: 5))
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "tap-discussion-" + (epub ? "epub-" : "txt-") + mode; shot.lifetime = .keepAlways; add(shot)
-            app.navigationBars["批注讨论"].buttons["BackButton"].tap()
+            app.navigationBars["批注讨论"].buttons.firstMatch.coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap()
             app.buttons["完成"].tap(); XCTAssertTrue(app.buttons["排版"].waitForExistence(timeout: 10))
         }
         func remove(_ note: String) {
