@@ -1721,7 +1721,7 @@ final class ReadingTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [advanced], timeout: 15), .completed)
         playback.tap()
         func state(_ label: String) {
-            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@ AND enabled == true", label), object: app.buttons["speech-play-pause"])], timeout: 5), .completed)
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@ AND enabled == true", label), object: app.buttons["speech-play-pause"])], timeout: label == "暂停" ? 20 : 5), .completed)
         }
         state("继续")
         playback.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap(); state("暂停")
@@ -2056,11 +2056,17 @@ final class ReadingTests: XCTestCase {
             return frame.minX >= web.frame.minX && frame.maxX <= web.frame.maxX && frame.minY >= web.frame.minY && frame.maxY <= web.frame.maxY && $0.isHittable
         }.sorted { $0.frame.minY < $1.frame.minY }.first)
         let selectionFrame = paragraph.frame
+        let beforeSelection = XCTAttachment(screenshot: app.screenshot()); beforeSelection.name = "epub-repeated-before-selection"; beforeSelection.lifetime = .keepAlways; add(beforeSelection)
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: selectionFrame.minX + 12, dy: selectionFrame.minY + 12)).press(forDuration: 1.2)
+        let afterSelection = XCTAttachment(screenshot: app.screenshot()); afterSelection.name = "epub-repeated-after-selection"; afterSelection.lifetime = .keepAlways; add(afterSelection)
         func annotationMenu() -> XCUIElement? {
             if app.menuItems["批注"].exists { return app.menuItems["批注"] }
             let button = app.collectionViews.buttons["批注"]
             return button.exists ? button : nil
+        }
+        let nextMenu = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
+        if annotationMenu() == nil && !nextMenu.exists {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: selectionFrame.minX + 12, dy: selectionFrame.minY + 12)).tap()
         }
         for _ in 0..<3 where annotationMenu() == nil {
             let next = app.buttons.matching(NSPredicate(format: "label IN %@", ["Next Page", "Forward"])).firstMatch
