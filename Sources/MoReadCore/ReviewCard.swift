@@ -22,8 +22,10 @@ public struct ReviewCardTemplate: Codable, Equatable, Identifiable, Sendable {
     public var italic = false
     public var underline = false
     public var strikethrough = false
+    public var css: String?
     public init() {}
     public func validate() throws {
+        _ = try ReviewCardCSS.parse(css ?? "")
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 80,
               [background, foreground, accent].allSatisfy({ (0...0xFFFFFF).contains($0) }),
               gradientEnd.map({ (0...0xFFFFFF).contains($0) }) ?? true,
@@ -62,7 +64,9 @@ public struct ReviewCardLibrary: Sendable {
         var values = try templates()
         if let index = values.firstIndex(where: { $0.id == value.id }) { values[index] = value } else { values.append(value) }
         guard values.count <= 200 else { throw MoReadError.invalid("最多保存 200 个卡片模板。") }
-        try JSONEncoder().encode(values).write(to: url, options: .atomic)
+        let data = try JSONEncoder().encode(values)
+        guard data.count <= 1_048_576 else { throw MoReadError.invalid("卡片模板总大小超过 1 MB，请精简样式或删除不用的模板。") }
+        try data.write(to: url, options: .atomic)
     }
     public func remove(_ id: UUID) throws {
         let values = try templates().filter { $0.id != id }

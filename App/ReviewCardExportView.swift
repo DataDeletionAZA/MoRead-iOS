@@ -87,12 +87,15 @@ struct ReviewCardExportView: View {
                 throw MoReadError.invalid("这条记录已改变，请重新打开后分享。")
             }
             sourceCurrent = true
-            let style = template
+            let style = template, css = try ReviewCardCSS.parse(template.css ?? "")
+            let imageID = css.backgroundSpecified ? css.backgroundImageID : style.backgroundImageID
+            let cover = !css.backgroundSpecified && style.useBookCover && imageID == nil
+            let fontID = css.fontSpecified ? css.customFontID : style.customFontID
             let background: UIImage?
-            if let id = style.backgroundImageID { background = UIImage(data: try ImageLibrary(root: store.root).data(id)) }
-            else if style.useBookCover { background = try store.coverData(for: book.id).flatMap(UIImage.init(data:)) }
+            if let id = imageID { background = UIImage(data: try ImageLibrary(root: store.root).data(id)) }
+            else if cover { background = try store.coverData(for: book.id).flatMap(UIImage.init(data:)) }
             else { background = nil }
-            let image = try ReviewCardRenderer.image(entry: entry, template: style, options: options, font: library.customFont(style.customFontID, size: style.fontSize), background: background, cover: style.useBookCover && style.backgroundImageID == nil)
+            let image = try ReviewCardRenderer.image(entry: entry, template: style, options: options, font: library.customFont(fontID, size: css.size ?? style.fontSize), background: background, cover: cover)
             guard let data = image.pngData() else { throw MoReadError.invalid("图片生成失败，请重试。") }
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MoRead-回顾-" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -143,7 +146,23 @@ private struct ReviewCardTemplateEditor: View {
                     Slider(value: $draft.cornerRadius, in: 0...141) { Text("圆角") }; Text("圆角 \(draft.cornerRadius, specifier: "%.0f")")
                     Slider(value: $draft.borderWidth, in: 0...23.5) { Text("边框粗细") }; Text("边框粗细 \(draft.borderWidth, specifier: "%.1f")")
                 }
-                if let error { Text(error).foregroundStyle(.red) }
+                Section("高级文字样式") {
+                    Text("CSS 是用文字描述样式的方式，会覆盖上方对应选项。每项以分号结束，em 表示一个基准字号的长度。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: Binding(get: { draft.css ?? "" }, set: { draft.css = $0 }))
+                        .font(.system(.body, design: .monospaced)).frame(minHeight: 180).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("review-card-css")
+                    Menu("插入样式示例") {
+                        Button("渐变文字") { appendCSS("color: linear-gradient(to right, #dc7858, #6590c5); font-weight: bold;") }
+                        Button("渐变背景") { appendCSS("background: linear-gradient(135deg, #f7f5ef, #d7e6f2); color: #38444b;") }
+                        Button("圆角边框") { appendCSS("border-width: 0.05em; border-color: #7e9cb5; border-radius: 1em; padding: 2em;") }
+                        Button("文字排版") { appendCSS("font-size: 1.2em; line-height: 1.6; letter-spacing: 0.03em; text-align: center;") }
+                    }
+                    if !library.images.isEmpty { Menu("插入图片库背景") { ForEach(library.images) { image in Button(image.name) { appendCSS("background-image: url('asset:\(image.id.uuidString)');") } } } }
+                    if !library.fonts.isEmpty { Menu("插入字体库字体") { ForEach(library.fonts) { font in Button(font.name) { appendCSS("font-family: 'asset:\(font.id.uuidString)';") } } } }
+                    Text("支持 color、background、background-image、background-color、background-clip、font-family、font-weight、font-style、text-decoration、text-align、font-size、line-height、letter-spacing、padding、margin-inline、margin-top、margin-bottom、border-width、border-color、border-radius。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }.navigationTitle("卡片模板").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
@@ -152,8 +171,12 @@ private struct ReviewCardTemplateEditor: View {
                         catch { self.error = error.localizedDescription }
                     }.accessibilityIdentifier("review-card-template-save") }
                 }
+                .alert("未能保存模板", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                    Button("好") { error = nil }
+                } message: { Text(error ?? "") }
         }
     }
+    private func appendCSS(_ value: String) { draft.css = (draft.css ?? "") + ((draft.css ?? "").isEmpty ? "" : "\n") + value }
     private func color(_ key: WritableKeyPath<ReviewCardTemplate, Int>) -> Binding<Color> {
         Binding(get: { Color(rgb: draft[keyPath: key]) }, set: { draft[keyPath: key] = $0.savedRGB })
     }

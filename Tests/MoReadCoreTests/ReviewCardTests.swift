@@ -12,6 +12,7 @@ final class ReviewCardTests: XCTestCase {
         XCTAssertThrowsError(try library.save(ReviewCardTemplate.presets[0]))
         var template = ReviewCardTemplate.presets[2]; template.id = UUID(); template.name = "夜读"
         template.customFontID = UUID(); template.backgroundImageID = UUID(); template.gradientEnd = 0x112233
+        template.css = "color: linear-gradient(45deg, #c80, #08c); margin-top: 1em;"
         template.italic = true; template.borderWidth = 3; template.cornerRadius = 22
         try library.save(template)
         template.name = "我的夜读"; try library.save(template)
