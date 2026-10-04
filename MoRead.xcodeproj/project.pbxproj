@@ -39,6 +39,7 @@
 		33B2DCCD48112D5EF951D842 /* CompanionStoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 593AE07ADD437E59D3941477 /* CompanionStoryView.swift */; };
 		3AC22B05C885A5FF20359502 /* ReaderKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6FFA00B4C436A967A5F6D5 /* ReaderKeysView.swift */; };
 		3AD635C8321F66E0A023389A /* ReaderTapZonesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D742188809AC0ECA4869856 /* ReaderTapZonesTests.swift */; };
+		3C18D8E2095F09C4405597BB /* VoiceDesignView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C8B8D33B0F507EDE0A973E /* VoiceDesignView.swift */; };
 		3D0AF693319D8F5820D77461 /* CompanionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7563B576C24E7177CF543069 /* CompanionViews.swift */; };
 		3FE4A055F33822AEEDEF6FE5 /* RerankSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11477324D774EAB870E5221 /* RerankSettingsView.swift */; };
 		43C99184B7AAEC9C4984B095 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B830F2AED127F80997D8521 /* RootView.swift */; };
@@ -157,6 +158,7 @@
 		24DB77804B07DAFBE0AA5CD3 /* ListeningCleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningCleanupTests.swift; sourceTree = "<group>"; };
 		25B0B10028E0786EE6A7BBC4 /* ReviewCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewCardTests.swift; sourceTree = "<group>"; };
 		26D7FFD20FA49397BE6BBFD0 /* THIRD_PARTY_LICENSES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = THIRD_PARTY_LICENSES.txt; sourceTree = "<group>"; };
+		28C8B8D33B0F507EDE0A973E /* VoiceDesignView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDesignView.swift; sourceTree = "<group>"; };
 		323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchSettingsView.swift; sourceTree = "<group>"; };
 		37F3BDCA81915FFE68DBF060 /* PersonaMemoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaMemoryModel.swift; sourceTree = "<group>"; };
 		3A6FFA00B4C436A967A5F6D5 /* ReaderKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderKeysView.swift; sourceTree = "<group>"; };
@@ -365,6 +367,7 @@
 				EF601B6CB703407F00D933F4 /* UserMaskView.swift */,
 				84C880FD0E398C652F62F267 /* VectorMemoryView.swift */,
 				8D6EC2908445A02F6B8CCACE /* VocabularyView.swift */,
+				28C8B8D33B0F507EDE0A973E /* VoiceDesignView.swift */,
 				C51E3D8CAABD2F6528086B17 /* VoiceLibraryView.swift */,
 				323EAE552EE741D3C88ED11B /* WebSearchSettingsView.swift */,
 				6BB9A7F794DA1BB7C6E13AE1 /* WorldBookEditor.swift */,
@@ -661,6 +664,7 @@
 				9468C4DD3A460A45139DFA7E /* UserMaskView.swift in Sources */,
 				174B85CC92205252113D98C6 /* VectorMemoryView.swift in Sources */,
 				4E414BF5137DDF785064FF5C /* VocabularyView.swift in Sources */,
+				3C18D8E2095F09C4405597BB /* VoiceDesignView.swift in Sources */,
 				76DE8ACF6E8E39CD6330EEE3 /* VoiceLibraryView.swift in Sources */,
 				5D70A84D46807CB252198B38 /* WebSearchSettingsView.swift in Sources */,
 				DCEBAAED542218D931A97965 /* WorldBookEditor.swift in Sources */,

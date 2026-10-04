@@ -79,6 +79,53 @@ final class VoiceLibraryUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: app.staticTexts["voice-catalog-status"])], timeout: 11), .timedOut)
         reveal(entry, in: app); XCTAssertTrue(app.staticTexts["My online voice"].exists)
     }
+    func testDesignVoiceRecoverPreviewRenameSaveAndRestart() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication(); app.launchEnvironment["MOREAD_TEST_SPEECH_SERVICE"] = "gemini"
+        app.launchEnvironment["MOREAD_TEST_SPEECH_AUDIO"] = "design-configuration"
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-voice-design", "--missing-design-preview"]
+        app.launch(); open(app)
+        app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap()
+        app.buttons["voice-design-open"].tap()
+        let name = app.textFields["design-name"]; XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Warm narrator")
+        let description = app.descendants(matching: .any).matching(identifier: "design-description").firstMatch; description.tap(); description.typeText("Warm low voice"); app.buttons["design-keyboard-done"].tap()
+        let generate = app.buttons["design-generate"]; reveal(generate, in: app); generate.tap()
+        let fetch = app.buttons["design-fetch"]; XCTAssertTrue(fetch.waitForExistence(timeout: 10)); reveal(fetch, in: app); fetch.tap()
+        let preview = app.buttons["design-preview"]; XCTAssertTrue(preview.waitForExistence(timeout: 10)); reveal(preview, in: app); preview.tap()
+        XCTAssertEqual(preview.label, "停止试听"); preview.tap(); XCTAssertEqual(preview.label, "播放试听")
+        reveal(description, in: app); description.tap(); description.typeText(" with an accent"); app.buttons["design-keyboard-done"].tap()
+        let save = app.buttons["design-save"]; reveal(save, in: app); XCTAssertFalse(save.isEnabled)
+        reveal(generate, in: app); generate.tap(); XCTAssertTrue(fetch.waitForExistence(timeout: 10)); reveal(fetch, in: app); fetch.tap()
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        reveal(name, in: app); name.tap(); name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Warm narrator".count) + "Evening narrator"); app.buttons["design-keyboard-done"].tap()
+        reveal(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
+        XCTAssertEqual(save.label, "已保存到音色库")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "voice-design-saved"; shot.lifetime = .keepAlways; add(shot)
+        app.navigationBars["声音设计"].buttons["完成"].tap()
+        let row = app.staticTexts["Evening narrator"]; reveal(row, in: app); XCTAssertTrue(row.exists)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); open(app); reveal(row, in: app); XCTAssertTrue(row.exists)
+    }
+    func testDesignVoiceFailureCancellationAndDismissal() {
+        executionTimeAllowance = 240
+        let app = XCUIApplication(); app.launchEnvironment["MOREAD_TEST_SPEECH_SERVICE"] = "gemini"
+        app.launchEnvironment["MOREAD_TEST_SPEECH_AUDIO"] = "design-configuration"
+        func launch(_ flag: String) {
+            app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-voice-design", flag]; app.launch(); open(app)
+            app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["voice-design-open"].tap()
+            app.textFields["design-name"].tap(); app.textFields["design-name"].typeText("Draft voice")
+            app.descendants(matching: .any).matching(identifier: "design-description").firstMatch.tap(); app.descendants(matching: .any).matching(identifier: "design-description").firstMatch.typeText("Warm voice"); app.buttons["design-keyboard-done"].tap()
+            let generate = app.buttons["design-generate"]; reveal(generate, in: app); generate.tap()
+        }
+        launch("--failed-voice-design")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "声音设计服务暂不可用"), object: app.staticTexts["design-status"])], timeout: 10), .completed)
+        XCTAssertFalse(app.buttons["design-save"].exists)
+        app.terminate(); launch("--slow-voice-design")
+        let stop = app.buttons["design-stop"]; XCTAssertTrue(stop.waitForExistence(timeout: 5)); reveal(stop, in: app); stop.tap()
+        XCTAssertFalse(app.buttons["design-preview"].exists)
+        let generate = app.buttons["design-generate"]; reveal(generate, in: app); generate.tap()
+        app.navigationBars["声音设计"].buttons["完成"].tap()
+        XCTAssertFalse(app.staticTexts["Draft voice"].exists)
+    }
     func testChoosingVoiceKeepsDraftUntilSettingsSaved() {
         executionTimeAllowance = 240
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch(); open(app)

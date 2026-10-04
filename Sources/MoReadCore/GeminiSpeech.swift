@@ -27,9 +27,15 @@ public enum GeminiSpeech {
               let steps = json["steps"] as? [[String: Any]] else { throw MoReadError.invalid("Gemini 语音合成未完成。") }
         let parts = steps.filter { $0["type"] as? String == "model_output" }
             .flatMap { $0["content"] as? [[String: Any]] ?? [] }.filter { $0["type"] as? String == "audio" }
-        guard parts.count == 1, let encoded = parts[0]["data"] as? String, encoded.utf8.count <= limit * 4 / 3 + 4,
+        guard parts.count == 1 else { throw MoReadError.invalid("Gemini 未返回有效的单段语音。") }
+        return try decodeAudio(parts[0])
+    }
+
+    static func decodeAudio(_ part: [String: Any]) throws -> Data {
+        let limit = CloudSpeechClient.maximumAudioBytes
+        guard let encoded = part["data"] as? String, encoded.utf8.count <= limit * 4 / 3 + 4,
               let bytes = Data(base64Encoded: encoded), !bytes.isEmpty, bytes.count <= limit,
-              let mime = parts[0]["mime_type"] as? String else { throw MoReadError.invalid("Gemini 未返回有效的单段语音。") }
+              let mime = part["mime_type"] as? String else { throw MoReadError.invalid("Gemini 未返回有效的单段语音。") }
         let fields = mime.lowercased().split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
         guard let format = fields.first else { throw MoReadError.invalid("Gemini 未返回音频格式。") }
         if ["audio/wav", "audio/wave", "audio/x-wav"].contains(format) {

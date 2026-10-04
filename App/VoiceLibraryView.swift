@@ -21,6 +21,7 @@ struct VoiceLibraryView: View {
     @State private var importing = false
     @State private var export: VoiceDocument?
     @State private var exporting = false
+    @State private var designing = false
     @State private var message: String?
     @State private var catalogTask: Task<Void, Never>?
     @State private var catalogGeneration = UUID()
@@ -98,6 +99,10 @@ struct VoiceLibraryView: View {
                     Menu {
                         Button("添加音色") { editing = SavedVoice(providerHint: SavedVoice.hint(for: settings.service)) }
                         Button("导入 Gemini 预设") { run { let count = try store?.merge(VoiceLibrary.geminiPresets) ?? 0; message = "新增 \(count) 个音色" } }
+                        Button("设计新声音") {
+                            if settings.service == .gemini, previewAllowed { preview.stop(); stopCatalog(); designing = true }
+                            else { message = "请先在云端声音中选择 Gemini，并保存地址、模型和密钥。" }
+                        }.accessibilityIdentifier("voice-design-open")
                         Button("读取 Gemini 在线音色") { loadCatalog() }.disabled(catalogTask != nil)
                         Button("导入 MiniMax 预设") { run { let count = try store?.merge(VoiceLibrary.miniMaxPresets) ?? 0; message = "新增 \(count) 个音色" } }
                         Button("从 JSON 文件导入") { importing = true }
@@ -118,6 +123,9 @@ struct VoiceLibraryView: View {
                 Button("取消", role: .cancel) { removing = nil }
                 Button("删除", role: .destructive) { run { if let removing { preview.stop(); try store?.remove(removing.id) }; removing = nil } }
             } message: { Text("只删除音色库记录，当前听书设置保持不变。") }
+            .sheet(isPresented: $designing, onDismiss: { run {} }) {
+                if let root = library.store?.root { VoiceDesignView(settings: settings, root: root) }
+            }
             .onDisappear { preview.stop(); stopCatalog() }
             .onChange(of: settings) { _, _ in preview.stop(); stopCatalog() }
             .onChange(of: previewAllowed) { _, allowed in if !allowed { stopCatalog() } }
