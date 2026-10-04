@@ -64,6 +64,7 @@ final class DictionaryTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertFalse(row.label.contains("/fixture/")); XCTAssertEqual(learned.value as? String, "1")
     }
     func testVocabularySaveEditLearnSearchRestartAndDelete() throws {
+        executionTimeAllowance = 300
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--reset-test-library", "--import-test-dictionary"]
         app.launchEnvironment["MOREAD_TEST_MDX"] = try fixture("sample-v2.mdx"); app.launch()
@@ -76,15 +77,17 @@ final class DictionaryTests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap(); app.buttons["生词本"].tap()
         let row = app.buttons["vocabulary-word-apple"]
         XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertEqual(app.buttons.matching(identifier: "vocabulary-word-apple").count, 1)
-        app.buttons["vocabulary-edit-apple"].tap()
+        app.buttons["vocabulary-more-apple"].tap(); app.buttons["vocabulary-edit-apple"].tap()
         let gloss = app.textFields["vocabulary-gloss"]
         gloss.tap(); gloss.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (gloss.value as? String)?.count ?? 0)); gloss.typeText("水果")
         app.textFields["vocabulary-phonetic"].tap(); app.textFields["vocabulary-phonetic"].typeText("/apple/")
         app.buttons["vocabulary-edit-save"].tap()
         let learned = app.switches["vocabulary-learned-apple"]
         XCTAssertTrue(learned.waitForExistence(timeout: 5)); learned.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        app.segmentedControls.buttons["学习中"].tap(); XCTAssertFalse(row.exists)
-        app.segmentedControls.buttons["已掌握"].tap(); XCTAssertTrue(row.exists)
+        app.buttons["vocabulary-filter-learning"].tap(); XCTAssertFalse(row.exists)
+        app.buttons["vocabulary-undo"].tap(); XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertEqual(learned.value as? String, "0")
+        learned.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap(); XCTAssertFalse(row.exists)
+        app.buttons["vocabulary-filter-learned"].tap(); XCTAssertTrue(row.exists)
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); manager(app); app.buttons["生词本"].tap()
         XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertEqual(learned.value as? String, "1")
         XCTAssertTrue(row.label.contains("水果")); XCTAssertTrue(row.label.contains("/apple/"))
@@ -94,10 +97,46 @@ final class DictionaryTests: XCTestCase {
         XCTAssertFalse(row.exists)
         search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 7)); search.typeText("苹果")
         XCTAssertTrue(row.waitForExistence(timeout: 5))
-        app.buttons["vocabulary-remove-apple"].tap()
-        app.sheets.buttons.matching(identifier: "vocabulary-remove-confirm").firstMatch.tap()
+        app.buttons["vocabulary-more-apple"].tap(); app.buttons["vocabulary-remove-apple"].tap()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: row)], timeout: 10), .completed)
+        app.buttons["vocabulary-undo"].tap(); XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("水果")); XCTAssertTrue(row.label.contains("/apple/")); XCTAssertEqual(learned.value as? String, "1")
+        app.buttons["vocabulary-more-apple"].tap(); app.buttons["vocabulary-remove-apple"].tap()
         app.terminate(); app.launch(); manager(app); app.buttons["生词本"].tap(); XCTAssertFalse(row.exists)
+    }
+    func testVocabularyOverviewDateGroupsTrimmedSearchAndEditUndo() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library", "--vocabulary-cards-sample"]; app.launch()
+        XCTAssertTrue(app.buttons["add-sample"].waitForExistence(timeout: 15)); manager(app); app.buttons["生词本"].tap()
+        let row = app.buttons["vocabulary-word-serendipity"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["vocabulary-filter-all"].value as? String, "5 个")
+        XCTAssertEqual(app.buttons["vocabulary-filter-learning"].value as? String, "4 个")
+        XCTAssertEqual(app.buttons["vocabulary-filter-learned"].value as? String, "1 个")
+        XCTAssertEqual(app.staticTexts["vocabulary-mastery"].label, "已掌握 20%")
+        XCTAssertTrue(app.staticTexts["今天"].exists); XCTAssertTrue(row.label.contains("A Serendipity by the old bookshop."))
+        XCTAssertFalse(row.label.contains("##")); XCTAssertFalse(row.label.contains("**"))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Vocabulary-overview-cards"; shot.lifetime = .keepAlways; add(shot)
+        row.press(forDuration: 1.2); app.buttons["vocabulary-edit-serendipity"].tap()
+        let gloss = app.textFields["vocabulary-gloss"]
+        XCTAssertTrue(gloss.waitForExistence(timeout: 5)); gloss.tap(); gloss.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "惊喜")
+        app.buttons["vocabulary-edit-save"].tap(); XCTAssertTrue(row.label.contains("惊喜"))
+        app.buttons["vocabulary-undo"].tap(); XCTAssertTrue(row.label.contains("意外之喜")); XCTAssertFalse(row.label.contains("惊喜"))
+        let search = app.searchFields.firstMatch
+        search.tap(); search.typeText("  之喜  ")
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["vocabulary-word-lighthouse"].exists)
+        app.buttons["vocabulary-filter-learned"].tap(); XCTAssertFalse(row.exists)
+        search.tap(); search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (search.value as? String ?? "").count) + "\n")
+        let cancel = app.buttons.matching(NSPredicate(format: "label IN %@", ["Cancel", "取消", "Close", "关闭"])).firstMatch
+        if cancel.exists { cancel.tap() }
+        app.buttons["vocabulary-filter-all"].tap()
+        let yesterday = app.staticTexts["昨天"]
+        for _ in 0..<6 { if yesterday.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(yesterday.exists)
+        let week = app.staticTexts["过去一周"]
+        for _ in 0..<6 { if week.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(week.exists)
+        let grouping = XCTAttachment(screenshot: app.screenshot()); grouping.name = "Vocabulary-date-groups"; grouping.lifetime = .keepAlways; add(grouping)
     }
     func testLookupResourcesEntryLinksRestartAndReaderEntry() throws {
         let app = XCUIApplication()

@@ -61,10 +61,67 @@ public struct VocabularyStore {
         guard let index = words.firstIndex(of: original) else { throw MoReadError.invalid("这个词已发生变化，请重新打开后删除。") }
         words.remove(at: index); try write(words)
     }
+    public func undo(_ original: VocabularyWord, after replacement: VocabularyWord?) throws {
+        var words = try words()
+        let current = words.first { $0.word == original.word }
+        guard replacement.map({ $0.word == original.word }) ?? true, current == replacement else {
+            throw MoReadError.invalid("这个词后来又发生了变化，无法撤销，请查看当前内容。")
+        }
+        words.removeAll { $0.word == original.word }; words.append(original)
+        try write(words)
+    }
     private func write(_ words: [VocabularyWord]) throws {
         guard words.count <= 20_000, words.allSatisfy(\.valid) else { throw MoReadError.invalid("生词、释义或读音超出范围，请检查后保存。") }
         let data = try JSONEncoder().encode(words)
         guard data.count <= 32 * 1024 * 1024 else { throw MoReadError.invalid("生词本已达到存储上限。") }
         try data.write(to: file, options: .atomic)
+    }
+}
+
+
+public enum VocabularyFilter: String, CaseIterable, Sendable {
+    case all, learning, learned
+    public var label: String { switch self { case .all: "全部"; case .learning: "学习中"; case .learned: "已掌握" } }
+    public func includes(_ word: VocabularyWord) -> Bool { self == .all || word.learned == (self == .learned) }
+}
+
+public struct VocabularyGroup: Identifiable, Sendable {
+    public enum Period: Hashable, Sendable { case today, yesterday, week, month(Int, Int) }
+    public var id: Period { period }
+    public let period: Period
+    public var words: [VocabularyWord]
+    public static func groups(_ words: [VocabularyWord], query: String, filter: VocabularyFilter, now: Date = Date(), timeZone: TimeZone = .current) -> [Self] {
+        let calendar = ReadingCalendar.calendar(timeZone: timeZone), today = calendar.startOfDay(for: now)
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selected = words.filter { filter.includes($0) && $0.createdAt.timeIntervalSince1970.isFinite &&
+            (needle.isEmpty || [$0.word, $0.gloss, $0.definition].contains { $0.localizedCaseInsensitiveContains(needle) })
+        }.sorted { $0.createdAt == $1.createdAt ? $0.word < $1.word : $0.createdAt > $1.createdAt }
+        var result: [Self] = [], indices: [Period: Int] = [:]
+        for word in selected {
+            let date = calendar.startOfDay(for: word.createdAt)
+            let days = calendar.dateComponents([.day], from: date, to: today).day ?? 0
+            let period: Period = days <= 0 ? .today : days == 1 ? .yesterday : days < 7 ? .week : .month(calendar.component(.year, from: date), calendar.component(.month, from: date))
+            if let index = indices[period] { result[index].words.append(word) }
+            else { indices[period] = result.count; result.append(.init(period: period, words: [word])) }
+        }
+        return result
+    }
+}
+
+extension VocabularyWord {
+    public var preview: String {
+        var lines = definition.components(separatedBy: .newlines).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: #"^(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\*\*|__|`|~~"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+        if lines.first?.caseInsensitiveCompare(word) == .orderedSame { lines.removeFirst() }
+        let plain = lines.joined(separator: " ").replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        return plain == gloss.trimmingCharacters(in: .whitespacesAndNewlines) ? "" : String(plain.prefix(200))
+    }
+    public func contextMatch(in text: String) -> Range<String.Index>? {
+        guard !word.isEmpty else { return nil }
+        return text.range(of: word, options: .caseInsensitive) ?? text.range(of: word.replacingOccurrences(of: "'", with: "’"), options: .caseInsensitive)
     }
 }

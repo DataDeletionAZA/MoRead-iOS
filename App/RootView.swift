@@ -120,6 +120,22 @@ struct RootView: View {
                     model.load()
                 }
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--vocabulary-cards-sample"), let vocabulary = model.vocabulary {
+                model.perform {
+                    guard try vocabulary.words().isEmpty else { return }
+                    let calendar = ReadingCalendar.calendar(), today = calendar.startOfDay(for: Date())
+                    for (index, name) in ["serendipity", "lighthouse", "故", "notebook", "winter"].enumerated() {
+                        let definition = index == 0 ? "## Serendipity\n**n.** 不期而遇的美好\n- 意外发现珍贵事物的机缘" : "\(name) 的收藏释义"
+                        var word = VocabularyWord(word: name, definition: definition, context: index == 0 ? "A Serendipity by the old bookshop." : "", gloss: index == 0 ? "意外之喜" : "", phonetic: index == 0 ? "/ˌserənˈdɪpəti/" : "")
+                        word.learned = index == 1
+                        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(word)) as! [String: Any]
+                        object["createdAt"] = calendar.date(byAdding: .day, value: [0, -1, -3, -20, -400][index], to: today)!.timeIntervalSinceReferenceDate
+                        word = try JSONDecoder().decode(VocabularyWord.self, from: JSONSerialization.data(withJSONObject: object))
+                        try vocabulary.undo(word, after: nil)
+                    }
+                    model.vocabularyRevision = UUID()
+                }
+            }
             if companion.simulatedModelRoles, companion.settings.providers.isEmpty {
                 var chat = AIProvider(); chat.name = "主对话测试"; chat.model = "chat-fixture"; chat.baseURL = "https://example.invalid/v1"
                 var batch = AIProvider(); batch.name = "批量测试"; batch.model = "batch-fixture"; batch.baseURL = "https://example.invalid/v1"
