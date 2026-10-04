@@ -6,10 +6,17 @@ final class ProactiveAnnotationTests: XCTestCase {
         var policy = ProactiveSettings(); policy.maximumPerChapter = 100; policy.minimumPerChapter = 200; policy.dailyMaximum = -9
         let id = UUID(); policy.characterIDs = [id, id]
         let valid = policy.validated()
-        XCTAssertEqual(valid.maximumPerChapter, 10); XCTAssertEqual(valid.minimumPerChapter, 10); XCTAssertEqual(valid.dailyMaximum, 1)
+        XCTAssertEqual(valid.maximumPerChapter, 99); XCTAssertEqual(valid.minimumPerChapter, 99); XCTAssertEqual(valid.dailyMaximum, 1)
         XCTAssertEqual(valid.characterIDs, [id])
         policy.maximumPerChapter = -1; policy.dailyMaximum = -1
         XCTAssertEqual(policy.validated().maximumPerChapter, -1); XCTAssertEqual(policy.validated().dailyMaximum, -1)
+        XCTAssertEqual(policy.withMinimumPerChapter(37).maximumPerChapter, -1)
+        policy = ProactiveSettings().withMinimumPerChapter(37)
+        XCTAssertEqual(policy.minimumPerChapter, 37); XCTAssertEqual(policy.maximumPerChapter, 37)
+        policy.maximumPerChapter = 12; policy.dailyMaximum = 2000
+        policy = policy.validated()
+        XCTAssertEqual(policy.minimumPerChapter, 12); XCTAssertEqual(policy.dailyMaximum, 999)
+        XCTAssertEqual(try JSONDecoder().decode(ProactiveSettings.self, from: JSONEncoder().encode(policy)), policy)
         var attempt = ProactiveAttempt(); XCTAssertTrue(attempt.canStart())
         attempt.count = 1; attempt.updatedAt = Date()
         XCTAssertFalse(attempt.canStart(at: attempt.updatedAt.addingTimeInterval(599)))

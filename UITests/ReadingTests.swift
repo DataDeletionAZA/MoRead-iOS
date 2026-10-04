@@ -1382,13 +1382,25 @@ final class ReadingTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--reset-test-library"]; app.launch()
         app.tabBars.buttons["设置"].tap(); app.buttons["随读段评"].tap()
         app.switches["proactive-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        for _ in 0..<3 { if app.steppers["proactive-chapter-limit"].isHittable { break }; app.swipeUp() }
-        app.steppers["proactive-chapter-limit"].buttons.matching(NSPredicate(format: "label ENDSWITH %@", "Increment")).firstMatch.tap()
+        func enter(_ identifier: String, _ value: String) {
+            for _ in 0..<5 { if app.buttons[identifier].isHittable { break }; app.swipeUp() }
+            app.buttons[identifier].tap()
+            let input = app.alerts.textFields["条数"]
+            input.tap(); input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (input.value as? String ?? "").count) + value)
+        }
+        enter("proactive-chapter-limit", "100")
+        XCTAssertFalse(app.alerts.buttons["保存"].isEnabled)
+        app.alerts.buttons["取消"].tap()
+        enter("proactive-minimum-limit", "37"); app.alerts.buttons["保存"].tap()
+        XCTAssertTrue(app.buttons["proactive-chapter-limit"].label.contains("37"))
+        enter("proactive-daily-limit", "999"); app.alerts.buttons["保存"].tap()
         app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.tabBars.buttons["设置"].tap(); app.buttons["随读段评"].tap()
         XCTAssertEqual(app.switches["proactive-enabled"].value as? String, "1")
-        for _ in 0..<3 { if app.steppers["proactive-chapter-limit"].isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(app.steppers["proactive-chapter-limit"].label.contains("3"))
+        for _ in 0..<3 { if app.buttons["proactive-chapter-limit"].isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(app.buttons["proactive-chapter-limit"].label.contains("37"))
+        XCTAssertTrue(app.buttons["proactive-minimum-limit"].label.contains("37"))
+        XCTAssertTrue(app.buttons["proactive-daily-limit"].label.contains("999"))
         app.terminate(); app.launch()
         app.buttons["add-sample"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "雨后的书店")).firstMatch.tap()

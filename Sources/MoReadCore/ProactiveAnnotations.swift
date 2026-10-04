@@ -7,6 +7,8 @@ public struct ProactiveParagraph: Codable, Hashable, Sendable {
 }
 
 public struct ProactiveSettings: Codable, Equatable, Sendable {
+    public static let chapterLimit = 99
+    public static let dailyLimit = 999
     public var enabled = false
     public var providerID: UUID?
     public var characterIDs: [UUID] = []
@@ -16,11 +18,17 @@ public struct ProactiveSettings: Codable, Equatable, Sendable {
     public init() {}
     public func validated() -> Self {
         var value = self
-        value.maximumPerChapter = maximumPerChapter == -1 ? -1 : min(10, max(1, maximumPerChapter))
-        value.minimumPerChapter = min(max(0, minimumPerChapter), value.maximumPerChapter == -1 ? 10 : value.maximumPerChapter)
-        value.dailyMaximum = dailyMaximum == -1 ? -1 : min(50, max(1, dailyMaximum))
+        value.maximumPerChapter = maximumPerChapter == -1 ? -1 : min(Self.chapterLimit, max(1, maximumPerChapter))
+        value.minimumPerChapter = min(max(0, minimumPerChapter), value.maximumPerChapter == -1 ? Self.chapterLimit : value.maximumPerChapter)
+        value.dailyMaximum = dailyMaximum == -1 ? -1 : min(Self.dailyLimit, max(1, dailyMaximum))
         value.characterIDs = Array(Set(characterIDs)).sorted { $0.uuidString < $1.uuidString }
         return value
+    }
+    public func withMinimumPerChapter(_ minimum: Int) -> Self {
+        var value = self
+        value.minimumPerChapter = min(Self.chapterLimit, max(0, minimum))
+        if value.maximumPerChapter != -1 { value.maximumPerChapter = max(value.maximumPerChapter, value.minimumPerChapter) }
+        return value.validated()
     }
 }
 
