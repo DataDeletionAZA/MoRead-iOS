@@ -2,10 +2,10 @@ import XCTest
 
 final class VoiceLibraryUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication, fromTop: Bool = false) {
         for _ in 0..<14 {
-            if element.exists && element.frame.midY > 130 && element.frame.midY < app.frame.maxY - 90 && element.isHittable { return }
-            if element.exists && element.frame.midY < 130 { app.swipeDown() } else { app.swipeUp() }
+            if element.exists && element.frame.midY > 130 && element.frame.midY < app.frame.maxY - (app.navigationBars["声音设计"].exists ? 40 : 90) && (element.isHittable || element.identifier.hasPrefix("voice-actions-")) { return }
+            if element.exists ? element.frame.midY < 130 : fromTop { app.swipeDown() } else { app.swipeUp() }
         }
         XCTFail("Control is not visible")
     }
@@ -28,13 +28,13 @@ final class VoiceLibraryUITests: XCTestCase {
         add("alloy", name: "My narrator", app: app)
         app.buttons["voice-select-alloy"].tap()
         XCTAssertTrue(app.staticTexts["voices-message"].label.contains("My narrator"))
-        app.buttons["voice-actions-alloy"].tap(); app.buttons["置顶"].tap()
+        app.buttons["voice-actions-alloy"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["置顶"].tap()
         let pinned = app.switches["voices-pinned-only"]; reveal(pinned, in: app); pinned.coordinate(withNormalizedOffset: .init(dx: 0.9, dy: 0.5)).tap()
         app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["导入 Gemini 预设"].tap()
         XCTAssertEqual(app.staticTexts["voices-message"].label, "新增 30 个音色")
         app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["导入 Gemini 预设"].tap()
         XCTAssertEqual(app.staticTexts["voices-message"].label, "新增 0 个音色")
-        let menu = app.buttons["voice-actions-alloy"]; reveal(menu, in: app); menu.tap(); app.buttons["编辑"].tap()
+        let menu = app.buttons["voice-actions-alloy"]; reveal(menu, in: app); menu.coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["编辑"].tap()
         let name = app.textFields["voice-name"]; name.tap(); name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "My narrator".count) + "Night voice")
         app.buttons["voice-save"].tap()
         XCTAssertTrue(app.staticTexts["Night voice"].waitForExistence(timeout: 5))
@@ -42,9 +42,9 @@ final class VoiceLibraryUITests: XCTestCase {
         let filter = app.switches["voices-pinned-only"]; filter.coordinate(withNormalizedOffset: .init(dx: 0.9, dy: 0.5)).tap()
         XCTAssertTrue(app.staticTexts["Night voice"].exists); XCTAssertTrue(app.staticTexts["当前声音"].exists)
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "saved-cloud-voice-library"; shot.lifetime = .keepAlways; add(shot)
-        app.buttons["voice-actions-alloy"].tap(); app.buttons["删除"].tap(); app.alerts.buttons["取消"].tap()
+        app.buttons["voice-actions-alloy"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["删除"].tap(); app.alerts.buttons["取消"].tap()
         XCTAssertTrue(app.staticTexts["Night voice"].exists)
-        app.buttons["voice-actions-alloy"].tap(); app.buttons["删除"].tap(); app.alerts.buttons["删除"].tap()
+        app.buttons["voice-actions-alloy"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["删除"].tap(); app.alerts.buttons["删除"].tap()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.staticTexts["Night voice"])], timeout: 5), .completed)
         app.terminate(); app.launch(); open(app)
         XCTAssertFalse(app.staticTexts["Night voice"].exists)
@@ -63,7 +63,7 @@ final class VoiceLibraryUITests: XCTestCase {
         }
         launch(["--reset-test-library"]); load(); status("已读取 2 个在线音色，新增 2 个")
         load(); status("新增 0 个")
-        let entry = app.buttons["voice-actions-voice_first"]; reveal(entry, in: app); entry.tap(); app.buttons["编辑"].tap()
+        let entry = app.buttons["voice-actions-voice_first"]; reveal(entry, in: app); entry.coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["编辑"].tap()
         let name = app.textFields["voice-name"]; name.tap(); name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Online narrator".count) + "My online voice")
         app.buttons["voice-save"].tap(); load(); status("新增 0 个")
         XCTAssertTrue(app.staticTexts["My online voice"].exists)
@@ -79,6 +79,36 @@ final class VoiceLibraryUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: app.staticTexts["voice-catalog-status"])], timeout: 11), .timedOut)
         reveal(entry, in: app); XCTAssertTrue(app.staticTexts["My online voice"].exists)
     }
+    func testVoiceAssistantMultipleTurnsPreviewFailureAndSave() {
+        executionTimeAllowance = 300
+        let app = XCUIApplication(); app.launchEnvironment["MOREAD_TEST_SPEECH_SERVICE"] = "gemini"
+        app.launchEnvironment["MOREAD_TEST_SPEECH_AUDIO"] = "assistant-configuration"
+        app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-voice-design", "--missing-design-preview", "--simulate-voice-assistant"]
+        app.launch(); open(app)
+        app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["voice-design-open"].tap()
+        let reference = app.buttons["design-reference"]; XCTAssertTrue(reference.waitForExistence(timeout: 5)); reference.tap(); app.buttons["阿翎"].tap()
+        let name = app.textFields["design-name"]; reveal(name, in: app, fromTop: true); XCTAssertEqual(name.value as? String, "阿翎 的声音")
+        func send(_ text: String) {
+            let input = app.descendants(matching: .any).matching(identifier: "design-ai-request").firstMatch; reveal(input, in: app, fromTop: true); input.tap(); input.typeText(text)
+            app.buttons["design-keyboard-done"].tap()
+            let send = app.buttons["design-ai-send"]; reveal(send, in: app); send.tap()
+        }
+        func finished() {
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "本轮处理完成"), object: app.staticTexts["design-status"])], timeout: 15), .completed)
+        }
+        send("Create a warm voice"); finished()
+        let save = app.buttons["design-save"]; reveal(save, in: app); XCTAssertTrue(save.isEnabled); XCTAssertEqual(save.label, "满意，入库")
+        send("Make it lower"); finished(); reveal(save, in: app); XCTAssertTrue(save.isEnabled)
+        send("fail")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "音色助手服务暂不可用"), object: app.staticTexts["design-status"])], timeout: 10), .completed)
+        reveal(save, in: app); XCTAssertTrue(save.isEnabled)
+        send("slow"); let stop = app.buttons["design-stop"]; XCTAssertTrue(stop.waitForExistence(timeout: 5)); reveal(stop, in: app); stop.tap()
+        reveal(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "voice-assistant-saved"; shot.lifetime = .keepAlways; add(shot)
+        app.navigationBars["声音设计"].buttons["完成"].tap()
+        let row = app.staticTexts["Assistant narrator"]; reveal(row, in: app); XCTAssertTrue(row.exists)
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch(); open(app); reveal(row, in: app); XCTAssertTrue(row.exists)
+    }
     func testDesignVoiceRecoverPreviewRenameSaveAndRestart() {
         executionTimeAllowance = 300
         let app = XCUIApplication(); app.launchEnvironment["MOREAD_TEST_SPEECH_SERVICE"] = "gemini"
@@ -87,17 +117,17 @@ final class VoiceLibraryUITests: XCTestCase {
         app.launch(); open(app)
         app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap()
         app.buttons["voice-design-open"].tap()
-        let name = app.textFields["design-name"]; XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Warm narrator")
+        let name = app.textFields["design-name"]; XCTAssertTrue(name.waitForExistence(timeout: 5)); reveal(name, in: app, fromTop: true); name.tap(); name.typeText("Warm narrator")
         let description = app.descendants(matching: .any).matching(identifier: "design-description").firstMatch; description.tap(); description.typeText("Warm low voice"); app.buttons["design-keyboard-done"].tap()
         let generate = app.buttons["design-generate"]; reveal(generate, in: app); generate.tap()
-        let fetch = app.buttons["design-fetch"]; XCTAssertTrue(fetch.waitForExistence(timeout: 10)); reveal(fetch, in: app); fetch.tap()
-        let preview = app.buttons["design-preview"]; XCTAssertTrue(preview.waitForExistence(timeout: 10)); reveal(preview, in: app); preview.tap()
+        let fetch = app.buttons["design-fetch"]; reveal(fetch, in: app); XCTAssertTrue(fetch.exists); fetch.tap()
+        let preview = app.buttons["design-preview"]; reveal(preview, in: app); XCTAssertTrue(preview.exists); preview.tap()
         XCTAssertEqual(preview.label, "停止试听"); preview.tap(); XCTAssertEqual(preview.label, "播放试听")
-        reveal(description, in: app); description.tap(); description.typeText(" with an accent"); app.buttons["design-keyboard-done"].tap()
+        reveal(description, in: app, fromTop: true); description.tap(); description.typeText(" with an accent"); app.buttons["design-keyboard-done"].tap()
         let save = app.buttons["design-save"]; reveal(save, in: app); XCTAssertFalse(save.isEnabled)
-        reveal(generate, in: app); generate.tap(); XCTAssertTrue(fetch.waitForExistence(timeout: 10)); reveal(fetch, in: app); fetch.tap()
-        XCTAssertTrue(preview.waitForExistence(timeout: 10))
-        reveal(name, in: app); name.tap(); name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Warm narrator".count) + "Evening narrator"); app.buttons["design-keyboard-done"].tap()
+        reveal(generate, in: app); generate.tap(); reveal(fetch, in: app); XCTAssertTrue(fetch.exists); fetch.tap()
+        reveal(preview, in: app); XCTAssertTrue(preview.exists)
+        reveal(name, in: app, fromTop: true); name.tap(); name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Warm narrator".count) + "Evening narrator"); app.buttons["design-keyboard-done"].tap()
         reveal(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
         XCTAssertEqual(save.label, "已保存到音色库")
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "voice-design-saved"; shot.lifetime = .keepAlways; add(shot)
@@ -112,7 +142,7 @@ final class VoiceLibraryUITests: XCTestCase {
         func launch(_ flag: String) {
             app.launchArguments = ["--ui-testing", "--reset-test-library", "--simulate-voice-design", flag]; app.launch(); open(app)
             app.buttons["voice-library-add"].coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.5)).tap(); app.buttons["voice-design-open"].tap()
-            app.textFields["design-name"].tap(); app.textFields["design-name"].typeText("Draft voice")
+            reveal(app.textFields["design-name"], in: app, fromTop: true); app.textFields["design-name"].tap(); app.textFields["design-name"].typeText("Draft voice")
             app.descendants(matching: .any).matching(identifier: "design-description").firstMatch.tap(); app.descendants(matching: .any).matching(identifier: "design-description").firstMatch.typeText("Warm voice"); app.buttons["design-keyboard-done"].tap()
             let generate = app.buttons["design-generate"]; reveal(generate, in: app); generate.tap()
         }
