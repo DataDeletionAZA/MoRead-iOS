@@ -22,6 +22,9 @@ struct VoiceLibraryView: View {
     @State private var export: VoiceDocument?
     @State private var exporting = false
     @State private var message: String?
+    @State private var catalogTask: Task<Void, Never>?
+    @State private var catalogGeneration = UUID()
+    @State private var catalogStatus: String?
     @StateObject private var preview = CloudVoicePreview()
     private var store: VoiceLibrary? { library.store.map { VoiceLibrary(root: $0.root) } }
     private var settings: CloudSpeechSettings { configuration ?? speech.cloudSettings }
@@ -60,11 +63,11 @@ struct VoiceLibraryView: View {
                         if voice.compatible(with: settings.service), settings.voice == voice.voiceId { Text("当前声音").font(.caption).foregroundStyle(.tint) }
                         HStack {
                             Button(preview.voiceID == voice.id ? "停止试听" : "试听") {
-                                if preview.voiceID == voice.id { preview.stop() } else if !previewAllowed { message = "请先返回并保存云端声音设置，再试听。" } else { speech.pause(); speech.stopPreview(); preview.start(voice, settings: settings) }
+                                if preview.voiceID == voice.id { preview.stop() } else if !previewAllowed { message = "请先返回并保存云端声音设置，再试听。" } else { stopCatalog(); speech.pause(); speech.stopPreview(); preview.start(voice, settings: settings) }
                             }.buttonStyle(.bordered).accessibilityIdentifier("voice-preview-" + voice.voiceId)
                             Button(select == nil ? "设为听书声音" : "选择这个音色") {
                                 run {
-                                    preview.stop()
+                                    preview.stop(); stopCatalog()
                                     if let select { try select(voice); dismiss() }
                                     else { try speech.selectCloudVoice(voice); message = "听书声音已设为「\(voice.displayName)」" }
                                 }
@@ -78,11 +81,14 @@ struct VoiceLibraryView: View {
         }.navigationTitle("云端音色库").searchable(text: $query, prompt: "搜索名称、声音 ID 或标签")
             .disabled(library.maintenance)
             .safeAreaInset(edge: .bottom) {
-                if preview.status != nil || preview.error != nil {
+                if catalogStatus != nil || preview.status != nil || preview.error != nil {
                     HStack {
-                        if let error = preview.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("voice-preview-error") }
+                        if let catalogStatus { Text(catalogStatus).accessibilityIdentifier("voice-catalog-status") }
+                        else if let error = preview.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("voice-preview-error") }
                         else if let status = preview.status { Text(status).accessibilityIdentifier("voice-preview-status") }
                         Spacer()
+                        if catalogTask != nil { Button("停止") { stopCatalog(); catalogStatus = "已停止读取，已有音色保持不变。" }.accessibilityIdentifier("voice-catalog-stop") }
+                        if catalogTask == nil && catalogStatus != nil { Button("关闭") { catalogStatus = nil } }
                         if preview.voiceID != nil { Button("停止") { preview.stop() }.accessibilityIdentifier("voice-preview-stop") }
                     }.font(.callout).padding().background(.regularMaterial)
                 }
@@ -92,6 +98,7 @@ struct VoiceLibraryView: View {
                     Menu {
                         Button("添加音色") { editing = SavedVoice(providerHint: SavedVoice.hint(for: settings.service)) }
                         Button("导入 Gemini 预设") { run { let count = try store?.merge(VoiceLibrary.geminiPresets) ?? 0; message = "新增 \(count) 个音色" } }
+                        Button("读取 Gemini 在线音色") { loadCatalog() }.disabled(catalogTask != nil)
                         Button("导入 MiniMax 预设") { run { let count = try store?.merge(VoiceLibrary.miniMaxPresets) ?? 0; message = "新增 \(count) 个音色" } }
                         Button("从 JSON 文件导入") { importing = true }
                         Button("导出音色文件") { run { if let data = try store?.exportJSON() { export = VoiceDocument(data: data); exporting = true } } }.disabled(voices.isEmpty)
@@ -111,10 +118,47 @@ struct VoiceLibraryView: View {
                 Button("取消", role: .cancel) { removing = nil }
                 Button("删除", role: .destructive) { run { if let removing { preview.stop(); try store?.remove(removing.id) }; removing = nil } }
             } message: { Text("只删除音色库记录，当前听书设置保持不变。") }
-            .onDisappear { preview.stop() }
-            .onChange(of: settings) { _, _ in preview.stop() }
-            .onChange(of: scenePhase) { _, phase in if phase != .active { preview.stop() } }
-            .onChange(of: library.maintenance) { _, busy in preview.stop(); if !busy { run {} } }
+            .onDisappear { preview.stop(); stopCatalog() }
+            .onChange(of: settings) { _, _ in preview.stop(); stopCatalog() }
+            .onChange(of: previewAllowed) { _, allowed in if !allowed { stopCatalog() } }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { preview.stop(); stopCatalog() } }
+            .onChange(of: library.maintenance) { _, busy in preview.stop(); stopCatalog(); if !busy { run {} } }
+    }
+    private func stopCatalog() {
+        catalogGeneration = UUID(); catalogTask?.cancel(); catalogTask = nil; catalogStatus = nil
+    }
+    private func loadCatalog() {
+        guard catalogTask == nil, !library.maintenance, let root = library.store?.root else { return }
+        guard settings.service == .gemini, previewAllowed else { catalogStatus = "请先在云端声音中选择 Gemini，并保存地址和密钥。"; return }
+        preview.stop(); preview.error = nil
+        let snapshot = settings, token = UUID(); catalogGeneration = token
+        catalogStatus = "正在读取 Gemini 在线音色…"
+        catalogTask = Task {
+            do {
+                let result: [SavedVoice]
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--simulate-voice-catalog") {
+                    result = try await GeminiVoiceCatalog.list(settings: snapshot, key: "catalog-fixture") { request in
+                        try await Task.sleep(for: .milliseconds(ProcessInfo.processInfo.arguments.contains("--slow-voice-catalog") ? 10_000 : 300))
+                        if ProcessInfo.processInfo.arguments.contains("--failed-voice-catalog") { throw MoReadError.invalid("在线音色服务暂不可用") }
+                        if ProcessInfo.processInfo.arguments.contains("--empty-voice-catalog") { return Data("{}".utf8) }
+                        let next = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "page_token" } == true
+                        return Data((next ? #"{"voices":[{"id":"voice_second","display_name":"Online reader","gender":"male"}]}"# : #"{"voices":[{"id":"voice_first","display_name":"Online narrator","gender":"female","language_code":"zh-CN"}],"next_page_token":"next"}"#).utf8)
+                    }
+                } else {
+                    result = try await GeminiVoiceCatalog.list(settings: snapshot, key: KeychainStore.readAsync(snapshot.id))
+                }
+                #else
+                result = try await GeminiVoiceCatalog.list(settings: snapshot, key: KeychainStore.readAsync(snapshot.id))
+                #endif
+                try Task.checkCancellation()
+                guard catalogGeneration == token, !library.maintenance, library.store?.root == root, settings == snapshot else { return }
+                let count = try VoiceLibrary(root: root).merge(result)
+                voices = try VoiceLibrary(root: root).voices()
+                catalogStatus = result.isEmpty ? "服务未返回音色，可以导入预设或稍后重试。" : "已读取 \(result.count) 个在线音色，新增 \(count) 个。"
+            } catch is CancellationError {} catch { if catalogGeneration == token { catalogStatus = error.localizedDescription } }
+            if catalogGeneration == token { catalogTask = nil }
+        }
     }
     private func run(_ action: () throws -> Void) {
         guard !library.maintenance else { return }
