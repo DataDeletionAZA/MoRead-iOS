@@ -119,13 +119,18 @@ final class ReviewCardUITests: XCTestCase {
         app.buttons["新建自定义模板"].tap()
         let name = app.textFields["review-card-template-name"]; name.tap()
         name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (name.value as? String ?? "").count) + "Quotation card\n")
-        func openRules() {
-            for _ in 0..<12 { if app.buttons["编辑文字规则"].isHittable { break }; app.swipeUp() }
-            XCTAssertTrue(app.buttons["编辑文字规则"].isHittable)
-            app.buttons["编辑文字规则"].tap()
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<12 {
+                if element.exists && element.frame.midY > 140 && element.frame.midY < app.frame.maxY - 70 && element.isHittable { return }
+                if element.exists && element.frame.midY < 140 { app.swipeDown() } else { app.swipeUp() }
+            }
+            XCTFail("The requested template control is not visible")
         }
-        for _ in 0..<12 { if app.switches["review-rules-enabled"].isHittable { break }; app.swipeUp() }
+        func openRules() {
+            let button = app.buttons["编辑文字规则"]; reveal(button); button.tap()
+        }
         let enabled = app.switches["review-rules-enabled"]
+        reveal(enabled)
         enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(enabled.value as? String, "1"); openRules()
         app.buttons["添加文字规则"].tap()
