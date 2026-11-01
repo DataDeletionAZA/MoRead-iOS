@@ -46,17 +46,21 @@ struct TextImportDraft: Identifiable, Sendable {
 }
 
 extension LibraryModel {
-    func queueImports(_ urls: [URL], group: UUID? = nil, collection: UUID? = nil) async {
-        guard !importing, !maintenance, textImport == nil, importQueue.isEmpty else { error = "请先完成当前导入。"; return }
+    @discardableResult
+    func queueImports(_ urls: [URL], group: UUID? = nil, collection: UUID? = nil, startImmediately: Bool = true) async -> [URL] {
+        guard !importing, !maintenance, textImport == nil, importQueue.isEmpty else { error = "请先完成当前导入。"; return [] }
         importing = true
+        var accepted: [URL] = []
         for url in urls {
             do {
                 let draft = try await Task.detached(priority: .userInitiated) { try TextImportDraft.stage(url, group: group, collection: collection) }.value
                 importQueue.append(draft)
+                accepted.append(url)
             } catch { self.error = error.localizedDescription }
         }
         importing = false
-        await nextImport()
+        if startImmediately { await nextImport() }
+        return accepted
     }
     func nextImport() async {
         guard textImport == nil, !importing, !maintenance else { return }

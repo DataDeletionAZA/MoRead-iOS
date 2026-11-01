@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>墨知 · 传书</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main>
+<p class="eyebrow">墨知 MoRead</p><h1>把故事带到手机上</h1>
+<p class="intro">电脑和手机连接同一个 Wi-Fi。传输时，保持手机的「局域网传书」页面打开。</p>
+<label class="code">手机上的六位连接码<input id="code" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]{6}" placeholder="输入六位数字" aria-describedby="code-note"></label>
+<p id="code-note" class="hint">重新开启传书后，连接码会更新。</p>
+<button id="drop" type="button"><span class="symbol" aria-hidden="true">＋</span><strong>选择小说，或拖到这里</strong><span>支持 TXT、EPUB，多本书会依次传输</span><small>单文件最多 200 MB，每次最多 2 GB</small></button>
+<input id="picker" type="file" accept=".txt,.epub" multiple hidden>
+<p id="notice" role="status" aria-live="polite"></p>
+<section id="queue" aria-label="传输记录" hidden><h2>传输记录</h2><div id="rows"></div></section>
+<p class="hint">显示「已送达手机」后，在手机上点击「全部导入书架」，核对目录后完成导入。</p>
+</main></body></html>

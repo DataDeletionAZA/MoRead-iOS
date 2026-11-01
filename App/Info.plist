@@ -58,6 +58,8 @@
 	<string>1</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>接收同一 Wi-Fi 下电脑浏览器传来的 TXT 和 EPUB 书籍。</string>
 	<key>NSMotionUsageDescription</key>
 	<string>让全屏回顾卡片随手机轻微倾斜。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

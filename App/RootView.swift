@@ -281,6 +281,8 @@ struct RootView: View {
 struct BookshelfView: View {
     @EnvironmentObject private var model: LibraryModel
     @State private var picker = false
+    @State private var lanTransfer = false
+    @State private var openedTransferFixture = false
     @State private var query = ""
     @State private var remove: Book?
     @State private var editing: Book?
@@ -363,6 +365,7 @@ struct BookshelfView: View {
                         Button("筛选与排序", systemImage: "line.3.horizontal.decrease.circle") { showFilters = true }
                         NavigationLink("整理书架", destination: ShelfManager())
                         NavigationLink("划线与笔记回顾", destination: ReadingReviewView())
+                        Button("局域网传书", systemImage: "wifi") { lanTransfer = true }.disabled(model.importing).accessibilityIdentifier("lan-open")
                     }
                 }
                 ToolbarItem(placement: .primaryAction) { Button("导入", systemImage: "plus") { picker = true }.disabled(model.importing) }
@@ -375,6 +378,9 @@ struct BookshelfView: View {
             }
             .sheet(item: $editing) { BookMetadataEditor(bookID: $0.id) }
             .sheet(isPresented: $showFilters) { ShelfFiltersView(filter: $filter, sort: $sort) }
+            .sheet(isPresented: $lanTransfer, onDismiss: { Task { await model.nextImport() } }) {
+                if let root = model.store?.root { LanTransferView(root: root, group: filter.groupID, collection: filter.collectionID) { lanTransfer = false } }
+            }
             .fileImporter(isPresented: $picker, allowedContentTypes: [.plainText, UTType(filenameExtension: "epub") ?? .data], allowsMultipleSelection: true) { result in
                 switch result {
                 case .success(let urls):
@@ -391,6 +397,13 @@ struct BookshelfView: View {
                 if let id = filter.groupID, !value.groups.contains(where: { $0.id == id }) { filter.groupID = nil }
                 if let id = filter.collectionID, !value.collections.contains(where: { $0.id == id }) { filter.collectionID = nil }
                 filter.tags.formIntersection(value.tags.map(\.id))
+            }
+            .task {
+                #if DEBUG
+                if !openedTransferFixture, ProcessInfo.processInfo.arguments.contains("--ui-testing"), ProcessInfo.processInfo.arguments.contains("--open-lan-transfer") {
+                    openedTransferFixture = true; lanTransfer = true
+                }
+                #endif
             }
         }
     }

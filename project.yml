@@ -53,6 +53,7 @@ targets:
         CFBundleDisplayName: 墨知
         NSPhotoLibraryAddUsageDescription: 将选中的插图保存到照片。
         NSMotionUsageDescription: 让全屏回顾卡片随手机轻微倾斜。
+        NSLocalNetworkUsageDescription: 接收同一 Wi-Fi 下电脑浏览器传来的 TXT 和 EPUB 书籍。
         UIAppFonts: [NotoSerifSC.ttf]
         UILaunchScreen: {}
         UIApplicationSceneManifest:
